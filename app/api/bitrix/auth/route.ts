@@ -16,14 +16,12 @@ export async function POST(request: NextRequest) {
     const params = new URLSearchParams({
       domain,
       member_id: memberId,
-      auth_id: authId,
-      refresh_id: refreshId,
-      auth_expires: authExpires,
+      auth_id: authId ?? '',
+      refresh_id: refreshId ?? '',
+      auth_expires: authExpires ?? '',
     })
 
-    const appUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
+    const appUrl = 'https://epotos-ur-intel.vercel.app'
 
     return NextResponse.redirect(
       `${appUrl}/?${params.toString()}`,
@@ -34,6 +32,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ status: 'Bitrix24 auth endpoint' })
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const domain = searchParams.get('DOMAIN') ?? searchParams.get('domain')
+  const memberId = searchParams.get('member_id')
+  const authId = searchParams.get('AUTH_ID') ?? searchParams.get('auth_id') ?? ''
+  const refreshId = searchParams.get('REFRESH_ID') ?? searchParams.get('refresh_id') ?? ''
+
+  if (domain && memberId) {
+    const params = new URLSearchParams({
+      domain,
+      member_id: memberId,
+      auth_id: authId,
+      refresh_id: refreshId,
+    })
+    return NextResponse.redirect(
+      `https://epotos-ur-intel.vercel.app/?${params.toString()}`,
+      { status: 302 }
+    )
+  }
+
+  return NextResponse.redirect('https://epotos-ur-intel.vercel.app/', { status: 302 })
 }
