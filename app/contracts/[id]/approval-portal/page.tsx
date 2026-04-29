@@ -235,9 +235,9 @@ export default function ApprovalPortalPage() {
                     <span className="text-gray-900">{Number(contract.amount).toLocaleString('ru-RU')} ₽</span>
                   </div>
                 )}
-                <div>
-                  <span className="text-gray-500">Инициатор: </span>
-                  <span className="text-gray-900">{session.initiated_by_name}</span>
+                <div className="col-span-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="text-xs text-blue-600 font-medium">Инициатор:</span>
+                  <span className="text-sm font-semibold text-blue-900">{session.initiated_by_name}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Запущено: </span>
