@@ -109,7 +109,7 @@ export default function NewContractPage() {
       }
 
       setLoading(false)
-      window.location.replace('http://localhost:3000/')
+      window.location.replace('https://epotos-ur-intel.vercel.app')
     } catch {
       setError('Ошибка соединения. Попробуйте ещё раз.')
       setLoading(false)
