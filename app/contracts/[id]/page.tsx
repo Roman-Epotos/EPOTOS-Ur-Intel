@@ -108,6 +108,12 @@ export default async function ContractPage({
                   >
                     Согласовать
                   </Link>
+                  <Link
+                    href={`/contracts/${id}/approval-portal`}
+                    className="text-xs bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700"
+                  >
+                    Портал
+                  </Link>
                 </div>
               </div>
 
