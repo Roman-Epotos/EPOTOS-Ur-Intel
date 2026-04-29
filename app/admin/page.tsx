@@ -54,7 +54,7 @@ export default function AdminPage() {
     department: '',
   })
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
 
   // Проверяем права администратора
   useEffect(() => {

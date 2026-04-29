@@ -25,7 +25,7 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
     setError('')
 
     try {
-      const baseUrl = window.location.origin
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
       const response = await fetch(`${baseUrl}/api/contracts/${contractId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

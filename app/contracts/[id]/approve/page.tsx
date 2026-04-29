@@ -61,7 +61,7 @@ export default function ApprovePage() {
   defaultDeadline.setDate(defaultDeadline.getDate() + 10)
   const [deadline, setDeadline] = useState(defaultDeadline.toISOString().split('T')[0])
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
 
   // Загружаем списки согласующих при выборе компании
   useEffect(() => {

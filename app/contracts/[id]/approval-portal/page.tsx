@@ -86,7 +86,7 @@ export default function ApprovalPortalPage() {
   const [approving, setApproving] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
 
   const loadData = async () => {
     try {

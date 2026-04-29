@@ -40,7 +40,7 @@ export default function NewContractPage() {
     }
     const generate = async () => {
       try {
-        const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://epotos-ur-intel.vercel.app'
+        const baseUrl = 'https://epotos-ur-intel.vercel.app'
       const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}`)
         const data = await res.json()
         if (data.number) {
@@ -76,7 +76,7 @@ export default function NewContractPage() {
       const timeout = setTimeout(() => controller.abort(), 3000)
 
       try {
-        const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://epotos-ur-intel.vercel.app'
+        const baseUrl = 'https://epotos-ur-intel.vercel.app'
       const response = await fetch(`${baseUrl}/api/contracts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
