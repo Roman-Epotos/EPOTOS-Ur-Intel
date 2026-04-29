@@ -55,6 +55,7 @@ export default function ApprovePage() {
   const [customParticipants, setCustomParticipants] = useState<Participant[]>([])
   const [customName, setCustomName] = useState('')
   const [customRole, setCustomRole] = useState<'required' | 'optional'>('optional')
+  const [customOptions, setCustomOptions] = useState<SettingsParticipant[]>([])
 
   const defaultDeadline = new Date()
   defaultDeadline.setDate(defaultDeadline.getDate() + 10)
@@ -73,6 +74,11 @@ export default function ApprovePage() {
         const data = await res.json()
         results[stage.id] = data.participants ?? []
       }
+      // Загружаем дополнительных отдельно
+      const customRes = await fetch(`${baseUrl}/api/approval-settings?stage=custom&company=${companyPrefix}`)
+      const customData = await customRes.json()
+      setCustomOptions(customData.participants ?? [])
+
       setStageOptions(results)
       setSelectedParticipants({ legal: '', finance: '', accounting: '', director: '' })
     }
@@ -245,12 +251,23 @@ export default function ApprovePage() {
             <h2 className="text-sm font-medium text-gray-700 mb-4">Дополнительные согласующие</h2>
 
             <div className="flex gap-2 mb-4">
-              <input
-                value={customName}
-                onChange={e => setCustomName(e.target.value)}
-                placeholder="ФИО согласующего"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
+              {customOptions.length > 0 ? (
+                <select value={customName}
+                  onChange={e => setCustomName(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  <option value="">— Выберите сотрудника —</option>
+                  {customOptions.map(p => (
+                    <option key={p.id} value={p.user_name}>
+                      {p.user_name}{p.department ? ` — ${p.department}` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input value={customName}
+                  onChange={e => setCustomName(e.target.value)}
+                  placeholder="ФИО согласующего"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              )}
               <select value={customRole}
                 onChange={e => setCustomRole(e.target.value as 'required' | 'optional')}
                 className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">

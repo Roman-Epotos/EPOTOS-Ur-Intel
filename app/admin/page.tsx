@@ -9,6 +9,7 @@ const STAGES = [
   { id: 'finance', label: 'Финансовый департамент' },
   { id: 'accounting', label: 'Бухгалтерия' },
   { id: 'director', label: 'Генеральный директор' },
+  { id: 'custom', label: 'Дополнительные' },
 ]
 
 const COMPANIES = [
