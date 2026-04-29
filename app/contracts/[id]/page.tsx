@@ -95,12 +95,20 @@ export default async function ContractPage({
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-medium text-gray-700">Версии документа</h2>
-                <Link
-                  href={`/contracts/${id}/upload`}
-                  className="text-xs bg-gray-900 text-white px-3 py-1 rounded-lg"
-                >
-                  + Загрузить версию
-                </Link>
+                <div className="flex gap-2">
+                  <Link
+                    href={`/contracts/${id}/upload`}
+                    className="text-xs bg-gray-900 text-white px-3 py-1 rounded-lg"
+                  >
+                    + Загрузить версию
+                  </Link>
+                  <Link
+                    href={`/contracts/${id}/approve`}
+                    className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
+                  >
+                    Согласовать
+                  </Link>
+                </div>
               </div>
 
               {allVersions.length === 0 ? (
