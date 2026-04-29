@@ -22,6 +22,12 @@ export default function Header() {
         </Link>
 
         {/* Профиль пользователя */}
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
         {!loading && (
           <div className="flex items-center gap-3">
             {user ? (

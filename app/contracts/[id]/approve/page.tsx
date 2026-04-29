@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
@@ -9,7 +9,24 @@ const REQUIRED_STAGES = [
   { id: 'legal', label: 'Юридический отдел' },
   { id: 'finance', label: 'Финансовый департамент' },
   { id: 'accounting', label: 'Бухгалтерия' },
+  { id: 'director', label: 'Генеральный директор' },
 ]
+
+const COMPANIES = [
+  { id: 'ТХ', name: 'ООО Техно' },
+  { id: 'НПП', name: 'ООО НПП ЭПОТОС' },
+  { id: 'СПТ', name: 'ООО СПТ' },
+  { id: 'ОС', name: 'ООО ОС' },
+  { id: 'Э-К', name: 'ООО Эпотос-К' },
+]
+
+interface SettingsParticipant {
+  id: string
+  bitrix_user_id: number
+  user_name: string
+  department: string | null
+  company_prefix: string | null
+}
 
 interface Participant {
   user_name: string
@@ -27,39 +44,49 @@ export default function ApprovePage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [stageOptions, setStageOptions] = useState<Record<string, SettingsParticipant[]>>({})
+  const [selectedParticipants, setSelectedParticipants] = useState<Record<string, string>>({
+    legal: '',
+    finance: '',
+    accounting: '',
+    director: '',
+  })
+  const [companyPrefix, setCompanyPrefix] = useState('')
+  const [customParticipants, setCustomParticipants] = useState<Participant[]>([])
+  const [customName, setCustomName] = useState('')
+  const [customRole, setCustomRole] = useState<'required' | 'optional'>('optional')
 
   const defaultDeadline = new Date()
   defaultDeadline.setDate(defaultDeadline.getDate() + 10)
-  const deadlineStr = defaultDeadline.toISOString().split('T')[0]
+  const [deadline, setDeadline] = useState(defaultDeadline.toISOString().split('T')[0])
 
-  const [deadline, setDeadline] = useState(deadlineStr)
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
-  const [stageParticipants, setStageParticipants] = useState<Record<string, Participant>>({
-    legal: { user_name: '', role: 'required', stage: 'legal' },
-    finance: { user_name: '', role: 'required', stage: 'finance' },
-    accounting: { user_name: '', role: 'required', stage: 'accounting' },
-  })
+  // Загружаем списки согласующих при выборе компании
+  useEffect(() => {
+    if (!companyPrefix) return
 
-  const [customParticipants, setCustomParticipants] = useState<Participant[]>([])
+    const loadStages = async () => {
+      const results: Record<string, SettingsParticipant[]> = {}
+      for (const stage of REQUIRED_STAGES) {
+        const res = await fetch(`${baseUrl}/api/approval-settings?stage=${stage.id}&company=${companyPrefix}`)
+        const data = await res.json()
+        results[stage.id] = data.participants ?? []
+      }
+      setStageOptions(results)
+      setSelectedParticipants({ legal: '', finance: '', accounting: '', director: '' })
+    }
+    loadStages()
+  }, [companyPrefix])
 
-  const updateStage = (stageId: string, field: string, value: string) => {
-    setStageParticipants(prev => ({
-      ...prev,
-      [stageId]: { ...prev[stageId], [field]: value }
-    }))
-  }
-
-  const addCustomParticipant = () => {
-    setCustomParticipants(prev => [
-      ...prev,
-      { user_name: '', role: 'optional', stage: 'custom' }
-    ])
-  }
-
-  const updateCustom = (index: number, field: string, value: string) => {
-    setCustomParticipants(prev => prev.map((p, i) =>
-      i === index ? { ...p, [field]: value } : p
-    ))
+  const addCustom = () => {
+    if (!customName.trim()) return
+    setCustomParticipants(prev => [...prev, {
+      user_name: customName,
+      role: customRole,
+      stage: 'custom',
+    }])
+    setCustomName('')
   }
 
   const removeCustom = (index: number) => {
@@ -69,21 +96,40 @@ export default function ApprovePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const allParticipants = [
-      ...Object.values(stageParticipants).filter(p => p.user_name.trim()),
-      ...customParticipants.filter(p => p.user_name.trim()),
-    ]
-
-    if (allParticipants.length === 0) {
-      setError('Добавьте хотя бы одного согласующего')
+    if (!companyPrefix) {
+      setError('Выберите компанию')
       return
     }
+
+    // Собираем обязательных согласующих
+    const requiredParticipants: Participant[] = []
+    for (const stage of REQUIRED_STAGES) {
+      const selectedId = selectedParticipants[stage.id]
+      if (selectedId) {
+        const found = stageOptions[stage.id]?.find(p => p.id === selectedId)
+        if (found) {
+          requiredParticipants.push({
+            user_name: found.user_name,
+            bitrix_user_id: found.bitrix_user_id,
+            department: found.department ?? undefined,
+            role: 'required',
+            stage: stage.id,
+          })
+        }
+      }
+    }
+
+    if (requiredParticipants.length === 0) {
+      setError('Выберите хотя бы одного обязательного согласующего')
+      return
+    }
+
+    const allParticipants = [...requiredParticipants, ...customParticipants]
 
     setLoading(true)
     setError('')
 
     try {
-      const baseUrl = window.location.origin
       const response = await fetch(`${baseUrl}/api/approvals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -132,83 +178,105 @@ export default function ApprovePage() {
             </div>
           )}
 
-          {/* Срок согласования */}
+          {/* Компания */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-sm font-medium text-gray-700 mb-4">
+              Компания ГК ЭПОТОС <span className="text-red-500">*</span>
+            </h2>
+            <select
+              value={companyPrefix}
+              onChange={e => setCompanyPrefix(e.target.value)}
+              required
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+            >
+              <option value="">— Выберите компанию —</option>
+              {COMPANIES.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Срок */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-sm font-medium text-gray-700 mb-4">Срок согласования</h2>
             <div className="flex items-center gap-4">
-              <input
-                type="date"
-                value={deadline}
+              <input type="date" value={deadline}
                 onChange={e => setDeadline(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
               <span className="text-sm text-gray-500">По умолчанию — 10 дней</span>
             </div>
           </div>
 
           {/* Обязательные согласующие */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h2 className="text-sm font-medium text-gray-700 mb-4">Обязательные согласующие</h2>
-            <div className="space-y-4">
-              {REQUIRED_STAGES.map(stage => (
-                <div key={stage.id}>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    {stage.label}
-                  </label>
-                  <input
-                    type="text"
-                    value={stageParticipants[stage.id]?.user_name ?? ''}
-                    onChange={e => updateStage(stage.id, 'user_name', e.target.value)}
-                    placeholder="ФИО согласующего"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                </div>
-              ))}
+          {companyPrefix && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Обязательные согласующие</h2>
+              <div className="space-y-4">
+                {REQUIRED_STAGES.map(stage => (
+                  <div key={stage.id}>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      {stage.label}
+                    </label>
+                    {stageOptions[stage.id]?.length > 0 ? (
+                      <select
+                        value={selectedParticipants[stage.id]}
+                        onChange={e => setSelectedParticipants(prev => ({ ...prev, [stage.id]: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                      >
+                        <option value="">— Не выбран —</option>
+                        {stageOptions[stage.id].map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.user_name}{p.department ? ` — ${p.department}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Нет доступных согласующих для этого этапа</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Дополнительные согласующие */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-gray-700">Дополнительные согласующие</h2>
-              <button
-                type="button"
-                onClick={addCustomParticipant}
-                className="text-xs text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50"
-              >
-                + Добавить
+            <h2 className="text-sm font-medium text-gray-700 mb-4">Дополнительные согласующие</h2>
+
+            <div className="flex gap-2 mb-4">
+              <input
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+                placeholder="ФИО согласующего"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+              <select value={customRole}
+                onChange={e => setCustomRole(e.target.value as 'required' | 'optional')}
+                className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">
+                <option value="required">Обязательный</option>
+                <option value="optional">Для информирования</option>
+              </select>
+              <button type="button" onClick={addCustom}
+                className="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-700">
+                +
               </button>
             </div>
 
             {customParticipants.length === 0 ? (
               <p className="text-sm text-gray-400">Нет дополнительных согласующих</p>
             ) : (
-              <div className="space-y-3">
-                {customParticipants.map((p, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={p.user_name}
-                      onChange={e => updateCustom(index, 'user_name', e.target.value)}
-                      placeholder="ФИО согласующего"
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    />
-                    <select
-                      value={p.role}
-                      onChange={e => updateCustom(index, 'role', e.target.value)}
-                      className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-                    >
-                      <option value="required">Обязательный</option>
-                      <option value="optional">Для информирования</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => removeCustom(index)}
-                      className="text-red-400 hover:text-red-600 text-sm px-2"
-                    >
-                      ✕
-                    </button>
+              <div className="space-y-2">
+                {customParticipants.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-900">{p.user_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.role === 'required' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {p.role === 'required' ? 'Обязательный' : 'Для информирования'}
+                      </span>
+                      <button type="button" onClick={() => removeCustom(i)}
+                        className="text-red-400 hover:text-red-600 text-sm">✕</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -217,17 +285,12 @@ export default function ApprovePage() {
 
           {/* Кнопки */}
           <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
+            <button type="submit" disabled={loading || !companyPrefix}
+              className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
               {loading ? 'Запуск...' : 'Запустить согласование'}
             </button>
-            <Link
-              href={`/contracts/${contractId}`}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-            >
+            <Link href={`/contracts/${contractId}`}
+              className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
               Отмена
             </Link>
           </div>
