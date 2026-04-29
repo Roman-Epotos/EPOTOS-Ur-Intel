@@ -247,6 +247,7 @@ export default function ApprovePage() {
           )}
 
           {/* Дополнительные согласующие */}
+          {companyPrefix && (
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-sm font-medium text-gray-700 mb-4">Дополнительные согласующие</h2>
 
@@ -299,6 +300,7 @@ export default function ApprovePage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Кнопки */}
           <div className="flex gap-3">

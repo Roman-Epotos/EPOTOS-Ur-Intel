@@ -106,12 +106,14 @@ export default async function ContractPage({
                   >
                     + Загрузить версию
                   </Link>
-                  <Link
-                    href={`/contracts/${id}/approve`}
-                    className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
-                  >
-                    Согласовать
-                  </Link>
+                  {contract.status === 'черновик' && (
+                    <Link
+                      href={`/contracts/${id}/approve`}
+                      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
+                    >
+                      Отправить на согласование
+                    </Link>
+                  )}
                   <Link
                     href={`/contracts/${id}/approval-portal`}
                     className="text-xs bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700"

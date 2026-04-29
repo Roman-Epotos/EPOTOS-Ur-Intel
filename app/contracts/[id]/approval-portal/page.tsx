@@ -303,7 +303,7 @@ export default function ApprovalPortalPage() {
                   onChange={e => setMessage(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                   placeholder="Написать сообщение..."
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white"
                 />
                 <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
                   className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
