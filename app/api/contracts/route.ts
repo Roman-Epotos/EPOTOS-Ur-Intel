@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -36,19 +37,16 @@ export async function GET(request: NextRequest) {
 
 // Сохранение договора
 export async function POST(request: NextRequest) {
-  const body = await request.json()
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
   try {
-    // Отправляем в Supabase через REST API напрямую
-    await fetch(`${SUPABASE_URL}/rest/v1/contracts`, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({
+    const body = await request.json()
+    const userName = body.user_name ?? 'Система'
+
+    // Сохраняем договор
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .insert({
         number: body.number,
         title: body.title,
         counterparty: body.counterparty,
@@ -57,13 +55,27 @@ export async function POST(request: NextRequest) {
         start_date: body.start_date || null,
         end_date: body.end_date || null,
         status: 'черновик',
-      }),
-    })
-  } catch (error) {
-    console.error('Ошибка при сохранении в Supabase:', error)
-    // Продолжаем выполнение, так как клиент всё равно перенаправляется
-  }
+      })
+      .select('id')
+      .single()
 
-  // Возвращаем ответ немедленно не ожидая Supabase
-  return NextResponse.json({ success: true })
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
+    }
+
+    // Записываем в лог с именем пользователя
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contract.id,
+        action: 'Договор создан',
+        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
+        user_name: userName,
+      })
+
+    return NextResponse.json({ success: true, id: contract.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

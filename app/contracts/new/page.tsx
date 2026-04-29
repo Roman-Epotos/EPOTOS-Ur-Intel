@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 const COMPANIES = [
   { id: 'ТХ',  name: 'ООО Техно' },
@@ -12,6 +13,7 @@ const COMPANIES = [
 ]
 
 export default function NewContractPage() {
+  const { user } = useBitrixAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [autoNumber, setAutoNumber] = useState('')
@@ -85,6 +87,8 @@ export default function NewContractPage() {
             amount: form.amount,
             start_date: form.start_date,
             end_date: form.end_date,
+            user_name: user?.name ?? 'Система',
+            user_bitrix_id: user?.id ?? null,
           }),
         })
         clearTimeout(timeout)
