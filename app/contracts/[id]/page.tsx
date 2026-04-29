@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
+import DeleteContractButton from '@/app/components/DeleteContractButton'
 
 const statusLabel: Record<string, string> = {
   'черновик': 'Черновик',
@@ -67,6 +68,9 @@ export default async function ContractPage({
           <span className={`text-xs px-2 py-1 rounded-full font-medium ml-2 ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
             {statusLabel[contract.status] ?? contract.status}
           </span>
+          <div className="ml-auto">
+            <DeleteContractButton contractId={id} contractNumber={contract.number} />
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-6">
