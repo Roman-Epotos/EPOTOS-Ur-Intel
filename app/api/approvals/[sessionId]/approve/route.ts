@@ -88,3 +88,58 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { reason, user_name, contract_id } = body
+
+    if (!reason?.trim()) {
+      return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
+    }
+
+    // Обновляем статус сессии
+    const { error: sessionError } = await supabase
+      .from('approval_sessions')
+      .update({ status: 'cancelled', cancel_reason: reason })
+      .eq('id', sessionId)
+
+    if (sessionError) {
+      return NextResponse.json({ error: sessionError.message }, { status: 400 })
+    }
+
+    // Переводим договор в архив
+    await supabase
+      .from('contracts')
+      .update({ status: 'архив' })
+      .eq('id', contract_id)
+
+    // Записываем в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `🚫 Согласование прервано инициатором. Причина: «${reason}»`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Согласование прервано',
+        details: `Причина: ${reason}`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

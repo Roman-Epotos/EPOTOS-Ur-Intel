@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 
 interface Participant {
   id: string
@@ -31,6 +32,7 @@ interface Session {
   status: string
   deadline: string
   initiated_by_name: string
+  initiated_by_bitrix_id: number | null
   created_at: string
   approval_participants: Participant[]
   approval_messages: Message[]
@@ -189,7 +191,7 @@ export default function ApprovalPortalPage() {
       <div className="max-w-5xl mx-auto px-4 py-8">
 
         {/* Шапка */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           <Link href={`/contracts/${contractId}`}
             className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
           <span className="text-gray-300">/</span>
@@ -199,6 +201,15 @@ export default function ApprovalPortalPage() {
               Все согласовали ✓
             </span>
           )}
+          <div className="ml-auto">
+            <CancelApprovalButton
+              sessionId={session.id}
+              contractId={contractId}
+              contractNumber={contract?.number ?? ''}
+              initiatedByBitrixId={session.initiated_by_bitrix_id ?? null}
+              onCancelled={() => window.location.href = `/contracts/${contractId}`}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-6">
