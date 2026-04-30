@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Header from '@/app/components/Header'
+import MyDocuments from '@/app/components/MyDocuments'
 import { createClient } from '@/utils/supabase/server'
 
 const statusLabel: Record<string, string> = {
@@ -33,6 +34,8 @@ export default async function HomePage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
 
         <Header />
+
+        <MyDocuments />
 
         <div className="grid grid-cols-4 gap-4 mb-8">
           {[
