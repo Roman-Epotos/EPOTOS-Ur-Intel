@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
 
 interface Contract {
   id: string
@@ -75,6 +76,28 @@ export default function MyDocuments() {
     }
 
     load()
+
+    // Realtime подписка
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('my-docs-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => load())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => load())
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [user?.id])
 
   if (authLoading || loading) return null

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
 
 interface Contract {
   id: string
@@ -48,6 +49,43 @@ export default function ContractsList() {
   const [counterparties, setCounterparties] = useState<string[]>([])
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  // Realtime подписка на новые договоры
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('contracts-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => {
+        if (!user?.id) return
+        const load = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          setContracts(contractsData.contracts ?? [])
+          const unique = [...new Set((contractsData.contracts ?? []).map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+          setCounterparties(unique.sort())
+        }
+        load()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id])
 
   useEffect(() => {
     if (!user?.id) return

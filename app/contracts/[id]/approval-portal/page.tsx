@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import CancelApprovalButton from '@/app/components/CancelApprovalButton'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
 
 interface Participant {
   id: string
