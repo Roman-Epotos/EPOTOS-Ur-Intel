@@ -42,8 +42,11 @@ export async function GET(request: NextRequest) {
         .eq('bitrix_user_id', userId)
 
       const contractIds = participantSessions?.map(
-        (p: { approval_sessions: { contract_id: string } }) => p.approval_sessions.contract_id
-      ) ?? []
+        (p: { approval_sessions: { contract_id: string }[] }) =>
+          Array.isArray(p.approval_sessions)
+            ? p.approval_sessions[0]?.contract_id
+            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
+      ).filter(Boolean) as string[] ?? []
 
       // Добавляем ID договоров где он автор
       const { data: authorContracts } = await supabase
