@@ -7,9 +7,10 @@ interface Props {
   contractId: string
   contractStatus: string
   authorBitrixId: number | null
+  allowOthers: boolean
 }
 
-export default function ApproveButton({ contractId, contractStatus, authorBitrixId }: Props) {
+export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
   const { user } = useBitrixAuth()
 
   const adminIds = [30, 1148]
@@ -17,7 +18,7 @@ export default function ApproveButton({ contractId, contractStatus, authorBitrix
   const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
 
   if (contractStatus !== 'черновик') return null
-  if (!isAdmin && !isAuthor) return null
+  if (!isAdmin && !isAuthor && !allowOthers) return null
 
   return (
     <Link

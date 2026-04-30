@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import ApproveButton from '@/app/components/ApproveButton'
+import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 
 const statusLabel: Record<string, string> = {
   'черновик': 'Черновик',
@@ -111,6 +112,7 @@ export default async function ContractPage({
                     contractId={id}
                     contractStatus={contract.status}
                     authorBitrixId={contract.author_bitrix_id ?? null}
+                    allowOthers={contract.allow_others_to_approve ?? false}
                   />
                   <Link
                     href={`/contracts/${id}/approval-portal`}
@@ -120,6 +122,13 @@ export default async function ContractPage({
                   </Link>
                 </div>
               </div>
+
+              <DelegateApproveCheckbox
+                contractId={id}
+                contractNumber={contract.number}
+                authorBitrixId={contract.author_bitrix_id ?? null}
+                allowOthers={contract.allow_others_to_approve ?? false}
+              />
 
               {allVersions.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">
