@@ -107,6 +107,12 @@ export default function ApprovalPortalPage() {
       const contractData = await contractRes.json()
       const sessionData = await sessionRes.json()
       setContract(contractData.contract)
+      if (sessionData.session) {
+        sessionData.session.approval_messages = (sessionData.session.approval_messages ?? [])
+          .sort((a: { created_at: string }, b: { created_at: string }) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+      }
       setSession(sessionData.session)
     } catch {
       console.error('Ошибка загрузки')
