@@ -129,6 +129,40 @@ export default function ApprovalPortalPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [session?.approval_messages])
 
+  // Realtime подписка
+  useEffect(() => {
+    if (!session?.id) return
+
+    const channel = supabaseClient
+      .channel(`portal-${session.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'approval_messages',
+      }, (payload) => {
+        const newMsg = payload.new as Message
+        if (newMsg.session_id !== session.id) return
+        setSession(prev => {
+          if (!prev) return prev
+          const exists = prev.approval_messages.find(m => m.id === newMsg.id)
+          if (exists) return prev
+          return {
+            ...prev,
+            approval_messages: [...prev.approval_messages, newMsg]
+              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          }
+        })
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => loadData())
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [session?.id])
+
   const myParticipant = session?.approval_participants.find(
     p => p.bitrix_user_id === parseInt(user?.id ?? '0')
   )
