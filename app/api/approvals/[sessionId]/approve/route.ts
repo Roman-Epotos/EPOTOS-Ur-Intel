@@ -16,10 +16,11 @@ export async function POST(
     const { participant_id, comment, user_name, contract_id } = body
 
     // Обновляем статус участника
+    const isAcknowledge = body.is_acknowledge === true
     const { error: updateError } = await supabase
       .from('approval_participants')
       .update({
-        status: 'approved',
+        status: isAcknowledge ? 'acknowledged' : 'approved',
         comment: comment || null,
         decided_at: new Date().toISOString(),
       })
@@ -40,11 +41,14 @@ export async function POST(
       })
 
     // Записываем сообщение в чат
+    const isAcknowledge = body.is_acknowledge === true
     await supabase
       .from('approval_messages')
       .insert({
         session_id: sessionId,
-        message: `✅ ${user_name} согласовал документ${comment ? `: «${comment}»` : ''}`,
+        message: isAcknowledge
+          ? `👁 ${user_name} ознакомлен с документом`
+          : `✅ ${user_name} согласовал документ${comment ? `. Комментарий: «${comment}»` : ''}`,
         author_name: 'Система',
         is_ai: false,
       })

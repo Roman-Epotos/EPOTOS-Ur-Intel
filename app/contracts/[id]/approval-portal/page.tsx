@@ -407,7 +407,7 @@ export default function ApprovalPortalPage() {
                 const done = required.filter(p => p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator')
                 const pct = required.length > 0 ? Math.round(done.length / required.length * 100) : 0
                 const optional = session.approval_participants.filter(p => p.role === 'optional')
-                const ackDone = optional.filter(p => p.status === 'acknowledged')
+                const ackDone = optional.filter(p => p.status === 'acknowledged' || p.status === 'approved')
                 const ackPct = optional.length > 0 ? Math.round(ackDone.length / optional.length * 100) : 0
                 return (
                   <>
