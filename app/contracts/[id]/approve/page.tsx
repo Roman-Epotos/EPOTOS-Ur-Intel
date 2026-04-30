@@ -53,9 +53,10 @@ export default function ApprovePage() {
   })
   const [companyPrefix, setCompanyPrefix] = useState('')
   const [customParticipants, setCustomParticipants] = useState<Participant[]>([])
-  const [customName, setCustomName] = useState('')
-  const [customRole, setCustomRole] = useState<'required' | 'optional'>('optional')
   const [customOptions, setCustomOptions] = useState<SettingsParticipant[]>([])
+  const [customRows, setCustomRows] = useState<{ user_name: string; role: 'required' | 'optional' }[]>([
+    { user_name: '', role: 'optional' }
+  ])
 
   const defaultDeadline = new Date()
   defaultDeadline.setDate(defaultDeadline.getDate() + 10)
@@ -85,17 +86,16 @@ export default function ApprovePage() {
     loadStages()
   }, [companyPrefix])
 
-  const addCustom = () => {
-    if (!customName.trim()) return
-    const found = customOptions.find(p => p.user_name === customName)
-    setCustomParticipants(prev => [...prev, {
-      user_name: customName,
-      bitrix_user_id: found?.bitrix_user_id,
-      department: found?.department ?? undefined,
-      role: customRole,
-      stage: 'custom',
-    }])
-    setCustomName('')
+  const addCustomRow = () => {
+    setCustomRows(prev => [...prev, { user_name: '', role: 'optional' }])
+  }
+
+  const updateCustomRow = (index: number, field: string, value: string) => {
+    setCustomRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r))
+  }
+
+  const removeCustomRow = (index: number) => {
+    setCustomRows(prev => prev.filter((_, i) => i !== index))
   }
 
   const removeCustom = (index: number) => {
@@ -132,6 +132,20 @@ export default function ApprovePage() {
       setError('Выберите хотя бы одного обязательного согласующего')
       return
     }
+
+    // Собираем дополнительных из строк
+    const customParticipants: Participant[] = customRows
+      .filter(r => r.user_name.trim())
+      .map(r => {
+        const found = customOptions.find(p => p.user_name === r.user_name)
+        return {
+          user_name: r.user_name,
+          bitrix_user_id: found?.bitrix_user_id,
+          department: found?.department ?? undefined,
+          role: r.role,
+          stage: 'custom',
+        }
+      })
 
     const allParticipants = [...requiredParticipants, ...customParticipants]
 
@@ -254,54 +268,43 @@ export default function ApprovePage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-sm font-medium text-gray-700 mb-4">Дополнительные согласующие</h2>
 
-            <div className="flex gap-2 mb-4">
-              {customOptions.length > 0 ? (
-                <select value={customName}
-                  onChange={e => setCustomName(e.target.value)}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                  <option value="">— Выберите сотрудника —</option>
-                  {customOptions.map(p => (
-                    <option key={p.id} value={p.user_name}>
-                      {p.user_name}{p.department ? ` — ${p.department}` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input value={customName}
-                  onChange={e => setCustomName(e.target.value)}
-                  placeholder="ФИО согласующего"
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              )}
-              <select value={customRole}
-                onChange={e => setCustomRole(e.target.value as 'required' | 'optional')}
-                className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">
-                <option value="required">Обязательный</option>
-                <option value="optional">Для информирования</option>
-              </select>
-              <button type="button" onClick={addCustom}
-                className="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-700">
-                +
-              </button>
+            <div className="space-y-2">
+              {customRows.map((row, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  {customOptions.length > 0 ? (
+                    <select value={row.user_name}
+                      onChange={e => updateCustomRow(index, 'user_name', e.target.value)}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                      <option value="">— Выберите сотрудника —</option>
+                      {customOptions.map(p => (
+                        <option key={p.id} value={p.user_name}>
+                          {p.user_name}{p.department ? ` — ${p.department}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={row.user_name}
+                      onChange={e => updateCustomRow(index, 'user_name', e.target.value)}
+                      placeholder="ФИО согласующего"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  )}
+                  <select value={row.role}
+                    onChange={e => updateCustomRow(index, 'role', e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">
+                    <option value="required">Обязательный</option>
+                    <option value="optional">Для информирования</option>
+                  </select>
+                  {customRows.length > 1 && (
+                    <button type="button" onClick={() => removeCustomRow(index)}
+                      className="text-red-400 hover:text-red-600 text-sm px-2">✕</button>
+                  )}
+                </div>
+              ))}
             </div>
-
-            {customParticipants.length === 0 ? (
-              <p className="text-sm text-gray-400">Нет дополнительных согласующих</p>
-            ) : (
-              <div className="space-y-2">
-                {customParticipants.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-900">{p.user_name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.role === 'required' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {p.role === 'required' ? 'Обязательный' : 'Для информирования'}
-                      </span>
-                      <button type="button" onClick={() => removeCustom(i)}
-                        className="text-red-400 hover:text-red-600 text-sm">✕</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <button type="button" onClick={addCustomRow}
+              className="mt-3 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+              + Добавить ещё одного
+            </button>
           </div>
           )}
 
