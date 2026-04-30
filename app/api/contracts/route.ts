@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
         start_date: body.start_date || null,
         end_date: body.end_date || null,
         status: 'черновик',
+        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
       })
       .select('id')
       .single()

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
+import ApproveButton from '@/app/components/ApproveButton'
 
 const statusLabel: Record<string, string> = {
   'черновик': 'Черновик',
@@ -106,14 +107,11 @@ export default async function ContractPage({
                   >
                     + Загрузить версию
                   </Link>
-                  {contract.status === 'черновик' && (
-                    <Link
-                      href={`/contracts/${id}/approve`}
-                      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
-                    >
-                      Отправить на согласование
-                    </Link>
-                  )}
+                  <ApproveButton
+                    contractId={id}
+                    contractStatus={contract.status}
+                    authorBitrixId={contract.author_bitrix_id ?? null}
+                  />
                   <Link
                     href={`/contracts/${id}/approval-portal`}
                     className="text-xs bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700"
