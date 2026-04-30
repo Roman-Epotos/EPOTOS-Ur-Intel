@@ -87,8 +87,11 @@ export default function ApprovePage() {
 
   const addCustom = () => {
     if (!customName.trim()) return
+    const found = customOptions.find(p => p.user_name === customName)
     setCustomParticipants(prev => [...prev, {
       user_name: customName,
+      bitrix_user_id: found?.bitrix_user_id,
+      department: found?.department ?? undefined,
       role: customRole,
       stage: 'custom',
     }])
