@@ -32,7 +32,7 @@ interface Participant {
 
 interface NewParticipant {
   stage: string
-  company_prefix: string
+  company_prefixes: string[]
   bitrix_user_id: string
   user_name: string
   department: string
@@ -48,7 +48,7 @@ export default function AdminPage() {
   const [success, setSuccess] = useState('')
   const [newP, setNewP] = useState<NewParticipant>({
     stage: 'legal',
-    company_prefix: '',
+    company_prefixes: [],
     bitrix_user_id: '',
     user_name: '',
     department: '',
@@ -92,23 +92,34 @@ export default function AdminPage() {
       return
     }
 
-    const res = await fetch(`${baseUrl}/api/approval-settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...newP,
-        bitrix_user_id: parseInt(newP.bitrix_user_id),
-        company_prefix: newP.company_prefix || null,
-        admin_bitrix_id: parseInt(user?.id ?? '0'),
-      }),
-    })
+    // Создаём запись для каждой выбранной компании
+    const prefixes = newP.company_prefixes.length > 0 ? newP.company_prefixes : [null]
+    let hasError = false
 
-    const data = await res.json()
-    if (!res.ok) {
-      setError(data.error)
-    } else {
-      setSuccess('Участник добавлен')
-      setNewP({ stage: activeStage, company_prefix: '', bitrix_user_id: '', user_name: '', department: '' })
+    for (const prefix of prefixes) {
+      const res = await fetch(`${baseUrl}/api/approval-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: newP.stage,
+          company_prefix: prefix,
+          bitrix_user_id: parseInt(newP.bitrix_user_id),
+          user_name: newP.user_name,
+          department: newP.department,
+          admin_bitrix_id: parseInt(user?.id ?? '0'),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error)
+        hasError = true
+        break
+      }
+    }
+
+    if (!hasError) {
+      setSuccess(`Участник добавлен в ${prefixes.length} компани${prefixes.length === 1 ? 'ю' : 'и'}`)
+      setNewP({ stage: activeStage, company_prefixes: [], bitrix_user_id: '', user_name: '', department: '' })
       const reload = await fetch(`${baseUrl}/api/approval-settings?stage=${activeStage}`)
       const reloadData = await reload.json()
       setParticipants(reloadData.participants ?? [])
@@ -234,16 +245,30 @@ export default function AdminPage() {
                   placeholder="Юридический отдел"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Компания (если специфично)</label>
-                <select value={newP.company_prefix}
-                  onChange={e => setNewP(p => ({ ...p, company_prefix: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                  <option value="">Все компании</option>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-2">
+                  Компании участия
+                  <span className="text-gray-400 font-normal ml-1">(не выбрано = все компании)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
                   {COMPANIES.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <label key={c.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-xs transition-colors ${newP.company_prefixes.includes(c.id) ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={newP.company_prefixes.includes(c.id)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setNewP(p => ({ ...p, company_prefixes: [...p.company_prefixes, c.id] }))
+                          } else {
+                            setNewP(p => ({ ...p, company_prefixes: p.company_prefixes.filter(x => x !== c.id) }))
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      {c.id} — {c.name.replace('ООО ', '')}
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
             </div>
             <button type="submit"
