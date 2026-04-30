@@ -44,6 +44,9 @@ export default function ApprovePage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showNoFileModal, setShowNoFileModal] = useState(false)
+  const [pendingSubmit, setPendingSubmit] = useState(false)
+  const [hasVersions, setHasVersions] = useState(false)
   const [stageOptions, setStageOptions] = useState<Record<string, SettingsParticipant[]>>({})
   const [selectedParticipants, setSelectedParticipants] = useState<Record<string, string>>({
     legal: '',
@@ -63,6 +66,15 @@ export default function ApprovePage() {
   const [deadline, setDeadline] = useState(defaultDeadline.toISOString().split('T')[0])
 
   const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
+
+  useEffect(() => {
+    const checkVersions = async () => {
+      const versRes = await fetch(`https://epotos-ur-intel.vercel.app/api/versions?contract_id=${contractId}`)
+      const versData = await versRes.json()
+      setHasVersions((versData.versions ?? []).length > 0)
+    }
+    checkVersions()
+  }, [contractId])
 
   // Загружаем списки согласующих при выборе компании
   useEffect(() => {
@@ -149,8 +161,14 @@ export default function ApprovePage() {
 
     const allParticipants = [...requiredParticipants, ...customParticipants]
 
+    if (!hasVersions && !pendingSubmit) {
+      setShowNoFileModal(true)
+      return
+    }
+
     setLoading(true)
     setError('')
+    setPendingSubmit(false)
 
     try {
       const response = await fetch(`${baseUrl}/api/approvals`, {
@@ -306,6 +324,32 @@ export default function ApprovePage() {
               + Добавить ещё одного
             </button>
           </div>
+          )}
+
+          {/* Modal - нет документа */}
+          {showNoFileModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">⚠️ Документ не прикреплён</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  К договору не прикреплена ни одна версия документа. Рекомендуем загрузить файл перед отправкой на согласование.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <a href={`/contracts/${contractId}/upload`}
+                    className="w-full bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 text-center">
+                    Загрузить документ
+                  </a>
+                  <button onClick={() => { setShowNoFileModal(false); setPendingSubmit(true); setTimeout(() => document.querySelector('form')?.requestSubmit(), 100) }}
+                    className="w-full border border-gray-200 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    Продолжить без документа
+                  </button>
+                  <button onClick={() => setShowNoFileModal(false)}
+                    className="w-full text-sm text-gray-400 hover:text-gray-600 py-1">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Кнопки */}

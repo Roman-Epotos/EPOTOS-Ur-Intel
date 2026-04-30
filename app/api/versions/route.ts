@@ -1,6 +1,27 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
+export async function GET(request: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+  const contractId = request.nextUrl.searchParams.get('contract_id')
+  if (!contractId) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+  const { data: versions, error } = await supabase
+    .from('versions')
+    .select('*')
+    .eq('contract_id', contractId)
+    .order('version_number', { ascending: false })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+  return NextResponse.json({ versions: versions ?? [] })
+}
+
 export async function POST(request: NextRequest) {
   console.log('=== versions API called ===')
 

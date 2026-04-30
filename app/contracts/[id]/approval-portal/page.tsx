@@ -81,9 +81,11 @@ export default function ApprovalPortalPage() {
   const [message, setMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
+  const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [approveComment, setApproveComment] = useState('')
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
+  const [acknowledging, setAcknowledging] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
@@ -135,6 +137,39 @@ export default function ApprovalPortalPage() {
 
     setMessage('')
     setSendingMessage(false)
+    await loadData()
+  }
+
+  const handleAcknowledge = async () => {
+    if (!session || !approvingId) return
+    setAcknowledging(true)
+
+    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participant_id: approvingId,
+        comment: 'Ознакомлен',
+        user_name: user?.name ?? 'Система',
+        contract_id: contractId,
+        is_acknowledge: true,
+      }),
+    })
+
+    // Отправляем сообщение в чат
+    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `👁 ${user?.name} ознакомлен с документом ${contract?.number}`,
+        author_name: 'Система',
+        bitrix_user_id: null,
+      }),
+    })
+
+    setShowAcknowledgeModal(false)
+    setApprovingId(null)
+    setAcknowledging(false)
     await loadData()
   }
 
@@ -318,13 +353,24 @@ export default function ApprovalPortalPage() {
           <div className="col-span-1 space-y-4">
 
             {/* Моё действие */}
-            {canApprove && (
+            {myParticipant?.status === 'pending' && myParticipant?.role === 'required' && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <p className="text-sm font-medium text-blue-900 mb-3">Требуется ваше решение</p>
                 <button
                   onClick={() => { setApprovingId(myParticipant?.id ?? null); setShowApproveModal(true) }}
                   className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-                  ✓ Согласовать
+                  ✓ Согласовать документ
+                </button>
+              </div>
+            )}
+
+            {myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">Вы добавлены для ознакомления</p>
+                <button
+                  onClick={() => { setApprovingId(myParticipant?.id ?? null); setShowAcknowledgeModal(true) }}
+                  className="w-full bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-900">
+                  👁 Ознакомлен
                 </button>
               </div>
             )}
@@ -385,6 +431,28 @@ export default function ApprovalPortalPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal ознакомления */}
+      {showAcknowledgeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение ознакомления</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Вы подтверждаете что ознакомились с документом <strong>{contract?.number}</strong>?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={handleAcknowledge} disabled={acknowledging}
+                className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50">
+                {acknowledging ? 'Сохранение...' : '👁 Подтвердить ознакомление'}
+              </button>
+              <button onClick={() => { setShowAcknowledgeModal(false) }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal подтверждения */}
       {showApproveModal && (
