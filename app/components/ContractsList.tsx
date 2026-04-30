@@ -43,6 +43,8 @@ export default function ContractsList() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('all')
+  const [counterpartyFilter, setCounterpartyFilter] = useState('')
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -88,6 +90,8 @@ export default function ContractsList() {
   // Фильтрация
   const filtered = contracts.filter(c => {
     if (filter !== 'all' && c.status !== filter) return false
+    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
+    if (counterpartyFilter && !c.counterparty.toLowerCase().includes(counterpartyFilter.toLowerCase())) return false
     if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
         !c.title.toLowerCase().includes(search.toLowerCase()) &&
         !c.counterparty.toLowerCase().includes(search.toLowerCase())) return false
@@ -111,28 +115,43 @@ export default function ContractsList() {
           <span className="text-xs text-gray-400">{filtered.length} записей</span>
         </div>
 
-        {/* Поиск и фильтры — только для admin, director, legal */}
-        {userRole?.role !== 'user' && (
-          <div className="flex gap-3 flex-wrap">
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Поиск по номеру, названию, контрагенту..."
-              className="flex-1 min-w-48 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-            />
-            <select
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-            >
-              <option value="all">Все статусы</option>
-              <option value="черновик">Черновики</option>
-              <option value="на_согласовании">На согласовании</option>
-              <option value="подписан">Подписанные</option>
-              <option value="архив">Архив</option>
-            </select>
-          </div>
-        )}
+        <div className="flex gap-2 flex-wrap mt-3">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск по номеру, названию..."
+            className="flex-1 min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все статусы</option>
+            <option value="черновик">Черновики</option>
+            <option value="на_согласовании">На согласовании</option>
+            <option value="подписан">Подписанные</option>
+            <option value="архив">Архив</option>
+          </select>
+          <select
+            value={companyFilter}
+            onChange={e => setCompanyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все компании</option>
+            <option value="ТХ">ООО Техно</option>
+            <option value="НПП">НПП ЭПОТОС</option>
+            <option value="СПТ">ООО СПТ</option>
+            <option value="ОС">ООО ОС</option>
+            <option value="Э-К">ООО Эпотос-К</option>
+          </select>
+          <input
+            value={counterpartyFilter}
+            onChange={e => setCounterpartyFilter(e.target.value)}
+            placeholder="Контрагент..."
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 min-w-32"
+          />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
