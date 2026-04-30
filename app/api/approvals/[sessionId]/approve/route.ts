@@ -14,9 +14,9 @@ export async function POST(
     const { sessionId } = await params
     const body = await request.json()
     const { participant_id, comment, user_name, contract_id } = body
+    const isAcknowledge = body.is_acknowledge === true
 
     // Обновляем статус участника
-    const isAcknowledge = body.is_acknowledge === true
     const { error: updateError } = await supabase
       .from('approval_participants')
       .update({
@@ -35,13 +35,14 @@ export async function POST(
       .from('contract_logs')
       .insert({
         contract_id,
-        action: 'Согласовано',
-        details: comment ? `Комментарий: ${comment}` : 'Без комментария',
+        action: isAcknowledge ? 'Ознакомлен' : 'Согласовано',
+        details: isAcknowledge
+          ? 'Участник ознакомился с документом'
+          : comment ? `Комментарий: ${comment}` : 'Без комментария',
         user_name: user_name ?? 'Система',
       })
 
     // Записываем сообщение в чат
-    const isAcknowledge = body.is_acknowledge === true
     await supabase
       .from('approval_messages')
       .insert({
@@ -65,7 +66,6 @@ export async function POST(
     )
 
     if (allDone && required.length > 0) {
-      // Переводим договор в статус "Готов к подписанию"
       await supabase
         .from('contracts')
         .update({ status: 'подписан' })
@@ -92,6 +92,7 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
@@ -105,7 +106,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
     }
 
-    // Обновляем статус сессии
     const { error: sessionError } = await supabase
       .from('approval_sessions')
       .update({ status: 'cancelled', cancel_reason: reason })
@@ -115,13 +115,11 @@ export async function DELETE(
       return NextResponse.json({ error: sessionError.message }, { status: 400 })
     }
 
-    // Переводим договор в архив
     await supabase
       .from('contracts')
       .update({ status: 'архив' })
       .eq('id', contract_id)
 
-    // Записываем в чат
     await supabase
       .from('approval_messages')
       .insert({
@@ -131,7 +129,6 @@ export async function DELETE(
         is_ai: false,
       })
 
-    // Записываем в лог
     await supabase
       .from('contract_logs')
       .insert({
