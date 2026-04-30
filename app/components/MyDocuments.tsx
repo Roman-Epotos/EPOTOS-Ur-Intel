@@ -132,13 +132,13 @@ export default function MyDocuments() {
               onClick={() => setActiveTab(tab.id)}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
                 ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}>
               {tab.label}
               {tab.count > 0 && (
                 <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
                   ? 'bg-white text-gray-900'
-                  : 'bg-gray-300 text-gray-700'
+                  : 'bg-gray-400 text-white'
                 }`}>
                   {tab.count}
                 </span>

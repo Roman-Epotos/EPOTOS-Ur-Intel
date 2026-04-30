@@ -44,7 +44,8 @@ export default function ContractsList() {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
-  const [counterpartyFilter, setCounterpartyFilter] = useState('')
+  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
+  const [counterparties, setCounterparties] = useState<string[]>([])
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -68,7 +69,10 @@ export default function ContractsList() {
 
         const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
         const contractsData = await contractsRes.json()
-        setContracts(contractsData.contracts ?? [])
+        const allContracts = contractsData.contracts ?? []
+        setContracts(allContracts)
+        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+        setCounterparties(unique.sort())
       } catch {
         console.error('Ошибка загрузки')
       } finally {
@@ -91,7 +95,7 @@ export default function ContractsList() {
   const filtered = contracts.filter(c => {
     if (filter !== 'all' && c.status !== filter) return false
     if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
-    if (counterpartyFilter && !c.counterparty.toLowerCase().includes(counterpartyFilter.toLowerCase())) return false
+    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
     if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
         !c.title.toLowerCase().includes(search.toLowerCase()) &&
         !c.counterparty.toLowerCase().includes(search.toLowerCase())) return false
@@ -145,19 +149,23 @@ export default function ContractsList() {
             <option value="ОС">ООО ОС</option>
             <option value="Э-К">ООО Эпотос-К</option>
           </select>
-          <input
+          <select
             value={counterpartyFilter}
             onChange={e => setCounterpartyFilter(e.target.value)}
-            placeholder="Контрагент..."
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 min-w-32"
-          />
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-32"
+          >
+            <option value="all">Все контрагенты</option>
+            {counterparties.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="px-6 py-12 text-center">
           <p className="text-gray-400 text-sm">Договоров не найдено</p>
-          {userRole?.role === 'user' && (
+          {userRole?.role === 'user' && contracts.length === 0 && (
             <Link href="/contracts/new"
               className="mt-3 inline-block text-sm text-gray-900 underline">
               Создать первый договор

@@ -285,11 +285,11 @@ export default function ApprovalPortalPage() {
               </div>
               <div className="mt-4 flex gap-2">
                 <Link href={`/contracts/${contractId}`}
-                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-700">
                   Открыть договор
                 </Link>
                 <Link href={`/contracts/${contractId}/upload`}
-                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-700">
                   Загрузить новую версию
                 </Link>
               </div>
