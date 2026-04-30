@@ -46,19 +46,30 @@ select:disabled {
   -webkit-text-fill-color: #6b7280 !important;
 }
 
-/* Кнопки с белым текстом */
+/* Кнопки — сброс webkit */
+button, a {
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Белый текст на тёмном фоне */
 button.text-white,
-a.text-white {
+a.text-white,
+span.text-white {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
 
-/* Кнопки с тёмным текстом */
-button.text-gray-600,
+/* Серый текст на светлом фоне */
 button.text-gray-700,
-button.text-gray-900,
-a.text-gray-600,
-a.text-gray-700 {
-  color: inherit !important;
-  -webkit-text-fill-color: inherit !important;
+button.text-gray-600,
+span.text-gray-700,
+span.text-gray-600 {
+  color: #374151 !important;
+  -webkit-text-fill-color: #374151 !important;
+}
+
+/* Счётчик на активной вкладке — тёмный текст на белом фоне */
+span.text-gray-900 {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
 }
