@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     .select(`
       *,
       approval_participants (*),
-      approval_messages (*)
+      approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id)
     `)
     .eq('contract_id', contractId)
     .eq('status', 'active')

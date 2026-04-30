@@ -68,6 +68,13 @@ export default function ApprovePage() {
   const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
 
   useEffect(() => {
+    if (pendingSubmit) {
+      const form = document.getElementById('approval-form') as HTMLFormElement
+      if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))
+    }
+  }, [pendingSubmit])
+
+  useEffect(() => {
     const checkVersions = async () => {
       const versRes = await fetch(`https://epotos-ur-intel.vercel.app/api/versions?contract_id=${contractId}`)
       const versData = await versRes.json()
@@ -166,6 +173,8 @@ export default function ApprovePage() {
       return
     }
 
+    if (showNoFileModal) return
+
     setLoading(true)
     setError('')
     setPendingSubmit(false)
@@ -211,7 +220,7 @@ export default function ApprovePage() {
           <h1 className="text-xl font-semibold text-gray-900">Запуск согласования</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form id="approval-form" onSubmit={handleSubmit} className="space-y-6">
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
@@ -339,7 +348,10 @@ export default function ApprovePage() {
                     className="w-full bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 text-center">
                     Загрузить документ
                   </a>
-                  <button onClick={() => { setShowNoFileModal(false); setPendingSubmit(true); setTimeout(() => document.querySelector('form')?.requestSubmit(), 100) }}
+                  <button onClick={async () => {
+                    setShowNoFileModal(false)
+                    setPendingSubmit(true)
+                  }}
                     className="w-full border border-gray-200 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                     Продолжить без документа
                   </button>
