@@ -28,8 +28,7 @@ body {
 /* Фикс для Яндекс браузера и Safari */
 input,
 select,
-textarea,
-button {
+textarea {
   color: #111827;
   -webkit-text-fill-color: #111827;
 }
@@ -42,8 +41,12 @@ textarea::placeholder {
 }
 
 input:disabled,
-select:disabled,
-button:disabled {
+select:disabled {
   color: #6b7280;
   -webkit-text-fill-color: #6b7280;
+}
+
+button {
+  -webkit-text-fill-color: inherit;
+  color: inherit;
 }
