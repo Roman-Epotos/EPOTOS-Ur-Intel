@@ -51,6 +51,7 @@ interface Contract {
 const STATUS_LABELS: Record<string, string> = {
   pending: 'В работе',
   approved: 'Согласовал',
+  acknowledged: 'Ознакомлен',
   disabled: 'Отключён',
   completed_by_initiator: 'Завершён инициатором',
 }
@@ -58,6 +59,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-blue-100 text-blue-800',
   approved: 'bg-green-100 text-green-800',
+  acknowledged: 'bg-purple-100 text-purple-800',
   disabled: 'bg-gray-100 text-gray-500',
   completed_by_initiator: 'bg-gray-200 text-gray-600',
 }
@@ -156,16 +158,7 @@ export default function ApprovalPortalPage() {
       }),
     })
 
-    // Отправляем сообщение в чат
-    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `👁 ${user?.name} ознакомлен с документом ${contract?.number}`,
-        author_name: 'Система',
-        bitrix_user_id: null,
-      }),
-    })
+    
 
     setShowAcknowledgeModal(false)
     setApprovingId(null)
@@ -413,16 +406,31 @@ export default function ApprovalPortalPage() {
                 const required = session.approval_participants.filter(p => p.role === 'required')
                 const done = required.filter(p => p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator')
                 const pct = required.length > 0 ? Math.round(done.length / required.length * 100) : 0
+                const optional = session.approval_participants.filter(p => p.role === 'optional')
+                const ackDone = optional.filter(p => p.status === 'acknowledged')
+                const ackPct = optional.length > 0 ? Math.round(ackDone.length / optional.length * 100) : 0
                 return (
                   <>
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>{done.length} из {required.length} обязательных</span>
+                      <span>{done.length} из {required.length} согласовали</span>
                       <span>{pct}%</span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
                       <div className="bg-green-500 h-2 rounded-full transition-all"
                         style={{ width: `${pct}%` }} />
                     </div>
+                    {optional.length > 0 && (
+                      <>
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>{ackDone.length} из {optional.length} ознакомились</span>
+                          <span>{ackPct}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2">
+                          <div className="bg-blue-500 h-2 rounded-full transition-all"
+                            style={{ width: `${ackPct}%` }} />
+                        </div>
+                      </>
+                    )}
                   </>
                 )
               })()}
