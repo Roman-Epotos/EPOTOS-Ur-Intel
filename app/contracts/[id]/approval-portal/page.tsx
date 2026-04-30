@@ -31,6 +31,7 @@ interface Message {
   is_ai: boolean
   created_at: string
   bitrix_user_id: number | null
+  session_id: string
 }
 
 interface Session {
