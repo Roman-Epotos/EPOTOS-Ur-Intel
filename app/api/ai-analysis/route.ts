@@ -12,23 +12,9 @@ async function extractTextFromPdf(fileUrl: string): Promise<string> {
   try {
     const response = await fetch(fileUrl)
     const arrayBuffer = await response.arrayBuffer()
-
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise
-    const textParts: string[] = []
-
-    for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
-      const page = await pdf.getPage(i)
-      const content = await page.getTextContent()
-      const pageText = content.items
-        .map((item) => 'str' in item ? (item.str ?? '') : '')
-        .join(' ')
-      textParts.push(pageText)
-    }
-
-    return textParts.join('\n')
+    const { extractText } = await import('unpdf')
+    const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
+    return text
   } catch (err) {
     console.error('PDF extraction error:', err)
     return ''
