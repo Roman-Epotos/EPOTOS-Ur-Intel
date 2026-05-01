@@ -91,7 +91,7 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        openrouter/free
+        model: 'openrouter/free',
         messages: [{ role: 'user', content: prompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) }],
         max_tokens: 4000,
         temperature: 0.2,
