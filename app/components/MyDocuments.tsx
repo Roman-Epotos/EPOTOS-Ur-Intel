@@ -179,7 +179,7 @@ export default function MyDocuments() {
             {data?.required_approvals.map(item => (
               <Link
                 key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}/approval-portal`}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
                 className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
               >
                 <div className="flex-1 min-w-0">
@@ -205,7 +205,7 @@ export default function MyDocuments() {
             {data?.optional_approvals.map(item => (
               <Link
                 key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}/approval-portal`}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
                 className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
               >
                 <div className="flex-1 min-w-0">

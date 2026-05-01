@@ -354,12 +354,6 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   />
                 </div>
               </div>
-              <DelegateApproveCheckbox
-                contractId={contract.id}
-                contractNumber={contract.number}
-                authorBitrixId={contract.author_bitrix_id ?? null}
-                allowOthers={contract.allow_others_to_approve ?? false}
-              />
               <div className="mt-4 space-y-3">
                 {versions.length === 0 ? (
                   <div className="text-center py-12 text-gray-400 text-sm">Версий пока нет — загрузите первый документ</div>
@@ -391,12 +385,20 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               ) : !hasActiveSession ? (
                 <div>
                   <p className="text-sm text-gray-600 mb-4">Согласование не запущено.</p>
+                  <DelegateApproveCheckbox
+                    contractId={contract.id}
+                    contractNumber={contract.number}
+                    authorBitrixId={contract.author_bitrix_id ?? null}
+                    allowOthers={contract.allow_others_to_approve ?? false}
+                  />
+                  <div className="mt-3">
                   <ApproveButton
                     contractId={contract.id}
                     contractStatus={contract.status}
                     authorBitrixId={contract.author_bitrix_id ?? null}
                     allowOthers={contract.allow_others_to_approve ?? false}
                   />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -552,9 +554,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                           </div>
                           <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
                             msg.bitrix_user_id === parseInt(user?.id ?? '0')
-                              ? 'bg-gray-900 text-white'
+                              ? 'bg-blue-500 text-white'
                               : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
-                          }`}>
+                          }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
                             {msg.message}
                           </div>
                         </div>
