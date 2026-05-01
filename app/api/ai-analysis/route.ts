@@ -13,19 +13,25 @@ async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<st
   const buffer = await response.arrayBuffer()
 
   if (fileName.toLowerCase().endsWith('.pdf')) {
-    return new Promise((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const PDFParser = require('pdf2json')
-      const pdfParser = new PDFParser()
-      pdfParser.on('pdfParser_dataReady', (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
-        const text = pdfData.Pages
-          .map(page => page.Texts.map(t => decodeURIComponent(t.R[0]?.T ?? '')).join(' '))
-          .join('\n')
-        resolve(text)
+    try {
+      return new Promise((resolve) => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const PDFParser = require('pdf2json')
+        const pdfParser = new PDFParser(null, 1)
+        pdfParser.on('pdfParser_dataReady', () => {
+          try {
+            const text = pdfParser.getRawTextContent()
+            resolve(text || '')
+          } catch {
+            resolve('')
+          }
+        })
+        pdfParser.on('pdfParser_dataError', () => resolve(''))
+        pdfParser.parseBuffer(Buffer.from(buffer))
       })
-      pdfParser.on('pdfParser_dataError', () => resolve(''))
-      pdfParser.parseBuffer(Buffer.from(buffer))
-    })
+    } catch {
+      return ''
+    }
   } else if (fileName.toLowerCase().endsWith('.docx')) {
     const mammoth = await import('mammoth')
     const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
