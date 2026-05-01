@@ -298,12 +298,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               } ${index > 0 ? '-ml-px' : ''}`}>
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {tab.dot && !('badge' in tab && tab.badge > 0) && <span className="w-2 h-2 bg-green-500 rounded-full ml-0.5"></span>}
-              {'badge' in tab && tab.badge > 0 && (
+              {tab.dot && !(tab.badge && tab.badge > 0) && <span className="w-2 h-2 bg-green-500 rounded-full ml-0.5"></span>}
+              {tab.badge && tab.badge > 0 ? (
                 <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
                   {tab.badge}
                 </span>
-              )}
+              ) : null}
             </button>
           ))}
         </div>
