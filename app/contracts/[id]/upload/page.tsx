@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 export default function UploadVersionPage() {
   const params = useParams()
   const contractId = params.id as string
+  const { user } = useBitrixAuth()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -46,70 +47,26 @@ export default function UploadVersionPage() {
     setError('')
 
     try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-      )
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('contract_id', contractId)
+      formData.append('comment', comment)
+      formData.append('user_name', user?.name ?? 'Система')
 
-      // Получаем номер версии
-      const { count } = await supabase
-        .from('versions')
-        .select('*', { count: 'exact', head: true })
-        .eq('contract_id', contractId)
+      const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
+        method: 'POST',
+        body: formData,
+      })
 
-      const versionNumber = (count ?? 0) + 1
-      const fileExt = file.name.split('.').pop()
-      const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
+      const data = await response.json()
 
-      // Загружаем файл напрямую из браузера
-      const { error: uploadError } = await supabase.storage
-        .from('contracts')
-        .upload(filePath, file, {
-          contentType: file.type,
-          upsert: false,
-        })
-
-      if (uploadError) {
-        setError('Ошибка загрузки файла: ' + uploadError.message)
+      if (!response.ok) {
+        setError('Ошибка загрузки файла: ' + (data.error ?? 'Неизвестная ошибка'))
         setLoading(false)
         return
       }
 
-      // Получаем URL файла
-      const { data: urlData } = supabase.storage
-        .from('contracts')
-        .getPublicUrl(filePath)
-
-      // Сохраняем версию в базу
-      const { error: versionError } = await supabase
-        .from('versions')
-        .insert({
-          contract_id: contractId,
-          version_number: versionNumber,
-          file_url: urlData.publicUrl,
-          file_name: file.name,
-          comment: comment || null,
-        })
-
-      if (versionError) {
-        setError('Ошибка сохранения версии: ' + versionError.message)
-        setLoading(false)
-        return
-      }
-
-      // Записываем в лог
-      await supabase
-        .from('contract_logs')
-        .insert({
-          contract_id: contractId,
-          action: `Загружена версия v${versionNumber}`,
-          details: `Файл: ${file.name}${comment ? '. Комментарий: ' + comment : ''}`,
-          user_name: 'Система',
-        })
-
-      setLoading(false)
-      window.location.href = `/contracts/${contractId}`
-
+      window.location.href = `https://epotos-ur-intel.vercel.app/contracts/${contractId}`
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
       setError('Ошибка: ' + message)
@@ -159,13 +116,15 @@ export default function UploadVersionPage() {
                   <div>
                     <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
                     <p className="text-xs text-gray-400">PDF, DOC, DOCX — до 20 МБ</p>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={handleFileChange}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
                   </div>
+                )}
+                {!file && (
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
                 )}
               </div>
             </div>
@@ -195,7 +154,6 @@ export default function UploadVersionPage() {
 
           </form>
         </div>
-
       </div>
     </div>
   )
