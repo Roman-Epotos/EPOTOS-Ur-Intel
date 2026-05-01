@@ -10,7 +10,8 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 
 async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<string> {
   const response = await fetch(fileUrl)
-  const buffer = await response.arrayBuffer()
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(new Uint8Array(arrayBuffer))
 
   if (fileName.toLowerCase().endsWith('.pdf')) {
     try {
@@ -27,14 +28,14 @@ async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<st
           }
         })
         pdfParser.on('pdfParser_dataError', () => resolve(''))
-        pdfParser.parseBuffer(Buffer.from(buffer))
+        pdfParser.parseBuffer(buffer)
       })
     } catch {
       return ''
     }
   } else if (fileName.toLowerCase().endsWith('.docx')) {
     const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })
+    const result = await mammoth.extractRawText({ buffer: buffer })
     return result.value
   }
 
