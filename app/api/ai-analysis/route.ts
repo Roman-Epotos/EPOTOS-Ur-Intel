@@ -66,31 +66,37 @@ ${isPdf ? `URL документа (PDF): ${textOrUrl}\nПроанализиру�
   if (!prompt) throw new Error('Неизвестный тип анализа')
 
   console.log('Calling OpenRouter, prompt length:', prompt.length)
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-      'X-Title': 'Эпотос-ЮрИнтел',
-    },
-    body: JSON.stringify({
-      model: 'openrouter/auto',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.3,
-    }),
-  })
-
-  const data = await response.json()
-  console.log('OpenRouter response status:', response.status, 'data:', JSON.stringify(data).slice(0, 200))
-  const content = data.choices?.[0]?.message?.content ?? '{}'
-  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-
   try {
-    return JSON.parse(cleaned)
-  } catch {
-    return { error: 'Не удалось распарсить ответ AI', raw: content }
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Эпотос-ЮрИнтел',
+      },
+      body: JSON.stringify({
+        model: 'openrouter/auto',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.3,
+      }),
+    })
+
+    console.log('OpenRouter response status:', response.status)
+    const data = await response.json()
+    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
+    const content = data.choices?.[0]?.message?.content ?? '{}'
+    const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+
+    try {
+      return JSON.parse(cleaned)
+    } catch {
+      return { error: 'Не удалось распарсить ответ AI', raw: content }
+    }
+  } catch (fetchError) {
+    console.error('OpenRouter fetch error:', fetchError)
+    return { error: 'Ошибка соединения с OpenRouter: ' + String(fetchError) }
   }
 }
 
