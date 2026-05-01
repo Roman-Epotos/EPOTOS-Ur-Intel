@@ -134,7 +134,10 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
-  const [lastReadCount, setLastReadCount] = useState(0)
+  const [lastReadCount, setLastReadCount] = useState(() => {
+    if (typeof window === 'undefined') return 0
+    return parseInt(sessionStorage.getItem(`chat_read_${contract.id}`) ?? '0')
+  })
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
@@ -161,7 +164,11 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
   useEffect(() => {
     if (activeTab === 'chat') {
-      setLastReadCount(session?.approval_messages.length ?? 0)
+      const count = session?.approval_messages.length ?? 0
+      setLastReadCount(count)
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`chat_read_${contract.id}`, String(count))
+      }
       setUnreadCount(0)
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     } else {
