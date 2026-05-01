@@ -8,48 +8,22 @@ const supabase = createClient(
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 
-async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<string> {
+async function extractTextFromDocx(fileUrl: string): Promise<string> {
   const response = await fetch(fileUrl)
   const arrayBuffer = await response.arrayBuffer()
   const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-
-  if (fileName.toLowerCase().endsWith('.pdf')) {
-    try {
-      return new Promise((resolve) => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const PDFParser = require('pdf2json')
-        const pdfParser = new PDFParser(null, 1)
-        pdfParser.on('pdfParser_dataReady', () => {
-          try {
-            const text = pdfParser.getRawTextContent()
-            resolve(text || '')
-          } catch {
-            resolve('')
-          }
-        })
-        pdfParser.on('pdfParser_dataError', () => resolve(''))
-        pdfParser.parseBuffer(buffer)
-      })
-    } catch {
-      return ''
-    }
-  } else if (fileName.toLowerCase().endsWith('.docx')) {
-    const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ buffer: buffer })
-    return result.value
-  }
-
-  return ''
+  const mammoth = await import('mammoth')
+  const result = await mammoth.extractRawText({ buffer })
+  return result.value
 }
 
-async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
+async function analyzeWithAI(textOrUrl: string, analysisType: string, isPdf: boolean): Promise<object> {
   const prompts: Record<string, string> = {
-    legal_review: `Ты юридический эксперт. Проанализируй следующий договор и выдай структурированный анализ в формате JSON.
+    legal_review: `Ты юридический эксперт компании ЭПОТОС. Проанализируй следующий договор и выдай структурированный анализ рисков в формате JSON.
 
-Договор:
-${text.slice(0, 8000)}
+${isPdf ? `URL документа (PDF): ${textOrUrl}\nПроанализируй документ по URL.` : `Текст договора:\n${textOrUrl.slice(0, 8000)}`}
 
-Верни ТОЛЬКО валидный JSON без markdown в следующем формате:
+Верни ТОЛЬКО валидный JSON без markdown:
 {
   "red_flags": [
     {"severity": "high|medium|low", "title": "название риска", "description": "описание", "recommendation": "рекомендация"}
@@ -64,12 +38,11 @@ ${text.slice(0, 8000)}
   "summary": "краткое общее заключение"
 }`,
 
-    passport: `Ты юридический эксперт. Создай паспорт следующего договора в формате JSON.
+    passport: `Ты юридический эксперт компании ЭПОТОС. Создай паспорт следующего договора в формате JSON.
 
-Договор:
-${text.slice(0, 8000)}
+${isPdf ? `URL документа (PDF): ${textOrUrl}\nПроанализируй документ по URL.` : `Текст договора:\n${textOrUrl.slice(0, 8000)}`}
 
-Верни ТОЛЬКО валидный JSON без markdown в следующем формате:
+Верни ТОЛЬКО валидный JSON без markdown:
 {
   "essence": "суть договора в 2-3 предложениях",
   "parties": {
@@ -110,8 +83,6 @@ ${text.slice(0, 8000)}
 
   const data = await response.json()
   const content = data.choices?.[0]?.message?.content ?? '{}'
-
-  // Очищаем от markdown если есть
   const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 
   try {
@@ -130,7 +101,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
     }
 
-    // Создаём запись анализа со статусом processing
     const { data: analysis, error: createError } = await supabase
       .from('ai_analysis')
       .insert({
@@ -147,32 +117,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: createError.message }, { status: 400 })
     }
 
-    // Извлекаем текст из документа
-    const text = await extractTextFromUrl(file_url, file_name)
+    const isPdf = file_name.toLowerCase().endsWith('.pdf')
+    let textOrUrl: string
 
-    if (!text || text.length < 100) {
-      await supabase
-        .from('ai_analysis')
-        .update({ status: 'error', result_json: { error: 'Не удалось извлечь текст из документа' } })
-        .eq('id', analysis.id)
-
-      return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
+    if (isPdf) {
+      // Для PDF передаём URL напрямую в промпт
+      textOrUrl = file_url
+    } else {
+      // Для DOCX извлекаем текст
+      textOrUrl = await extractTextFromDocx(file_url)
+      if (!textOrUrl || textOrUrl.length < 50) {
+        await supabase
+          .from('ai_analysis')
+          .update({ status: 'error', result_json: { error: 'Не удалось извлечь текст из документа' } })
+          .eq('id', analysis.id)
+        return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
+      }
     }
 
-    // Анализируем с AI
-    const result = await analyzeWithAI(text, analysis_type)
+    const result = await analyzeWithAI(textOrUrl, analysis_type, isPdf)
 
-    // Сохраняем результат
     await supabase
       .from('ai_analysis')
       .update({
         status: 'completed',
         result_json: result,
-        prompt: text.slice(0, 500),
       })
       .eq('id', analysis.id)
 
-    // Записываем в лог
     await supabase
       .from('contract_logs')
       .insert({
