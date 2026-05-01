@@ -32,48 +32,48 @@ async function extractTextFromDocx(fileUrl: string): Promise<string> {
 
 async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
   const prompts: Record<string, string> = {
-    legal_review: `Ты юридический эксперт компании ЭПОТОС. Проанализируй следующий договор и выдай структурированный анализ рисков в формате JSON.
+    legal_review: `You are a legal expert for EPOTOS company. Analyze the following contract and provide a structured risk analysis in JSON format. All text values in JSON must be in Russian language.
 
-Текст договора:
+Contract text:
 ${text.slice(0, 8000)}
 
-Верни ТОЛЬКО валидный JSON без markdown:
+Return ONLY valid JSON without markdown:
 {
   "red_flags": [
-    {"severity": "high|medium|low", "title": "название риска", "description": "описание", "recommendation": "рекомендация"}
+    {"severity": "high|medium|low", "title": "risk title in Russian", "description": "description in Russian", "recommendation": "recommendation in Russian"}
   ],
   "warnings": [
-    {"title": "название", "description": "описание"}
+    {"title": "title in Russian", "description": "description in Russian"}
   ],
   "positives": [
-    {"title": "название", "description": "описание"}
+    {"title": "title in Russian", "description": "description in Russian"}
   ],
   "overall_risk": "high|medium|low",
-  "summary": "краткое общее заключение"
+  "summary": "brief conclusion in Russian"
 }`,
 
-    passport: `Ты юридический эксперт компании ЭПОТОС. Создай паспорт следующего договора в формате JSON.
+    passport: `You are a legal expert for EPOTOS company. Create a passport summary for the following contract in JSON format. All text values in JSON must be in Russian language.
 
-Текст договора:
+Contract text:
 ${text.slice(0, 8000)}
 
-Верни ТОЛЬКО валидный JSON без markdown:
+Return ONLY valid JSON without markdown:
 {
-  "essence": "суть договора в 2-3 предложениях",
+  "essence": "contract essence in 2-3 sentences in Russian",
   "parties": {
-    "our_obligations": ["обязательство 1", "обязательство 2"],
-    "counterparty_obligations": ["обязательство 1", "обязательство 2"]
+    "our_obligations": ["obligation 1 in Russian", "obligation 2 in Russian"],
+    "counterparty_obligations": ["obligation 1 in Russian", "obligation 2 in Russian"]
   },
   "key_terms": {
-    "amount": "сумма договора",
-    "payment_terms": "условия оплаты",
-    "start_date": "дата начала",
-    "end_date": "дата окончания",
-    "auto_renewal": "условия автопролонгации или нет"
+    "amount": "contract amount in Russian",
+    "payment_terms": "payment terms in Russian",
+    "start_date": "start date in Russian",
+    "end_date": "end date in Russian",
+    "auto_renewal": "auto-renewal terms or none in Russian"
   },
-  "termination": "условия расторжения",
-  "control_points": ["контрольная точка 1", "контрольная точка 2"],
-  "attention_zones": ["зона внимания 1", "зона внимания 2"]
+  "termination": "termination conditions in Russian",
+  "control_points": ["control point 1 in Russian", "control point 2 in Russian"],
+  "attention_zones": ["attention zone 1 in Russian", "attention zone 2 in Russian"]
 }`
   }
 
@@ -91,10 +91,10 @@ ${text.slice(0, 8000)}
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'openrouter/auto',
+        model: 'qwen/qwen3.6-plus:free',
         messages: [{ role: 'user', content: prompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) }],
-        max_tokens: 2000,
-        temperature: 0.3,
+        max_tokens: 4000,
+        temperature: 0.2,
       }),
     })
 
