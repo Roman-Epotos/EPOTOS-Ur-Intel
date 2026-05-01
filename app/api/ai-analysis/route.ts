@@ -13,10 +13,19 @@ async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<st
   const buffer = await response.arrayBuffer()
 
   if (fileName.toLowerCase().endsWith('.pdf')) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse')
-    const data = await pdfParse(Buffer.from(buffer))
-    return data.text
+    return new Promise((resolve) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const PDFParser = require('pdf2json')
+      const pdfParser = new PDFParser()
+      pdfParser.on('pdfParser_dataReady', (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
+        const text = pdfData.Pages
+          .map(page => page.Texts.map(t => decodeURIComponent(t.R[0]?.T ?? '')).join(' '))
+          .join('\n')
+        resolve(text)
+      })
+      pdfParser.on('pdfParser_dataError', () => resolve(''))
+      pdfParser.parseBuffer(Buffer.from(buffer))
+    })
   } else if (fileName.toLowerCase().endsWith('.docx')) {
     const mammoth = await import('mammoth')
     const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) })

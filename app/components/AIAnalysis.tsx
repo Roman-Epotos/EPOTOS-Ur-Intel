@@ -305,12 +305,12 @@ export default function AIAnalysis({ contractId, versions }: Props) {
     <div className="bg-white rounded-xl border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-medium text-gray-700">🤖 EpotosGPT — AI анализ</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {versions.length > 1 && (
             <select
               value={selectedVersion}
               onChange={e => setSelectedVersion(e.target.value)}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
             >
               {versions.map(v => (
                 <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
@@ -320,16 +320,16 @@ export default function AIAnalysis({ contractId, versions }: Props) {
           <button
             onClick={() => runAnalysis('legal_review')}
             disabled={!!analyzing}
-            className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-50"
+            className="text-xs font-medium bg-gray-900 text-white px-4 py-1.5 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 whitespace-nowrap"
           >
-            {analyzing === 'legal_review' ? '⏳ Анализ...' : '🔍 Legal Review'}
+            {analyzing === 'legal_review' ? 'Анализ...' : 'Legal Review'}
           </button>
           <button
             onClick={() => runAnalysis('passport')}
             disabled={!!analyzing}
-            className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="text-xs font-medium border border-gray-900 text-gray-900 px-4 py-1.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 whitespace-nowrap"
           >
-            {analyzing === 'passport' ? '⏳ Создание...' : '📄 Паспорт'}
+            {analyzing === 'passport' ? 'Создание...' : 'Паспорт договора'}
           </button>
         </div>
       </div>
