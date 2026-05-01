@@ -117,11 +117,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: createError.message }, { status: 400 })
     }
 
+    console.log('Starting analysis:', { file_name, analysis_type, file_url: file_url.slice(0, 50) })
     const isPdf = file_name.toLowerCase().endsWith('.pdf')
     let textOrUrl: string
 
     if (isPdf) {
-      // Для PDF передаём URL напрямую в промпт
+      console.log('PDF mode - using URL directly')
       textOrUrl = file_url
     } else {
       // Для DOCX извлекаем текст
