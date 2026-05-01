@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
     }
 
-    const result = await analyzeWithAI(textOrUrl, analysis_type, false)
+    const result = await analyzeWithAI(textOrUrl, analysis_type)
 
     await supabase
       .from('ai_analysis')
