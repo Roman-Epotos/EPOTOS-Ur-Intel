@@ -239,7 +239,7 @@ export default function MyDocuments() {
             {data?.my_initiated.map(item => (
               <Link
                 key={item.id}
-                href={`/contracts/${item.contracts.id}/approval-portal`}
+                href={`/contracts/${item.contracts.id}`}
                 className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
               >
                 <div className="flex-1 min-w-0">
