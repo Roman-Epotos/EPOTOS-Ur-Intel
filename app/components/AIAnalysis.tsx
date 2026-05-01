@@ -43,6 +43,7 @@ interface Analysis {
   result_json: LegalReview | Passport | { error: string } | null
   created_at: string
   model_used: string
+  version_id: string | null
 }
 
 interface Version {
