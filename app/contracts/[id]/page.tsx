@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
+import AIAnalysis from '@/app/components/AIAnalysis'
 
 const statusLabel: Record<string, string> = {
   'черновик': 'Черновик',
@@ -162,6 +163,16 @@ export default async function ContractPage({
             </div>
 
           </div>
+
+          <AIAnalysis
+            contractId={id}
+            versions={allVersions.map(v => ({
+              id: v.id,
+              file_url: v.file_url,
+              file_name: v.file_name,
+              version_number: v.version_number,
+            }))}
+          />
 
           <div className="col-span-1">
             <div className="bg-white rounded-xl border border-gray-200 p-6">
