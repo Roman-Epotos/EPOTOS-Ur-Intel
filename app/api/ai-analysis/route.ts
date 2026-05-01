@@ -91,7 +91,7 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.6-plus:free',
+        openrouter/free
         messages: [{ role: 'user', content: prompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) }],
         max_tokens: 4000,
         temperature: 0.2,
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
         version_id: version_id ?? null,
         type: analysis_type,
         status: 'processing',
-        model_used: 'openrouter/auto',
+        model_used: 'openrouter/free',
       })
       .select('id')
       .single()
