@@ -137,8 +137,10 @@ export default function AIAnalysis({ contractId, versions }: Props) {
     }
   }
 
-  const latestReview = analyses.find(a => a.type === 'legal_review' && a.status === 'completed')
-  const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed')
+  const latestReview = analyses.find(a => a.type === 'legal_review' && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => a.type === 'legal_review' && a.status === 'completed')
+  const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => a.type === 'passport' && a.status === 'completed')
 
   const renderLegalReview = (result: LegalReview) => (
     <div className="space-y-4">
@@ -303,56 +305,76 @@ export default function AIAnalysis({ contractId, versions }: Props) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-gray-700">🤖 EpotosGPT — AI анализ</h2>
-        <div className="flex items-center gap-2 flex-wrap">
-          {versions.length > 1 && (
+      {/* Заголовок */}
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">EpotosGPT — AI анализ документа</h2>
+        <p className="text-xs text-gray-500">Выберите документ и запустите нужный анализ</p>
+      </div>
+
+      {/* Выбор версии и запуск */}
+      <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-40">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Документ для анализа</label>
             <select
               value={selectedVersion}
               onChange={e => setSelectedVersion(e.target.value)}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900"
             >
               {versions.map(v => (
                 <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
               ))}
             </select>
-          )}
-          <button
-            onClick={() => runAnalysis('legal_review')}
-            disabled={!!analyzing}
-            className="text-xs font-medium bg-gray-900 text-white px-4 py-1.5 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            {analyzing === 'legal_review' ? 'Анализ...' : 'Legal Review'}
-          </button>
-          <button
-            onClick={() => runAnalysis('passport')}
-            disabled={!!analyzing}
-            className="text-xs font-medium border border-gray-900 text-gray-900 px-4 py-1.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            {analyzing === 'passport' ? 'Создание...' : 'Паспорт договора'}
-          </button>
+          </div>
+          <div className="flex flex-col gap-2 pt-4">
+            <button
+              onClick={() => runAnalysis('legal_review')}
+              disabled={!!analyzing}
+              className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
+            >
+              🔍 {analyzing === 'legal_review' ? 'Анализируется...' : 'Запустить Legal Review'}
+            </button>
+            <button
+              onClick={() => runAnalysis('passport')}
+              disabled={!!analyzing}
+              className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
+            >
+              📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт договора'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Вкладки */}
+      {/* Результаты */}
       {(latestReview || latestPassport) && (
-        <div className="flex gap-2 mb-4">
-          {latestReview && (
-            <button
-              onClick={() => setActiveTab('legal_review')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium ${activeTab === 'legal_review' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
-            >
-              Legal Review
-            </button>
-          )}
-          {latestPassport && (
-            <button
-              onClick={() => setActiveTab('passport')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium ${activeTab === 'passport' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
-            >
-              Паспорт договора
-            </button>
-          )}
+        <div className="mb-4">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Результаты анализа</p>
+          <div className="flex gap-2 border-b border-gray-200">
+            {latestReview && (
+              <button
+                onClick={() => setActiveTab('legal_review')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === 'legal_review'
+                    ? 'border-red-600 text-red-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                🔍 Legal Review
+              </button>
+            )}
+            {latestPassport && (
+              <button
+                onClick={() => setActiveTab('passport')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === 'passport'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                📄 Паспорт договора
+              </button>
+            )}
+          </div>
         </div>
       )}
 

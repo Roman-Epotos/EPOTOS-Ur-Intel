@@ -133,6 +133,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [lastReadCount, setLastReadCount] = useState(0)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
@@ -158,8 +160,16 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   }, [contract.id])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [session?.approval_messages])
+    if (activeTab === 'chat') {
+      setLastReadCount(session?.approval_messages.length ?? 0)
+      setUnreadCount(0)
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      const total = session?.approval_messages.length ?? 0
+      const newUnread = Math.max(0, total - lastReadCount)
+      setUnreadCount(newUnread)
+    }
+  }, [session?.approval_messages, activeTab])
 
   // Realtime
   useEffect(() => {
@@ -257,7 +267,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
-    { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession },
+    { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
   return (
@@ -288,7 +298,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               } ${index > 0 ? '-ml-px' : ''}`}>
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {tab.dot && <span className="w-2 h-2 bg-green-500 rounded-full ml-0.5"></span>}
+              {tab.dot && !('badge' in tab && tab.badge > 0) && <span className="w-2 h-2 bg-green-500 rounded-full ml-0.5"></span>}
+              {'badge' in tab && tab.badge > 0 && (
+                <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
