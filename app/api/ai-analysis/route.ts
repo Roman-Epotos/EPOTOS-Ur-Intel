@@ -13,8 +13,9 @@ async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<st
   const buffer = await response.arrayBuffer()
 
   if (fileName.toLowerCase().endsWith('.pdf')) {
-    const pdfParse = (await import('pdf-parse')).default
-    const data = await pdfParse(Buffer.from(buffer))
+    const pdfParseModule = await import('pdf-parse')
+    const pdfParse = pdfParseModule.default ?? pdfParseModule
+    const data = await (pdfParse as (buffer: Buffer) => Promise<{ text: string }>)(Buffer.from(buffer))
     return data.text
   } else if (fileName.toLowerCase().endsWith('.docx')) {
     const mammoth = await import('mammoth')
