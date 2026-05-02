@@ -93,6 +93,11 @@ export default function AIAnalysis({ contractId, versions }: Props) {
     loadAnalyses()
   }, [contractId])
 
+  // Сбрасываем активную вкладку при смене версии
+  useEffect(() => {
+    setActiveTab('legal_review')
+  }, [selectedVersion])
+
   const loadAnalyses = async () => {
     const res = await fetch(`${baseUrl}/api/ai-analysis?contract_id=${contractId}`)
     const data = await res.json()

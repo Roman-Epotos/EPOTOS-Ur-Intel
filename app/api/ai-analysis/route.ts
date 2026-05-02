@@ -22,12 +22,38 @@ async function extractTextFromPdf(fileUrl: string): Promise<string> {
 }
 
 async function extractTextFromDocx(fileUrl: string): Promise<string> {
-  const response = await fetch(fileUrl)
-  const arrayBuffer = await response.arrayBuffer()
-  const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-  const mammoth = await import('mammoth')
-  const result = await mammoth.extractRawText({ buffer })
-  return result.value
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    const mammoth = await import('mammoth')
+    const result = await mammoth.extractRawText({ buffer })
+    return result.value
+  } catch (err) {
+    console.error('DOCX extraction error:', err)
+    return ''
+  }
+}
+
+async function extractTextFromXlsx(fileUrl: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const XLSX = require('xlsx')
+    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    const texts: string[] = []
+    workbook.SheetNames.forEach((sheetName: string) => {
+      const sheet = workbook.Sheets[sheetName]
+      const csv = XLSX.utils.sheet_to_csv(sheet)
+      if (csv.trim()) texts.push(`Лист: ${sheetName}\n${csv}`)
+    })
+    return texts.join('\n\n')
+  } catch (err) {
+    console.error('XLSX extraction error:', err)
+    return ''
+  }
 }
 
 async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
@@ -141,17 +167,23 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Starting analysis:', { file_name, analysis_type, file_url: file_url.slice(0, 50) })
-    const isPdf = file_name.toLowerCase().endsWith('.pdf')
+    const fileName = file_name.toLowerCase()
     let textOrUrl: string
 
-    if (isPdf) {
-      console.log('PDF mode - extracting text with pdfjs')
+    if (fileName.endsWith('.pdf')) {
+      console.log('PDF mode - extracting text with unpdf')
       textOrUrl = await extractTextFromPdf(file_url)
       console.log('PDF text length:', textOrUrl.length)
-    } else {
+    } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
       console.log('DOCX mode - extracting text with mammoth')
       textOrUrl = await extractTextFromDocx(file_url)
       console.log('DOCX text length:', textOrUrl.length)
+    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      console.log('XLSX mode - extracting text with xlsx')
+      textOrUrl = await extractTextFromXlsx(file_url)
+      console.log('XLSX text length:', textOrUrl.length)
+    } else {
+      return NextResponse.json({ error: 'Неподдерживаемый формат файла' }, { status: 400 })
     }
 
     if (!textOrUrl || textOrUrl.length < 50) {

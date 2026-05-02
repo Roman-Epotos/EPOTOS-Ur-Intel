@@ -134,9 +134,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
-  const [lastReadCount, setLastReadCount] = useState(() => {
-    if (typeof window === 'undefined') return 0
-    return parseInt(sessionStorage.getItem(`chat_read_${contract.id}`) ?? '0')
+  const [lastReadTime, setLastReadTime] = useState(() => {
+    if (typeof window === 'undefined') return new Date().toISOString()
+    return localStorage.getItem(`chat_read_time_${contract.id}`) ?? new Date().toISOString()
   })
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
