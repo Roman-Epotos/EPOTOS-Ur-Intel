@@ -194,7 +194,11 @@ export async function POST(request: NextRequest) {
       console.log('PDF mode - extracting text with unpdf')
       textOrUrl = await extractTextFromPdf(file_url)
       console.log('PDF text length:', textOrUrl.length)
-    } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+    } else if (fileName.endsWith('.doc')) {
+      return NextResponse.json({
+        error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
+      }, { status: 400 })
+    } else if (fileName.endsWith('.docx')) {
       console.log('DOCX mode - extracting text with mammoth')
       textOrUrl = await extractTextFromDocx(file_url)
       console.log('DOCX text length:', textOrUrl.length)
