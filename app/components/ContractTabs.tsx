@@ -164,17 +164,18 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
   useEffect(() => {
     if (activeTab === 'chat') {
-      const count = session?.approval_messages.length ?? 0
-      setLastReadCount(count)
+      const now = new Date().toISOString()
+      setLastReadTime(now)
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`chat_read_${contract.id}`, String(count))
+        localStorage.setItem(`chat_read_time_${contract.id}`, now)
       }
       setUnreadCount(0)
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     } else {
-      const total = session?.approval_messages.length ?? 0
-      const newUnread = Math.max(0, total - lastReadCount)
-      setUnreadCount(newUnread)
+      const unread = (session?.approval_messages ?? []).filter(
+        m => new Date(m.created_at) > new Date(lastReadTime)
+      ).length
+      setUnreadCount(unread)
     }
   }, [session?.approval_messages, activeTab])
 
