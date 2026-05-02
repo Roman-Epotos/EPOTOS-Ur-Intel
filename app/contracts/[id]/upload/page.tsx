@@ -21,8 +21,9 @@ export default function UploadVersionPage() {
 
     const allowed = [
       'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
     ]
 
     if (!allowed.includes(selected.type)) {
@@ -115,13 +116,13 @@ export default function UploadVersionPage() {
                 ) : (
                   <div>
                     <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
-                    <p className="text-xs text-gray-400">PDF, DOC, DOCX — до 20 МБ</p>
+                    <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 20 МБ</p>
                   </div>
                 )}
                 {!file && (
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.docx,.xlsx,.xls"
                     onChange={handleFileChange}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
