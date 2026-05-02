@@ -23,15 +23,35 @@ async function extractTextFromPdf(fileUrl: string): Promise<string> {
 
 async function extractTextFromDocx(fileUrl: string): Promise<string> {
   try {
-    const response = await fetch(fileUrl)
+    const response = await fetch(fileUrl, {
+      headers: { 'Accept': 'application/octet-stream' }
+    })
     const arrayBuffer = await response.arrayBuffer()
     const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    console.log('DOCX buffer size:', buffer.length, 'first bytes:', buffer.slice(0, 4).toString('hex'))
     const mammoth = await import('mammoth')
     const result = await mammoth.extractRawText({ buffer })
     return result.value
   } catch (err) {
     console.error('DOCX extraction error:', err)
-    return ''
+    // Попробуем как xlsx если docx не работает
+    try {
+      const response2 = await fetch(fileUrl)
+      const arrayBuffer2 = await response2.arrayBuffer()
+      const buffer2 = Buffer.from(new Uint8Array(arrayBuffer2))
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const XLSX = require('xlsx')
+      const workbook = XLSX.read(buffer2, { type: 'buffer' })
+      const texts: string[] = []
+      workbook.SheetNames.forEach((sheetName: string) => {
+        const sheet = workbook.Sheets[sheetName]
+        const csv = XLSX.utils.sheet_to_csv(sheet)
+        if (csv.trim()) texts.push(csv)
+      })
+      return texts.join('\n')
+    } catch {
+      return ''
+    }
   }
 }
 
@@ -58,7 +78,7 @@ async function extractTextFromXlsx(fileUrl: string): Promise<string> {
 
 async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
   const prompts: Record<string, string> = {
-    legal_review: `You are a legal expert for EPOTOS company. Analyze the following contract and provide a structured risk analysis in JSON format. All text values in JSON must be in Russian language.
+    legal_review: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Any of these companies may appear as a party to the contract - do NOT treat their absence as a risk. Analyze the following contract and provide a structured risk analysis in JSON format. All text values in JSON must be in Russian language.
 
 Contract text:
 ${text.slice(0, 8000)}
@@ -78,7 +98,7 @@ Return ONLY valid JSON without markdown:
   "summary": "brief conclusion in Russian"
 }`,
 
-    passport: `You are a legal expert for EPOTOS company. Create a passport summary for the following contract in JSON format. All text values in JSON must be in Russian language.
+    passport: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Create a passport summary for the following contract in JSON format. All text values in JSON must be in Russian language.
 
 Contract text:
 ${text.slice(0, 8000)}
