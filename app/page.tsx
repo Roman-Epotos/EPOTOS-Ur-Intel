@@ -2,6 +2,7 @@ import Link from 'next/link'
 import Header from '@/app/components/Header'
 import MyDocuments from '@/app/components/MyDocuments'
 import ContractsList from '@/app/components/ContractsList'
+import PersonalStats from '@/app/components/PersonalStats'
 import { createClient } from '@/utils/supabase/server'
 
 const statusLabel: Record<string, string> = {
@@ -38,19 +39,7 @@ export default async function HomePage() {
 
         <MyDocuments />
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Всего договоров', value: all.length },
-            { label: 'На согласовании', value: all.filter(c => c.status === 'на_согласовании').length },
-            { label: 'Подписаны', value: all.filter(c => c.status === 'подписан').length },
-            { label: 'Черновики', value: all.filter(c => c.status === 'черновик').length },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
-              <p className="text-sm text-gray-500">{stat.label}</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">{stat.value}</p>
-            </div>
-          ))}
-        </div>
+        <PersonalStats />
 
         <ContractsList />
 
