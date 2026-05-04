@@ -465,6 +465,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               ) : !hasActiveSession ? (
                 <div>
                   <p className="text-sm text-gray-600 mb-4">Согласование не запущено.</p>
+                  <ApproveButton
+                    contractId={contract.id}
+                    contractStatus={contract.status}
+                    authorBitrixId={contract.author_bitrix_id ?? null}
+                    allowOthers={contract.allow_others_to_approve ?? false}
+                  />
                   <DelegateApproveCheckbox
                     contractId={contract.id}
                     contractNumber={contract.number}
