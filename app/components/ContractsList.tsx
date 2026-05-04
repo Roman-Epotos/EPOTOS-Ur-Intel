@@ -15,6 +15,7 @@ interface Contract {
   end_date: string | null
   author_bitrix_id: number | null
   has_files?: boolean
+  file_type?: string | null
 }
 
 interface UserRole {
@@ -240,10 +241,15 @@ export default function ContractsList() {
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
                 <td className="px-6 py-4">
-                  {contract.has_files
-                    ? <span className="text-green-500 text-sm">📎</span>
-                    : <span className="text-gray-300 text-xs">—</span>
-                  }
+                  {contract.has_files && contract.file_type ? (
+                    <img
+                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
+                      alt={contract.file_type}
+                      className="w-6 h-6"
+                    />
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>

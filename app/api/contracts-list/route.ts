@@ -82,9 +82,24 @@ export async function GET(request: NextRequest) {
       }, {})
     }
     
+    // Собираем тип последнего файла по договору
+    const { data: versions2 } = await supabase
+      .from('versions')
+      .select('contract_id, file_name')
+      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
+      .order('version_number', { ascending: false })
+
+    const fileTypeMap: Record<string, string> = {}
+    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
+      if (!fileTypeMap[v.contract_id]) {
+        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
+      }
+    })
+
     const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
       ...c,
       has_files: versionsMap[c.id] ?? false,
+      file_type: fileTypeMap[c.id] ?? null,
     }))
 
     if (error) {
