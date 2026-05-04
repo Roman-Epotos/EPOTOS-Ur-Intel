@@ -241,9 +241,32 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   }
 
   const openAddParticipantModal = async () => {
-    const res = await fetch(`https://epotos-ur-intel.vercel.app/api/approval-settings?stage=custom`)
-    const data = await res.json()
-    setAddParticipantOptions(data.participants ?? [])
+    // Определяем компанию из номера договора
+    const companyPrefix = contract.number.split('-')[0]
+    
+    // Загружаем участников всех этапов для этой компании
+    const stages = ['legal', 'finance', 'accounting', 'director', 'custom']
+    const allParticipants: typeof addParticipantOptions = []
+    const seenIds = new Set<number>()
+
+    for (const stage of stages) {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/approval-settings?stage=${stage}&company=${companyPrefix}`)
+      const data = await res.json()
+      for (const p of (data.participants ?? [])) {
+        if (!seenIds.has(p.bitrix_user_id)) {
+          seenIds.add(p.bitrix_user_id)
+          allParticipants.push(p)
+        }
+      }
+    }
+
+    // Исключаем уже добавленных участников
+    const existingIds = new Set(
+      session?.approval_participants.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+    )
+    const filtered = allParticipants.filter(p => !existingIds.has(p.bitrix_user_id))
+
+    setAddParticipantOptions(filtered)
     setShowAddParticipantModal(true)
   }
 
