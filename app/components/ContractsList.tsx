@@ -14,6 +14,7 @@ interface Contract {
   amount: number | null
   end_date: string | null
   author_bitrix_id: number | null
+  has_files?: boolean
 }
 
 interface UserRole {
@@ -219,6 +220,7 @@ export default function ContractsList() {
               <th className="px-6 py-3 font-medium">Контрагент</th>
               <th className="px-6 py-3 font-medium">Сумма</th>
               <th className="px-6 py-3 font-medium">Срок</th>
+              <th className="px-6 py-3 font-medium">Файлы</th>
               <th className="px-6 py-3 font-medium">Статус</th>
             </tr>
           </thead>
@@ -237,6 +239,12 @@ export default function ContractsList() {
                   {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
+                <td className="px-6 py-4">
+                  {contract.has_files
+                    ? <span className="text-green-500 text-sm">📎</span>
+                    : <span className="text-gray-300 text-xs">—</span>
+                  }
+                </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
                     {statusLabel[contract.status] ?? contract.status}

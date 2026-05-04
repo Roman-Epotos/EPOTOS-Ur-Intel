@@ -64,7 +64,28 @@ export async function GET(request: NextRequest) {
       query = query.in('id', allIds)
     }
 
-    const { data: contracts, error } = await query
+    const { data: contractsRaw, error } = await query
+    
+    // Проверяем наличие файлов для каждого договора
+    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let versionsMap: Record<string, boolean> = {}
+    
+    if (contractIds.length > 0) {
+      const { data: versions } = await supabase
+        .from('versions')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+      
+      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
+        acc[v.contract_id] = true
+        return acc
+      }, {})
+    }
+    
+    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
+      ...c,
+      has_files: versionsMap[c.id] ?? false,
+    }))
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
