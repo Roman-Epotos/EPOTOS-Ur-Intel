@@ -431,12 +431,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
                     + Загрузить версию
                   </Link>
-                  <ApproveButton
-                    contractId={contract.id}
-                    contractStatus={contract.status}
-                    authorBitrixId={contract.author_bitrix_id ?? null}
-                    allowOthers={contract.allow_others_to_approve ?? false}
-                  />
+                  
                 </div>
               </div>
               <div className="mt-4 space-y-3">
@@ -477,12 +472,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     allowOthers={contract.allow_others_to_approve ?? false}
                   />
                   <div className="mt-3">
-                  <ApproveButton
-                    contractId={contract.id}
-                    contractStatus={contract.status}
-                    authorBitrixId={contract.author_bitrix_id ?? null}
-                    allowOthers={contract.allow_others_to_approve ?? false}
-                  />
+                  
                   </div>
                 </div>
               ) : (
