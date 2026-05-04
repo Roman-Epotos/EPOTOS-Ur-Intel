@@ -141,6 +141,11 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
+  const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [newParticipantName, setNewParticipantName] = useState('')
+  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
+  const [addingParticipant, setAddingParticipant] = useState(false)
+  const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approveComment, setApproveComment] = useState('')
   const [approving, setApproving] = useState(false)
@@ -207,6 +212,40 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const myParticipant = session?.approval_participants.find(
     p => p.bitrix_user_id === parseInt(user?.id ?? '0')
   )
+
+  const handleAddParticipant = async () => {
+    if (!session || !newParticipantName.trim()) return
+    setAddingParticipant(true)
+
+    const found = addParticipantOptions.find(p => p.user_name === newParticipantName)
+
+    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_name: newParticipantName,
+        bitrix_user_id: found?.bitrix_user_id ?? null,
+        department: found?.department ?? null,
+        role: newParticipantRole,
+        stage: 'custom',
+        added_by_name: user?.name ?? 'Система',
+        contract_id: contract.id,
+      }),
+    })
+
+    setShowAddParticipantModal(false)
+    setNewParticipantName('')
+    setNewParticipantRole('required')
+    setAddingParticipant(false)
+    await loadSession()
+  }
+
+  const openAddParticipantModal = async () => {
+    const res = await fetch(`https://epotos-ur-intel.vercel.app/api/approval-settings?stage=custom`)
+    const data = await res.json()
+    setAddParticipantOptions(data.participants ?? [])
+    setShowAddParticipantModal(true)
+  }
 
   const handleSendMessage = async () => {
     if (!message.trim() || !session) return
@@ -523,6 +562,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         </div>
                       )}
 
+                      {/* Добавить участника */}
+                      <button onClick={openAddParticipantModal}
+                        className="w-full text-xs border border-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                        + Добавить участника
+                      </button>
+
                       {/* Прервать */}
                       <CancelApprovalButton
                         sessionId={session.id}
@@ -620,6 +665,59 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 {approving ? 'Сохранение...' : 'Подтвердить согласование'}
               </button>
               <button onClick={() => { setShowApproveModal(false); setApproveComment('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal добавления участника */}
+      {showAddParticipantModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Добавить участника</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Сотрудник</label>
+                {addParticipantOptions.length > 0 ? (
+                  <select value={newParticipantName}
+                    onChange={e => setNewParticipantName(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                    <option value="">— Выберите сотрудника —</option>
+                    {addParticipantOptions.map(p => (
+                      <option key={p.id} value={p.user_name}>
+                        {p.user_name}{p.department ? ` — ${p.department}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input value={newParticipantName}
+                    onChange={e => setNewParticipantName(e.target.value)}
+                    placeholder="ФИО сотрудника"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
+                <select value={newParticipantRole}
+                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional')}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  <option value="required">Обязательный</option>
+                  <option value="optional">Для информирования</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleAddParticipant} disabled={addingParticipant || !newParticipantName.trim()}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                {addingParticipant ? 'Добавление...' : 'Добавить'}
+              </button>
+              <button onClick={() => { setShowAddParticipantModal(false); setNewParticipantName('') }}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Отмена
               </button>
