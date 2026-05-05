@@ -18,7 +18,7 @@ export default function Header() {
           href="/contracts/new"
           className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
         >
-          + Новый договор
+          + Новый документ
         </Link>
 
         {/* Профиль пользователя */}
