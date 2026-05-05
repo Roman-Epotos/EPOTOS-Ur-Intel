@@ -46,6 +46,15 @@ interface Analysis {
   version_id: string | null
 }
 
+interface DocumentReview {
+  summary: string
+  purpose: string
+  attention_points: string[]
+  recommendations: string[]
+  document_type: string
+  urgency: 'high' | 'medium' | 'low'
+}
+
 interface ChatMessage {
   id: string
   role: string
@@ -215,8 +224,8 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
     setChatLoading(false)
   }
 
-  const latestReview = analyses.find(a => a.type === 'legal_review' && a.status === 'completed' && a.version_id === selectedVersion)
-    ?? analyses.find(a => a.type === 'legal_review' && a.status === 'completed')
+  const latestReview = analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed')
   const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
     ?? analyses.find(a => a.type === 'passport' && a.status === 'completed')
 
@@ -277,6 +286,39 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderDocumentReview = (result: DocumentReview) => (
+    <div className="space-y-4">
+      <div className={`rounded-lg border px-4 py-3 ${result.urgency === 'high' ? 'bg-red-50 border-red-200' : result.urgency === 'medium' ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+        <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Тип документа</p>
+        <p className="text-sm font-medium text-gray-900">{result.document_type}</p>
+      </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">📋 Краткое содержание</h4>
+        <p className="text-sm text-blue-900">{result.summary}</p>
+      </div>
+      <div className="bg-white border border-gray-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">🎯 Цель документа</h4>
+        <p className="text-sm text-gray-900">{result.purpose}</p>
+      </div>
+      {result.attention_points?.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-yellow-800 mb-2 uppercase tracking-wide">⚡ Требуют внимания</h4>
+          <ul className="space-y-1">
+            {result.attention_points.map((p, i) => <li key={i} className="text-xs text-yellow-900">• {p}</li>)}
+          </ul>
+        </div>
+      )}
+      {result.recommendations?.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-green-800 mb-2 uppercase tracking-wide">✅ Рекомендации</h4>
+          <ul className="space-y-1">
+            {result.recommendations.map((r, i) => <li key={i} className="text-xs text-green-900">• {r}</li>)}
+          </ul>
         </div>
       )}
     </div>
@@ -402,16 +444,10 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
                 </button>
               </>
             ) : (
-              <>
-                <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
-                  className="text-xs font-medium bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
-                  📝 {analyzing === 'legal_review' ? 'Анализируется...' : 'Создать резюме'}
-                </button>
-                <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
-                  className="text-xs font-medium bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
-                  ✅ {analyzing === 'passport' ? 'Проверяется...' : 'Проверить документ'}
-                </button>
-              </>
+              <button onClick={() => runAnalysis('document_review')} disabled={!!analyzing}
+                className="text-xs font-medium bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                📝 {analyzing === 'document_review' ? 'Анализируется...' : 'Анализировать документ'}
+              </button>
             )}
           </div>
         </div>
@@ -461,7 +497,16 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && activeTab === 'legal_review' && latestReview && (
+      {!analyzing && latestReview && latestReview.type === 'document_review' && (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">
+            Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
+          </p>
+          {renderDocumentReview(latestReview.result_json as DocumentReview)}
+        </div>
+      )}
+
+      {!analyzing && activeTab === 'legal_review' && latestReview && latestReview.type !== 'document_review' && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}

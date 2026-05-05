@@ -120,6 +120,21 @@ Return ONLY valid JSON without markdown:
   "termination": "termination conditions in Russian",
   "control_points": ["control point 1 in Russian", "control point 2 in Russian"],
   "attention_zones": ["attention zone 1 in Russian", "attention zone 2 in Russian"]
+}`,
+
+    document_review: `You are a document analyst for EPOTOS Group of Companies (ГК ЭПОТОС). Analyze the following document and provide a structured summary in JSON format. All text values must be in Russian language.
+
+Document text:
+${text.slice(0, 8000)}
+
+Return ONLY valid JSON without markdown:
+{
+  "summary": "brief document summary in 2-3 sentences in Russian",
+  "purpose": "document purpose and what action is required in Russian",
+  "attention_points": ["important point 1 in Russian", "important point 2 in Russian"],
+  "recommendations": ["recommendation 1 in Russian", "recommendation 2 in Russian"],
+  "document_type": "detected document type in Russian",
+  "urgency": "high|medium|low"
 }`
   }
 

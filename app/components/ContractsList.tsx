@@ -204,11 +204,11 @@ export default function ContractsList() {
 
       {filtered.length === 0 ? (
         <div className="px-6 py-12 text-center">
-          <p className="text-gray-400 text-sm">Договоров не найдено</p>
+          <p className="text-gray-400 text-sm">Документов не найдено</p>
           {userRole?.role === 'user' && contracts.length === 0 && (
             <Link href="/contracts/new"
               className="mt-3 inline-block text-sm text-gray-900 underline">
-              Создать первый договор
+              Создать первый документ
             </Link>
           )}
         </div>
