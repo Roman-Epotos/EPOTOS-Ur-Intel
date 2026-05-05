@@ -12,17 +12,17 @@ const STAGES = [
   { id: 'custom', label: 'Дополнительные' },
 ]
 
-const ADMIN_TABS = [
-  { id: 'approval', label: 'Согласующие' },
-  { id: 'templates', label: 'Шаблоны документов' },
-]
-
 const COMPANIES = [
   { id: 'ТХ', name: 'ООО Техно' },
   { id: 'НПП', name: 'ООО НПП ЭПОТОС' },
   { id: 'СПТ', name: 'ООО СПТ' },
   { id: 'ОС', name: 'ООО ОС' },
   { id: 'Э-К', name: 'ООО Эпотос-К' },
+]
+
+const ADMIN_TABS = [
+  { id: 'approval', label: 'Согласующие' },
+  { id: 'templates', label: 'Шаблоны документов' },
 ]
 
 interface Participant {
@@ -43,19 +43,24 @@ interface NewParticipant {
   department: string
 }
 
+interface Template {
+  id: string
+  name: string
+  type: string
+  company_prefix: string | null
+  file_url: string
+  file_name: string
+  description: string | null
+  is_active: boolean
+}
+
 export default function AdminPage() {
   const { user } = useBitrixAuth()
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [participants, setParticipants] = useState<Participant[]>([])
   const [adminTab, setAdminTab] = useState('approval')
+  const [participants, setParticipants] = useState<Participant[]>([])
   const [activeStage, setActiveStage] = useState('legal')
-  const [templates, setTemplates] = useState<{id: string, name: string, type: string, company_prefix: string | null, file_url: string, file_name: string, description: string | null, is_active: boolean}[]>([])
-  const [templateFile, setTemplateFile] = useState<File | null>(null)
-  const [templateForm, setTemplateForm] = useState({ name: '', type: '', company_prefix: '', description: '' })
-  const [uploadingTemplate, setUploadingTemplate] = useState(false)
-  const [templateSuccess, setTemplateSuccess] = useState('')
-  const [templateError, setTemplateError] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [newP, setNewP] = useState<NewParticipant>({
@@ -66,16 +71,20 @@ export default function AdminPage() {
     department: '',
   })
 
-  const baseUrl = typeof window !== 'undefined' ? 'https://epotos-ur-intel.vercel.app' : ''
+  // Шаблоны
+  const [templates, setTemplates] = useState<Template[]>([])
+  const [templateFile, setTemplateFile] = useState<File | null>(null)
+  const [templateForm, setTemplateForm] = useState({ name: '', type: '', company_prefix: '', description: '' })
+  const [uploadingTemplate, setUploadingTemplate] = useState(false)
+  const [templateSuccess, setTemplateSuccess] = useState('')
+  const [templateError, setTemplateError] = useState('')
 
-  // Проверяем права администратора
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
   useEffect(() => {
     const checkAdmin = async () => {
       if (!user?.id) return
-      const res = await fetch(`${baseUrl}/api/approval-settings?stage=legal`)
-      const data = await res.json()
-      // Проверяем через список adminов
-      const adminIds = [30, 1148] // Пирог Роман, Чащин Дмитрий
+      const adminIds = [30, 1148]
       if (adminIds.includes(parseInt(user.id))) {
         setIsAdmin(true)
       }
@@ -84,7 +93,6 @@ export default function AdminPage() {
     checkAdmin()
   }, [user])
 
-  // Загружаем участников по этапу
   useEffect(() => {
     const load = async () => {
       const res = await fetch(`${baseUrl}/api/approval-settings?stage=${activeStage}`)
@@ -94,7 +102,6 @@ export default function AdminPage() {
     load()
   }, [activeStage])
 
-  // Загружаем шаблоны
   useEffect(() => {
     const loadTemplates = async () => {
       const res = await fetch(`${baseUrl}/api/templates`)
@@ -103,53 +110,6 @@ export default function AdminPage() {
     }
     if (adminTab === 'templates') loadTemplates()
   }, [adminTab])
-
-  const handleAddTemplate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!templateFile || !templateForm.name || !templateForm.type) {
-      setTemplateError('Заполните название, тип и выберите файл')
-      return
-    }
-    setUploadingTemplate(true)
-    setTemplateError('')
-    setTemplateSuccess('')
-
-    const formData = new FormData()
-    formData.append('file', templateFile)
-    formData.append('name', templateForm.name)
-    formData.append('type', templateForm.type)
-    formData.append('company_prefix', templateForm.company_prefix)
-    formData.append('description', templateForm.description)
-    formData.append('admin_bitrix_id', user?.id ?? '0')
-
-    const res = await fetch(`${baseUrl}/api/templates`, { method: 'POST', body: formData })
-    const data = await res.json()
-
-    if (!res.ok) {
-      setTemplateError(data.error)
-    } else {
-      setTemplateSuccess('Шаблон добавлен')
-      setTemplateFile(null)
-      setTemplateForm({ name: '', type: '', company_prefix: '', description: '' })
-      const reload = await fetch(`${baseUrl}/api/templates`)
-      const reloadData = await reload.json()
-      setTemplates(reloadData.templates ?? [])
-    }
-    setUploadingTemplate(false)
-  }
-
-  const handleDeleteTemplate = async (id: string, file_url: string) => {
-    if (!confirm('Удалить шаблон?')) return
-    const res = await fetch(`${baseUrl}/api/templates`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, file_url, admin_bitrix_id: parseInt(user?.id ?? '0') }),
-    })
-    if (res.ok) {
-      setTemplates(prev => prev.filter(t => t.id !== id))
-      setTemplateSuccess('Шаблон удалён')
-    }
-  }
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -161,7 +121,6 @@ export default function AdminPage() {
       return
     }
 
-    // Создаём запись для каждой выбранной компании
     const prefixes = newP.company_prefixes.length > 0 ? newP.company_prefixes : [null]
     let hasError = false
 
@@ -212,6 +171,53 @@ export default function AdminPage() {
     }
   }
 
+  const handleAddTemplate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!templateFile || !templateForm.name || !templateForm.type) {
+      setTemplateError('Заполните название, тип и выберите файл')
+      return
+    }
+    setUploadingTemplate(true)
+    setTemplateError('')
+    setTemplateSuccess('')
+
+    const formData = new FormData()
+    formData.append('file', templateFile)
+    formData.append('name', templateForm.name)
+    formData.append('type', templateForm.type)
+    formData.append('company_prefix', templateForm.company_prefix)
+    formData.append('description', templateForm.description)
+    formData.append('admin_bitrix_id', user?.id ?? '0')
+
+    const res = await fetch(`${baseUrl}/api/templates`, { method: 'POST', body: formData })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setTemplateError(data.error)
+    } else {
+      setTemplateSuccess('Шаблон добавлен')
+      setTemplateFile(null)
+      setTemplateForm({ name: '', type: '', company_prefix: '', description: '' })
+      const reload = await fetch(`${baseUrl}/api/templates`)
+      const reloadData = await reload.json()
+      setTemplates(reloadData.templates ?? [])
+    }
+    setUploadingTemplate(false)
+  }
+
+  const handleDeleteTemplate = async (id: string, file_url: string) => {
+    if (!confirm('Удалить шаблон?')) return
+    const res = await fetch(`${baseUrl}/api/templates`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, file_url, admin_bitrix_id: parseInt(user?.id ?? '0') }),
+    })
+    if (res.ok) {
+      setTemplates(prev => prev.filter(t => t.id !== id))
+      setTemplateSuccess('Шаблон удалён')
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -226,9 +232,7 @@ export default function AdminPage() {
         <div className="text-center">
           <p className="text-gray-900 font-medium">Доступ запрещён</p>
           <p className="text-gray-500 text-sm mt-1">Эта страница доступна только администраторам</p>
-          <Link href="/" className="mt-4 inline-block text-sm text-gray-900 underline">
-            На главную
-          </Link>
+          <Link href="/" className="mt-4 inline-block text-sm text-gray-900 underline">На главную</Link>
         </div>
       </div>
     )
@@ -241,12 +245,9 @@ export default function AdminPage() {
         <div className="flex items-center gap-3 mb-8">
           <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
           <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Настройки согласования</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Настройки</h1>
           <span className="text-xs bg-gray-900 text-white px-2 py-1 rounded-full">Администратор</span>
         </div>
-
-        {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">{error}</div>}
-        {success && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-4">{success}</div>}
 
         {/* Главные вкладки */}
         <div className="flex gap-2 mb-6">
@@ -258,12 +259,113 @@ export default function AdminPage() {
           ))}
         </div>
 
+        {/* Вкладка — Согласующие */}
+        {adminTab === 'approval' && (
+          <div>
+            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">{error}</div>}
+            {success && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-4">{success}</div>}
+
+            <div className="flex gap-2 mb-6 flex-wrap">
+              {STAGES.map(stage => (
+                <button key={stage.id}
+                  onClick={() => { setActiveStage(stage.id); setNewP(p => ({ ...p, stage: stage.id })) }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeStage === stage.id ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                  {stage.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">
+                Текущий список — {STAGES.find(s => s.id === activeStage)?.label}
+              </h2>
+              {participants.length === 0 ? (
+                <p className="text-sm text-gray-400">Список пуст</p>
+              ) : (
+                <div className="space-y-2">
+                  {participants.map(p => (
+                    <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {p.department ?? '—'} · Битрикс ID: {p.bitrix_user_id}
+                          {p.company_prefix && ` · ${p.company_prefix}`}
+                        </p>
+                      </div>
+                      <button onClick={() => handleDelete(p.id)}
+                        className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">
+                        Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить участника</h2>
+              <form onSubmit={handleAdd} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
+                    <input value={newP.user_name}
+                      onChange={e => setNewP(p => ({ ...p, user_name: e.target.value }))}
+                      placeholder="Иванов Иван Иванович"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Битрикс24 ID <span className="text-red-500">*</span></label>
+                    <input value={newP.bitrix_user_id}
+                      onChange={e => setNewP(p => ({ ...p, bitrix_user_id: e.target.value }))}
+                      placeholder="например: 246"
+                      type="number"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Подразделение</label>
+                    <input value={newP.department}
+                      onChange={e => setNewP(p => ({ ...p, department: e.target.value }))}
+                      placeholder="Юридический отдел"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-2">
+                      Компании участия
+                      <span className="text-gray-400 font-normal ml-1">(не выбрано = все компании)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {COMPANIES.map(c => (
+                        <label key={c.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-xs transition-colors ${newP.company_prefixes.includes(c.id) ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                          <input type="checkbox" checked={newP.company_prefixes.includes(c.id)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setNewP(p => ({ ...p, company_prefixes: [...p.company_prefixes, c.id] }))
+                              } else {
+                                setNewP(p => ({ ...p, company_prefixes: p.company_prefixes.filter(x => x !== c.id) }))
+                              }
+                            }}
+                            className="hidden" />
+                          {c.id} — {c.name.replace('ООО ', '')}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <button type="submit"
+                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
+                  Добавить
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Вкладка — Шаблоны */}
         {adminTab === 'templates' && (
           <div className="space-y-6">
             {templateError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{templateError}</div>}
             {templateSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{templateSuccess}</div>}
 
-            {/* Список шаблонов */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-sm font-medium text-gray-700 mb-4">Загруженные шаблоны</h2>
               {templates.length === 0 ? (
@@ -295,13 +397,12 @@ export default function AdminPage() {
               )}
             </div>
 
-            {/* Форма добавления шаблона */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить шаблон</h2>
               <form onSubmit={handleAddTemplate} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Название шаблона <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Название <span className="text-red-500">*</span></label>
                     <input value={templateForm.name} onChange={e => setTemplateForm(p => ({...p, name: e.target.value}))}
                       placeholder="Договор услуг (типовой)"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
@@ -365,108 +466,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {adminTab === 'approval' && (
-        <div>
-        {/* Вкладки этапов */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {STAGES.map(stage => (
-            <button key={stage.id}
-              onClick={() => { setActiveStage(stage.id); setNewP(p => ({ ...p, stage: stage.id })) }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeStage === stage.id ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-              {stage.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Список текущих участников */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <h2 className="text-sm font-medium text-gray-700 mb-4">
-            Текущий список — {STAGES.find(s => s.id === activeStage)?.label}
-          </h2>
-          {participants.length === 0 ? (
-            <p className="text-sm text-gray-400">Список пуст</p>
-          ) : (
-            <div className="space-y-2">
-              {participants.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
-                    <p className="text-xs text-gray-500">
-                      {p.department ?? '—'} · Битрикс ID: {p.bitrix_user_id}
-                      {p.company_prefix && ` · ${p.company_prefix}`}
-                    </p>
-                  </div>
-                  <button onClick={() => handleDelete(p.id)}
-                    className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">
-                    Удалить
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Форма добавления */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить участника</h2>
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
-                <input value={newP.user_name}
-                  onChange={e => setNewP(p => ({ ...p, user_name: e.target.value }))}
-                  placeholder="Иванов Иван Иванович"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Битрикс24 ID <span className="text-red-500">*</span></label>
-                <input value={newP.bitrix_user_id}
-                  onChange={e => setNewP(p => ({ ...p, bitrix_user_id: e.target.value }))}
-                  placeholder="например: 246"
-                  type="number"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Подразделение</label>
-                <input value={newP.department}
-                  onChange={e => setNewP(p => ({ ...p, department: e.target.value }))}
-                  placeholder="Юридический отдел"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-2">
-                  Компании участия
-                  <span className="text-gray-400 font-normal ml-1">(не выбрано = все компании)</span>
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {COMPANIES.map(c => (
-                    <label key={c.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-xs transition-colors ${newP.company_prefixes.includes(c.id) ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
-                      <input
-                        type="checkbox"
-                        checked={newP.company_prefixes.includes(c.id)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setNewP(p => ({ ...p, company_prefixes: [...p.company_prefixes, c.id] }))
-                          } else {
-                            setNewP(p => ({ ...p, company_prefixes: p.company_prefixes.filter(x => x !== c.id) }))
-                          }
-                        }}
-                        className="hidden"
-                      />
-                      {c.id} — {c.name.replace('ООО ', '')}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <button type="submit"
-              className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
-              Добавить
-            </button>
-          </form>
-        </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
