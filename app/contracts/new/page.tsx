@@ -163,7 +163,7 @@ export default function NewContractPage() {
               <div className={`rounded-lg border px-4 py-3 ${numberChanged ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs text-gray-500">
-                    Номер договора
+                    Номер документа
                     {numberChanged && <span className="ml-2 text-yellow-700 font-medium">изменён вручную</span>}
                   </p>
                   <div className="flex gap-2">
@@ -205,7 +205,7 @@ export default function NewContractPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Название договора <span className="text-red-500">*</span>
+                Название документа <span className="text-red-500">*</span>
               </label>
               <input name="title" value={form.title} onChange={handleChange} required
                 placeholder="Поставка противопожарного оборудования"
@@ -255,7 +255,7 @@ export default function NewContractPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Сумма договора (₽)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Сумма (₽)</label>
               <input name="amount" value={form.amount} onChange={handleChange}
                 type="number" placeholder="450000"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
@@ -277,7 +277,7 @@ export default function NewContractPage() {
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={loading || !finalNumber}
                 className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
-                {loading ? 'Сохранение...' : 'Создать договор'}
+                {loading ? 'Сохранение...' : 'Создать документ'}
               </button>
               <Link href="/"
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
