@@ -125,7 +125,7 @@ export default function NewContractPage() {
             ← Назад
           </Link>
           <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Новый договор</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Новый документ</h1>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -219,11 +219,30 @@ export default function NewContractPage() {
               </label>
               <select name="type" value={form.type} onChange={handleChange}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                <option value="поставка">Поставка</option>
-                <option value="услуги">Услуги</option>
-                <option value="аренда">Аренда</option>
-                <option value="подряд">Подряд</option>
-                <option value="другое">Другое</option>
+                <optgroup label="Договоры">
+                  <option value="поставка">Договор поставки</option>
+                  <option value="услуги">Договор услуг</option>
+                  <option value="аренда">Договор аренды</option>
+                  <option value="подряд">Договор подряда</option>
+                  <option value="купля-продажа">Договор купли-продажи</option>
+                  <option value="агентский">Агентский договор</option>
+                  <option value="лицензионный">Лицензионный договор</option>
+                </optgroup>
+                <optgroup label="Соглашения">
+                  <option value="доп-соглашение">Дополнительное соглашение</option>
+                  <option value="nda">NDA / Соглашение о конфиденциальности</option>
+                  <option value="протокол-разногласий">Протокол разногласий</option>
+                </optgroup>
+                <optgroup label="Документы">
+                  <option value="претензия">Претензия</option>
+                  <option value="письмо">Письмо</option>
+                  <option value="акт">Акт</option>
+                  <option value="счет">Счёт</option>
+                  <option value="доверенность">Доверенность</option>
+                </optgroup>
+                <optgroup label="Другое">
+                  <option value="другое">Другое</option>
+                </optgroup>
               </select>
             </div>
 
