@@ -502,7 +502,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
           <p className="text-xs text-gray-400 mb-3">
             Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
           </p>
-          {renderDocumentReview(latestReview.result_json as DocumentReview)}
+          {renderDocumentReview(latestReview.result_json as unknown as DocumentReview)}
         </div>
       )}
 
