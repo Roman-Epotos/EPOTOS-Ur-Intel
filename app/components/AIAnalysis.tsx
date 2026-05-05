@@ -103,7 +103,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat'>('legal_review')
+  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat' | 'document_review'>('legal_review')
   const [selectedVersion, setSelectedVersion] = useState<string>('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatQuestion, setChatQuestion] = useState('')
@@ -140,7 +140,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
     setChatMessages(data.messages ?? [])
   }
 
-  const runAnalysis = async (type: 'legal_review' | 'passport') => {
+  const runAnalysis = async (type: 'legal_review' | 'passport' | 'document_review') => {
     if (!selectedVersion) {
       alert('Выберите версию документа для анализа')
       return
