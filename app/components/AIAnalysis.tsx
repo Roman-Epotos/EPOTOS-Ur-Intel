@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { CONTRACT_DOCUMENT_TYPES } from '@/app/lib/documentTypes'
 
 interface RedFlag {
   severity: 'high' | 'medium' | 'low'
@@ -70,7 +70,7 @@ interface Version {
   version_number: number
 }
 
-const CONTRACT_DOCUMENT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+
 
 interface Props {
   contractId: string

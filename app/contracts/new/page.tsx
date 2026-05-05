@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { DOCUMENT_TYPES, REGIONS, CONTRACT_DOCUMENT_TYPES } from '@/app/lib/documentTypes'
 
 const COMPANIES = [
   { id: 'ТХ',  name: 'ООО Техно' },
@@ -29,6 +30,7 @@ export default function NewContractPage() {
     start_date: '',
     end_date: '',
     document_category: 'contract',
+    region: '',
   })
 
   useEffect(() => {
@@ -229,30 +231,21 @@ export default function NewContractPage() {
               <select name="type" value={form.type} onChange={handleChange}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                 <option value="">— Выберите тип —</option>
-                <optgroup label="Договоры">
-                  <option value="поставка">Договор поставки</option>
-                  <option value="услуги">Договор услуг</option>
-                  <option value="аренда">Договор аренды</option>
-                  <option value="подряд">Договор подряда</option>
-                  <option value="купля-продажа">Договор купли-продажи</option>
-                  <option value="агентский">Агентский договор</option>
-                  <option value="лицензионный">Лицензионный договор</option>
-                </optgroup>
-                <optgroup label="Соглашения">
-                  <option value="доп-соглашение">Дополнительное соглашение</option>
-                  <option value="nda">NDA / Соглашение о конфиденциальности</option>
-                  <option value="протокол-разногласий">Протокол разногласий</option>
-                </optgroup>
-                <optgroup label="Документы">
-                  <option value="претензия">Претензия</option>
-                  <option value="письмо">Письмо</option>
-                  <option value="акт">Акт</option>
-                  <option value="счет">Счёт</option>
-                  <option value="доверенность">Доверенность</option>
-                </optgroup>
-                <optgroup label="Другое">
-                  <option value="другое">Другое</option>
-                </optgroup>
+                {DOCUMENT_TYPES.map(group => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.types.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Регион</label>
+              <select name="region" value={form.region} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
 
