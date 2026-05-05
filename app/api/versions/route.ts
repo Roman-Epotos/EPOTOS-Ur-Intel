@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       .from('contract_logs')
       .insert({
         contract_id: contractId,
-        action: `Загружена версия v${versionNumber}`,
+        action: `Загружена версия документа v${versionNumber}`,
         details: `Файл: ${file.name}${comment ? '. Комментарий: ' + comment : ''}`,
         user_name: 'Система',
       })

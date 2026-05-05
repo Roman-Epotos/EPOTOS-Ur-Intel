@@ -78,9 +78,9 @@ async function extractTextFromXlsx(fileUrl: string): Promise<string> {
 
 async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
   const prompts: Record<string, string> = {
-    legal_review: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Any of these companies may appear as a party to the contract - do NOT treat their absence as a risk. Analyze the following contract and provide a structured risk analysis in JSON format. All text values in JSON must be in Russian language.
+    legal_review: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Any of these companies may appear as a party to the document - do NOT treat their absence as a risk. Analyze the following document and provide a structured analysis in JSON format. All text values in JSON must be in Russian language. If the document is not a contract (e.g. a letter, act, invoice), adapt your analysis accordingly.
 
-Contract text:
+Document text:
 ${text.slice(0, 8000)}
 
 Return ONLY valid JSON without markdown:

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       .from('contract_logs')
       .insert({
         contract_id: contract.id,
-        action: 'Договор создан',
+        action: 'Документ создан',
         details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
         user_name: userName,
       })

@@ -24,7 +24,7 @@ export default function NewContractPage() {
     company_prefix: '',
     title: '',
     counterparty: '',
-    type: 'поставка',
+    type: '',
     amount: '',
     start_date: '',
     end_date: '',
@@ -73,6 +73,7 @@ export default function NewContractPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.company_prefix) { setError('Выберите компанию'); return }
+    if (!form.type) { setError('Выберите тип документа'); return }
     if (!finalNumber) { setError('Номер не сгенерирован'); return }
 
     setLoading(true)
@@ -227,6 +228,7 @@ export default function NewContractPage() {
               </label>
               <select name="type" value={form.type} onChange={handleChange}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                <option value="">— Выберите тип —</option>
                 <optgroup label="Договоры">
                   <option value="поставка">Договор поставки</option>
                   <option value="услуги">Договор услуг</option>
