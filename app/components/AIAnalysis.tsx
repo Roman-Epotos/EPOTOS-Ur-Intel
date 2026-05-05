@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 interface RedFlag {
@@ -46,6 +46,14 @@ interface Analysis {
   version_id: string | null
 }
 
+interface ChatMessage {
+  id: string
+  role: string
+  message: string
+  user_name: string
+  created_at: string
+}
+
 interface Version {
   id: string
   file_url: string
@@ -56,6 +64,8 @@ interface Version {
 interface Props {
   contractId: string
   versions: Version[]
+  userName?: string
+  userId?: number
 }
 
 const RISK_COLORS = {
@@ -76,13 +86,16 @@ const RISK_LABELS = {
   low: 'Низкий риск',
 }
 
-export default function AIAnalysis({ contractId, versions }: Props) {
-  const { user } = useBitrixAuth()
+export default function AIAnalysis({ contractId, versions, userName, userId }: Props) {
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'legal_review' | 'passport'>('legal_review')
   const [selectedVersion, setSelectedVersion] = useState<string>('')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatQuestion, setChatQuestion] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -91,17 +104,27 @@ export default function AIAnalysis({ contractId, versions }: Props) {
       setSelectedVersion(versions[0].id)
     }
     loadAnalyses()
+    loadChat()
   }, [contractId])
 
-  // Сбрасываем активную вкладку при смене версии
   useEffect(() => {
     setActiveTab('legal_review')
   }, [selectedVersion])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
 
   const loadAnalyses = async () => {
     const res = await fetch(`${baseUrl}/api/ai-analysis?contract_id=${contractId}`)
     const data = await res.json()
     setAnalyses(data.analyses ?? [])
+  }
+
+  const loadChat = async () => {
+    const res = await fetch(`${baseUrl}/api/ai-chat?contract_id=${contractId}`)
+    const data = await res.json()
+    setChatMessages(data.messages ?? [])
   }
 
   const runAnalysis = async (type: 'legal_review' | 'passport') => {
@@ -125,7 +148,7 @@ export default function AIAnalysis({ contractId, versions }: Props) {
           file_url: version.file_url,
           file_name: version.file_name,
           analysis_type: type,
-          user_name: user?.name ?? 'Система',
+          user_name: userName ?? 'Система',
         }),
       })
 
@@ -143,6 +166,51 @@ export default function AIAnalysis({ contractId, versions }: Props) {
     }
   }
 
+  const handleChatQuestion = async () => {
+    if (!chatQuestion.trim() || chatLoading) return
+    const question = chatQuestion
+    setChatQuestion('')
+    setChatLoading(true)
+
+    const version = versions.find(v => v.id === selectedVersion)
+
+    const tempUserMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      message: question,
+      user_name: userName ?? 'Пользователь',
+      created_at: new Date().toISOString(),
+    }
+    setChatMessages(prev => [...prev, tempUserMsg])
+
+    const res = await fetch(`${baseUrl}/api/ai-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contract_id: contractId,
+        version_id: selectedVersion,
+        file_url: version?.file_url,
+        file_name: version?.file_name,
+        question,
+        user_name: userName ?? 'Пользователь',
+        bitrix_user_id: userId ?? null,
+      }),
+    })
+
+    const data = await res.json()
+    if (data.success) {
+      const tempAiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        message: data.answer,
+        user_name: 'EpotosGPT',
+        created_at: new Date().toISOString(),
+      }
+      setChatMessages(prev => [...prev, tempAiMsg])
+    }
+    setChatLoading(false)
+  }
+
   const latestReview = analyses.find(a => a.type === 'legal_review' && a.status === 'completed' && a.version_id === selectedVersion)
     ?? analyses.find(a => a.type === 'legal_review' && a.status === 'completed')
   const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
@@ -150,7 +218,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
 
   const renderLegalReview = (result: LegalReview) => (
     <div className="space-y-4">
-      {/* Общий риск */}
       <div className={`rounded-lg border px-4 py-3 ${RISK_COLORS[result.overall_risk]}`}>
         <div className="flex items-center gap-2">
           <span className="text-lg">{RISK_ICONS[result.overall_risk]}</span>
@@ -161,7 +228,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       </div>
 
-      {/* Red Flags */}
       {result.red_flags?.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">⚠️ Риски</h4>
@@ -173,9 +239,7 @@ export default function AIAnalysis({ contractId, versions }: Props) {
                   <div className="flex-1">
                     <p className="text-sm font-medium">{flag.title}</p>
                     <p className="text-xs mt-0.5">{flag.description}</p>
-                    {flag.recommendation && (
-                      <p className="text-xs mt-1 italic">💡 {flag.recommendation}</p>
-                    )}
+                    {flag.recommendation && <p className="text-xs mt-1 italic">💡 {flag.recommendation}</p>}
                   </div>
                 </div>
               </div>
@@ -184,7 +248,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       )}
 
-      {/* Предупреждения */}
       {result.warnings?.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">📋 Замечания</h4>
@@ -199,7 +262,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       )}
 
-      {/* Позитивные моменты */}
       {result.positives?.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">✅ Защита интересов</h4>
@@ -218,13 +280,11 @@ export default function AIAnalysis({ contractId, versions }: Props) {
 
   const renderPassport = (result: Passport) => (
     <div className="space-y-4">
-      {/* Суть */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
         <h4 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">📄 Суть договора</h4>
         <p className="text-sm text-blue-900">{result.essence}</p>
       </div>
 
-      {/* Ключевые условия */}
       <div className="bg-white border border-gray-200 rounded-lg p-3">
         <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">💰 Ключевые условия</h4>
         <div className="space-y-1.5">
@@ -246,7 +306,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       </div>
 
-      {/* Обязательства */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white border border-gray-200 rounded-lg p-3">
           <h4 className="text-xs font-semibold text-gray-700 mb-2">Наши обязательства</h4>
@@ -266,7 +325,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       </div>
 
-      {/* Контрольные точки */}
       {result.control_points?.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-3">
           <h4 className="text-xs font-semibold text-gray-700 mb-2">🎯 Контрольные точки</h4>
@@ -278,7 +336,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       )}
 
-      {/* Зоны внимания */}
       {result.attention_zones?.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
           <h4 className="text-xs font-semibold text-yellow-800 mb-2">⚡ Зоны внимания</h4>
@@ -290,7 +347,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       )}
 
-      {/* Расторжение */}
       {result.termination && (
         <div className="bg-white border border-gray-200 rounded-lg p-3">
           <h4 className="text-xs font-semibold text-gray-700 mb-1">🚪 Расторжение</h4>
@@ -310,7 +366,7 @@ export default function AIAnalysis({ contractId, versions }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
+    <div>
       {/* Заголовок */}
       <div className="mb-6">
         <h2 className="text-sm font-semibold text-gray-900 mb-1">EpotosGPT — AI анализ документа</h2>
@@ -322,29 +378,20 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-40">
             <label className="block text-xs font-medium text-gray-500 mb-1">Документ для анализа</label>
-            <select
-              value={selectedVersion}
-              onChange={e => setSelectedVersion(e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900"
-            >
+            <select value={selectedVersion} onChange={e => setSelectedVersion(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900">
               {versions.map(v => (
                 <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
               ))}
             </select>
           </div>
           <div className="flex flex-col gap-2 pt-4">
-            <button
-              onClick={() => runAnalysis('legal_review')}
-              disabled={!!analyzing}
-              className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
-            >
+            <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
+              className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
               🔍 {analyzing === 'legal_review' ? 'Анализируется...' : 'Запустить Legal Review'}
             </button>
-            <button
-              onClick={() => runAnalysis('passport')}
-              disabled={!!analyzing}
-              className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
-            >
+            <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
+              className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
               📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт договора'}
             </button>
           </div>
@@ -357,26 +404,14 @@ export default function AIAnalysis({ contractId, versions }: Props) {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Результаты анализа</p>
           <div className="flex gap-2 border-b border-gray-200">
             {latestReview && (
-              <button
-                onClick={() => setActiveTab('legal_review')}
-                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${
-                  activeTab === 'legal_review'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
+              <button onClick={() => setActiveTab('legal_review')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'legal_review' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                 🔍 Legal Review
               </button>
             )}
             {latestPassport && (
-              <button
-                onClick={() => setActiveTab('passport')}
-                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${
-                  activeTab === 'passport'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
+              <button onClick={() => setActiveTab('passport')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'passport' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                 📄 Паспорт договора
               </button>
             )}
@@ -384,7 +419,6 @@ export default function AIAnalysis({ contractId, versions }: Props) {
         </div>
       )}
 
-      {/* Контент */}
       {analyzing && (
         <div className="text-center py-8">
           <div className="text-2xl mb-2">🤖</div>
@@ -417,6 +451,47 @@ export default function AIAnalysis({ contractId, versions }: Props) {
           <p className="text-xs text-gray-300 mt-1">Legal Review найдёт риски · Паспорт создаст резюме</p>
         </div>
       )}
+
+      {/* EpotosGPT чат */}
+      <div className="mt-6 border-t border-gray-100 pt-6">
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">💬 Задать вопрос EpotosGPT</h3>
+        <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+          {chatMessages.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-4">
+              Задайте вопрос по документу — EpotosGPT ответит на основе содержимого файла
+            </p>
+          ) : chatMessages.map(msg => (
+            <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${msg.role === 'assistant' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                {msg.role === 'assistant' ? 'AI' : (userName ?? 'П').charAt(0).toUpperCase()}
+              </div>
+              <div className={`flex-1 max-w-xs ${msg.role === 'user' ? 'items-end' : ''}`}>
+                <div className={`text-xs rounded-xl px-3 py-2 inline-block ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'}`}
+                  style={msg.role === 'user' ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
+                  {msg.message}
+                </div>
+              </div>
+            </div>
+          ))}
+          {chatLoading && (
+            <div className="flex gap-2">
+              <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-medium">AI</div>
+              <div className="bg-gray-100 rounded-xl px-3 py-2 text-xs text-gray-500">EpotosGPT думает...</div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+        <div className="flex gap-2">
+          <input value={chatQuestion} onChange={e => setChatQuestion(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleChatQuestion()}
+            placeholder="Спросите что-нибудь о документе..."
+            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+          <button onClick={handleChatQuestion} disabled={chatLoading || !chatQuestion.trim()}
+            className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
+            {chatLoading ? '...' : '➤'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

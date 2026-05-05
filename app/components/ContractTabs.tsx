@@ -636,6 +636,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   file_name: v.file_name,
                   version_number: v.version_number,
                 }))}
+                userName={user?.name}
+                userId={user?.id ? parseInt(user.id) : undefined}
               />
             </div>
           )}
