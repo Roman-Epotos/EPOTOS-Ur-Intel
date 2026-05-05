@@ -465,7 +465,6 @@ export default function AdminPage() {
             </button>
           </form>
         </div>
-        </div>
       </>
       )}
     </div>
