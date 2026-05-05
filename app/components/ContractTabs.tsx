@@ -46,6 +46,7 @@ interface Contract {
   end_date: string | null
   author_bitrix_id: number | null
   allow_others_to_approve: boolean | null
+  document_category?: string | null
 }
 
 interface Participant {
@@ -638,6 +639,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 }))}
                 userName={user?.name}
                 userId={user?.id ? parseInt(user.id) : undefined}
+                documentType={contract.type}
+                documentCategory={contract.document_category ?? 'contract'}
               />
             </div>
           )}

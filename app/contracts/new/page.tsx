@@ -28,6 +28,7 @@ export default function NewContractPage() {
     amount: '',
     start_date: '',
     end_date: '',
+    document_category: 'contract',
   })
 
   useEffect(() => {
@@ -56,8 +57,14 @@ export default function NewContractPage() {
     generate()
   }, [form.company_prefix])
 
+  const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+    const newForm = { ...form, [e.target.name]: e.target.value }
+    if (e.target.name === 'type') {
+      newForm.document_category = CONTRACT_TYPES.includes(e.target.value) ? 'contract' : 'document'
+    }
+    setForm(newForm)
     setError('')
   }
 
@@ -89,6 +96,7 @@ export default function NewContractPage() {
             amount: form.amount,
             start_date: form.start_date,
             end_date: form.end_date,
+            document_category: form.document_category,
             user_name: user?.name ?? 'Система',
             user_bitrix_id: user?.id ?? null,
           }),
@@ -215,7 +223,7 @@ export default function NewContractPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Тип договора <span className="text-red-500">*</span>
+                Тип документа <span className="text-red-500">*</span>
               </label>
               <select name="type" value={form.type} onChange={handleChange}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">

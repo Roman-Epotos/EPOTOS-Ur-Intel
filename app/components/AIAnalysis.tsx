@@ -61,11 +61,15 @@ interface Version {
   version_number: number
 }
 
+const CONTRACT_DOCUMENT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+
 interface Props {
   contractId: string
   versions: Version[]
   userName?: string
   userId?: number
+  documentType?: string | null
+  documentCategory?: string | null
 }
 
 const RISK_COLORS = {
@@ -86,7 +90,7 @@ const RISK_LABELS = {
   low: 'Низкий риск',
 }
 
-export default function AIAnalysis({ contractId, versions, userName, userId }: Props) {
+export default function AIAnalysis({ contractId, versions, userName, userId, documentType, documentCategory }: Props) {
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
@@ -386,14 +390,29 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
             </select>
           </div>
           <div className="flex flex-col gap-2 pt-4">
-            <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
-              className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
-              🔍 {analyzing === 'legal_review' ? 'Анализируется...' : 'Запустить Legal Review'}
-            </button>
-            <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
-              className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
-              📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт документа'}
-            </button>
+            {(documentCategory === 'contract' || CONTRACT_DOCUMENT_TYPES.includes(documentType ?? '')) ? (
+              <>
+                <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  🔍 {analyzing === 'legal_review' ? 'Анализируется...' : 'Запустить Legal Review'}
+                </button>
+                <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт документа'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  📝 {analyzing === 'legal_review' ? 'Анализируется...' : 'Создать резюме'}
+                </button>
+                <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  ✅ {analyzing === 'passport' ? 'Проверяется...' : 'Проверить документ'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
