@@ -366,7 +366,7 @@ export default function AdminPage() {
         )}
 
         {adminTab === 'approval' && (
-        <>
+        <div>
         {/* Вкладки этапов */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {STAGES.map(stage => (
@@ -465,7 +465,7 @@ export default function AdminPage() {
             </button>
           </form>
         </div>
-      </>
+        </div>
       )}
     </div>
   )
