@@ -90,7 +90,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport'>('legal_review')
+  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat'>('legal_review')
   const [selectedVersion, setSelectedVersion] = useState<string>('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatQuestion, setChatQuestion] = useState('')
@@ -415,6 +415,21 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
                 📄 Паспорт договора
               </button>
             )}
+            <button onClick={() => setActiveTab('chat')}
+              className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              💬 Чат с AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!(latestReview || latestPassport) && (
+        <div className="mb-4">
+          <div className="flex gap-2 border-b border-gray-200">
+            <button onClick={() => setActiveTab('chat')}
+              className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              💬 Чат с AI
+            </button>
           </div>
         </div>
       )}
@@ -445,23 +460,17 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
         </div>
       )}
 
-      {!analyzing && !latestReview && !latestPassport && (
+      {!analyzing && !latestReview && !latestPassport && activeTab !== 'chat' && (
         <div className="text-center py-8">
           <p className="text-sm text-gray-400">Нажмите кнопку для запуска анализа</p>
           <p className="text-xs text-gray-300 mt-1">Legal Review найдёт риски · Паспорт создаст резюме</p>
         </div>
       )}
 
-      {/* EpotosGPT чат */}
-      <div className="mt-6">
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">AI</div>
-            <div>
-              <h3 className="text-sm font-semibold text-purple-900">Задать вопрос EpotosGPT</h3>
-              <p className="text-xs text-purple-600">Задайте вопрос — AI ответит на основе документа</p>
-            </div>
-          </div>
+      {/* EpotosGPT чат — вкладка */}
+      {activeTab === 'chat' && (
+      <div className="mt-2">
+        <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
           <div className="bg-white rounded-lg border border-purple-100 p-3 space-y-3 max-h-64 overflow-y-auto mb-3">
           {chatMessages.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">
@@ -488,7 +497,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
           )}
           <div ref={chatEndRef} />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-3">
           <input value={chatQuestion} onChange={e => setChatQuestion(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleChatQuestion()}
             placeholder="Спросите что-нибудь о документе..."
@@ -500,6 +509,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
         </div>
         </div>
       </div>
+      )}
     </div>
   )
 }
