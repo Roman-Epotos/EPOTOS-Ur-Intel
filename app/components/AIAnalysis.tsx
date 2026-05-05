@@ -453,9 +453,16 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
       )}
 
       {/* EpotosGPT чат */}
-      <div className="mt-6 border-t border-gray-100 pt-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">💬 Задать вопрос EpotosGPT</h3>
-        <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+      <div className="mt-6">
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">AI</div>
+            <div>
+              <h3 className="text-sm font-semibold text-purple-900">Задать вопрос EpotosGPT</h3>
+              <p className="text-xs text-purple-600">Задайте вопрос — AI ответит на основе документа</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-purple-100 p-3 space-y-3 max-h-64 overflow-y-auto mb-3">
           {chatMessages.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">
               Задайте вопрос по документу — EpotosGPT ответит на основе содержимого файла
@@ -485,11 +492,12 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
           <input value={chatQuestion} onChange={e => setChatQuestion(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleChatQuestion()}
             placeholder="Спросите что-нибудь о документе..."
-            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+            className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white" />
           <button onClick={handleChatQuestion} disabled={chatLoading || !chatQuestion.trim()}
-            className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
+            className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-purple-700 disabled:opacity-50">
             {chatLoading ? '...' : '➤'}
           </button>
+        </div>
         </div>
       </div>
     </div>
