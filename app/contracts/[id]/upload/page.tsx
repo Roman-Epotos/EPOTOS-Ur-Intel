@@ -23,7 +23,6 @@ export default function UploadVersionPage() {
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
     ]
 
     if (!allowed.includes(selected.type)) {
@@ -122,7 +121,7 @@ export default function UploadVersionPage() {
                 {!file && (
                   <input
                     type="file"
-                    accept=".pdf,.docx,.xlsx,.xls"
+                    accept=".pdf,.docx,.xlsx"
                     onChange={handleFileChange}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
