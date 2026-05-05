@@ -57,7 +57,7 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
         onClick={() => setShowModal(true)}
         className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
       >
-        Удалить договор
+        Удалить документ
       </button>
 
       {showModal && (
@@ -65,7 +65,7 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
           <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Удаление договора</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Вы собираетесь удалить договор <strong>{contractNumber}</strong>. Это действие необратимо — все версии, история и данные согласования будут удалены.
+              Вы собираетесь Удалить документ <strong>{contractNumber}</strong>. Это действие необратимо — все версии, история и данные согласования будут удалены.
             </p>
 
             {error && (
@@ -93,7 +93,7 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
                 disabled={deleting}
                 className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
               >
-                {deleting ? 'Удаление...' : 'Удалить договор'}
+                {deleting ? 'Удаление...' : 'Удалить документ'}
               </button>
               <button
                 onClick={() => { setShowModal(false); setReason(''); setError('') }}

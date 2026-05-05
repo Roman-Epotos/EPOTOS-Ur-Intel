@@ -392,7 +392,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
             </button>
             <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
               className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
-              📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт договора'}
+              📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт документа'}
             </button>
           </div>
         </div>
@@ -412,7 +412,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId }: P
             {latestPassport && (
               <button onClick={() => setActiveTab('passport')}
                 className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'passport' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                📄 Паспорт договора
+                📄 Паспорт документа
               </button>
             )}
             <button onClick={() => setActiveTab('chat')}

@@ -61,7 +61,7 @@ export default function PersonalStats() {
   )
 
   const items = [
-    { label: 'Всего договоров', value: stats.total, color: 'text-gray-900' },
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
     { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
     { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
     { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },

@@ -386,7 +386,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
             <div className="p-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты договора</h2>
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты документа</h2>
                   <div className="space-y-3">
                     {[
                       { label: 'Название', value: contract.title },

@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
       .from('contract_logs')
       .insert({
         contract_id,
-        action: analysis_type === 'legal_review' ? 'AI Legal Review выполнен' : 'AI Паспорт договора создан',
+        action: analysis_type === 'legal_review' ? 'AI Legal Review выполнен' : 'AI Паспорт документа создан',
         details: `Анализ выполнен моделью openrouter/auto`,
         user_name: user_name ?? 'Система',
       })

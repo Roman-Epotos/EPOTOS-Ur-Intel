@@ -143,7 +143,7 @@ export default function ContractsList() {
   })
 
   const roleLabels: Record<string, string> = {
-    admin: 'Все договоры (Администратор)',
+    admin: 'Все документы (Администратор)',
     director: 'Договоры компании',
     legal: 'Договоры на юридическом сопровождении',
     user: 'Мои договоры',
