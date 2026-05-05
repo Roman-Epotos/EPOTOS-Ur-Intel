@@ -115,3 +115,51 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  try {
+    const body = await request.json()
+    const { version_id, file_path, contract_id, user_name } = body
+
+    if (!version_id) {
+      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_path) {
+      await supabase.storage
+        .from('contracts')
+        .remove([file_path])
+    }
+
+    // Удаляем запись из базы
+    const { error } = await supabase
+      .from('versions')
+      .delete()
+      .eq('id', version_id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Версия документа удалена',
+        details: `Удалена версия документа`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

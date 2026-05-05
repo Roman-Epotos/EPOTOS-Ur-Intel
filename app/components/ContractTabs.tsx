@@ -447,10 +447,33 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         <p className="text-xs text-gray-400 mt-0.5">{new Date(version.created_at).toLocaleString('ru-RU')}</p>
                       </div>
                     </div>
-                    <a href={version.file_url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
-                      Скачать
-                    </a>
+                    <div className="flex gap-2">
+                      <a href={version.file_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
+                        Скачать
+                      </a>
+                      {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Удалить версию v${version.version_number}?`)) return
+                            const filePath = version.file_url.split('/contracts/')[1]
+                            await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                version_id: version.id,
+                                file_path: filePath,
+                                contract_id: contract.id,
+                                user_name: user?.name ?? 'Система',
+                              }),
+                            })
+                            window.location.reload()
+                          }}
+                          className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">
+                          Удалить
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
