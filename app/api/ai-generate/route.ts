@@ -95,7 +95,7 @@ ${templateContext}
         'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
         'X-Title': 'Epotos-YurIntel',
       },
-      body: JSON.stringify({
+      body: new TextEncoder().encode(JSON.stringify({
         model: 'qwen/qwen3.5-flash-02-23',
         messages: [
           { role: 'system', content: systemPrompt },
@@ -103,7 +103,7 @@ ${templateContext}
         ],
         max_tokens: 4000,
         temperature: 0.3,
-      }),
+      })),
     })
 
     const data = await response.json()
