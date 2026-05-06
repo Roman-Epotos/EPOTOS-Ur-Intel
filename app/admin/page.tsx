@@ -24,6 +24,7 @@ const COMPANIES = [
 const ADMIN_TABS = [
   { id: 'approval', label: 'Согласующие' },
   { id: 'templates', label: 'Шаблоны документов' },
+  { id: 'requisites', label: 'Реквизиты компаний' },
 ]
 
 interface Participant {
@@ -72,6 +73,30 @@ export default function AdminPage() {
     department: '',
   })
 
+  // Реквизиты
+  const [selectedCompany, setSelectedCompany] = useState('ТХ')
+  const [requisitesForm, setRequisitesForm] = useState({
+    company_prefix: 'ТХ',
+    company_name: '',
+    inn: '',
+    kpp: '',
+    ogrn: '',
+    legal_address: '',
+    actual_address: '',
+    bank_name: '',
+    bank_account: '',
+    bank_bik: '',
+    bank_corr_account: '',
+    director_name: '',
+    director_title: 'Генеральный директор',
+    phone: '',
+    email: '',
+    website: '',
+  })
+  const [savingRequisites, setSavingRequisites] = useState(false)
+  const [requisitesSuccess, setRequisitesSuccess] = useState('')
+  const [requisitesError, setRequisitesError] = useState('')
+
   // Шаблоны
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateFile, setTemplateFile] = useState<File | null>(null)
@@ -111,6 +136,54 @@ export default function AdminPage() {
     }
     if (adminTab === 'templates') loadTemplates()
   }, [adminTab])
+
+  // Загружаем реквизиты при смене компании
+  useEffect(() => {
+    const loadRequisites = async () => {
+      const res = await fetch(`${baseUrl}/api/company-requisites?prefix=${selectedCompany}`)
+      const data = await res.json()
+      if (data.requisites?.length > 0) {
+        setRequisitesForm(data.requisites[0])
+      } else {
+        setRequisitesForm(prev => ({
+          ...prev,
+          company_prefix: selectedCompany,
+          company_name: '',
+          inn: '', kpp: '', ogrn: '',
+          legal_address: '', actual_address: '',
+          bank_name: '', bank_account: '', bank_bik: '', bank_corr_account: '',
+          director_name: '', director_title: 'Генеральный директор',
+          phone: '', email: '', website: '',
+        }))
+      }
+    }
+    if (adminTab === 'requisites') loadRequisites()
+  }, [adminTab, selectedCompany])
+
+  const handleSaveRequisites = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingRequisites(true)
+    setRequisitesError('')
+    setRequisitesSuccess('')
+
+    const res = await fetch(`${baseUrl}/api/company-requisites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...requisitesForm,
+        company_prefix: selectedCompany,
+        admin_bitrix_id: parseInt(user?.id ?? '0'),
+      }),
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      setRequisitesError(data.error)
+    } else {
+      setRequisitesSuccess('Реквизиты сохранены')
+    }
+    setSavingRequisites(false)
+  }
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -356,6 +429,136 @@ export default function AdminPage() {
                 <button type="submit"
                   className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
                   Добавить
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Вкладка — Реквизиты */}
+        {adminTab === 'requisites' && (
+          <div className="space-y-6">
+            {requisitesError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{requisitesError}</div>}
+            {requisitesSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{requisitesSuccess}</div>}
+
+            {/* Выбор компании */}
+            <div className="flex gap-2">
+              {COMPANIES.map(c => (
+                <button key={c.id} onClick={() => setSelectedCompany(c.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCompany === c.id ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                  {c.id}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">
+                Реквизиты — {COMPANIES.find(c => c.id === selectedCompany)?.name}
+              </h2>
+              <form onSubmit={handleSaveRequisites} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Полное наименование</label>
+                    <input value={requisitesForm.company_name} onChange={e => setRequisitesForm(p => ({...p, company_name: e.target.value}))}
+                      placeholder='ООО "Техно"'
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ИНН</label>
+                    <input value={requisitesForm.inn} onChange={e => setRequisitesForm(p => ({...p, inn: e.target.value}))}
+                      placeholder="1234567890"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">КПП</label>
+                    <input value={requisitesForm.kpp} onChange={e => setRequisitesForm(p => ({...p, kpp: e.target.value}))}
+                      placeholder="123456789"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ОГРН</label>
+                    <input value={requisitesForm.ogrn} onChange={e => setRequisitesForm(p => ({...p, ogrn: e.target.value}))}
+                      placeholder="1234567890123"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Руководитель</label>
+                    <input value={requisitesForm.director_name} onChange={e => setRequisitesForm(p => ({...p, director_name: e.target.value}))}
+                      placeholder="Иванов Иван Иванович"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Должность руководителя</label>
+                    <input value={requisitesForm.director_title} onChange={e => setRequisitesForm(p => ({...p, director_title: e.target.value}))}
+                      placeholder="Генеральный директор"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Юридический адрес</label>
+                    <input value={requisitesForm.legal_address} onChange={e => setRequisitesForm(p => ({...p, legal_address: e.target.value}))}
+                      placeholder="г. Москва, ул. Примерная, д. 1"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Фактический адрес</label>
+                    <input value={requisitesForm.actual_address} onChange={e => setRequisitesForm(p => ({...p, actual_address: e.target.value}))}
+                      placeholder="г. Москва, ул. Примерная, д. 1"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+
+                  <div className="col-span-2 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Банковские реквизиты</p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Наименование банка</label>
+                    <input value={requisitesForm.bank_name} onChange={e => setRequisitesForm(p => ({...p, bank_name: e.target.value}))}
+                      placeholder="Банк ВТБ (ПАО)"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Расчётный счёт</label>
+                    <input value={requisitesForm.bank_account} onChange={e => setRequisitesForm(p => ({...p, bank_account: e.target.value}))}
+                      placeholder="40702810000000000000"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">БИК</label>
+                    <input value={requisitesForm.bank_bik} onChange={e => setRequisitesForm(p => ({...p, bank_bik: e.target.value}))}
+                      placeholder="044525187"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Корреспондентский счёт</label>
+                    <input value={requisitesForm.bank_corr_account} onChange={e => setRequisitesForm(p => ({...p, bank_corr_account: e.target.value}))}
+                      placeholder="30101810145250000411"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+
+                  <div className="col-span-2 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Контактная информация</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Телефон</label>
+                    <input value={requisitesForm.phone} onChange={e => setRequisitesForm(p => ({...p, phone: e.target.value}))}
+                      placeholder="+7 (495) 000-00-00"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                    <input value={requisitesForm.email} onChange={e => setRequisitesForm(p => ({...p, email: e.target.value}))}
+                      placeholder="info@epotos.ru"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Сайт</label>
+                    <input value={requisitesForm.website} onChange={e => setRequisitesForm(p => ({...p, website: e.target.value}))}
+                      placeholder="https://epotos.ru"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                </div>
+                <button type="submit" disabled={savingRequisites}
+                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  {savingRequisites ? 'Сохранение...' : 'Сохранить реквизиты'}
                 </button>
               </form>
             </div>
