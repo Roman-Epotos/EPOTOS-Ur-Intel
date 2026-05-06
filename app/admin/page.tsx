@@ -199,7 +199,7 @@ export default function AdminPage() {
     } else {
       setTemplateSuccess('Шаблон добавлен')
       setTemplateFile(null)
-      setTemplateForm({ name: '', type: '', company_prefix: '', description: '' })
+      setTemplateForm({ name: '', type: '', company_prefix: '', description: '', region: '' })
       const reload = await fetch(`${baseUrl}/api/templates`)
       const reloadData = await reload.json()
       setTemplates(reloadData.templates ?? [])
