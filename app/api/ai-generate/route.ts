@@ -162,10 +162,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return new NextResponse(buffer as unknown as BodyInit, {
+    const uint8 = new Uint8Array(buffer)
+
+    return new NextResponse(uint8, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="generated_${document_type}_${Date.now()}.docx"`,
+        'Content-Disposition': `attachment; filename="generated.docx"`,
         'X-Template-Used': templateUsed ? 'true' : 'false',
       },
     })
