@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.5-flash-02-23',
+        model: 'google/gemini-2.0-flash-001',
         messages,
         max_tokens: 1000,
         temperature: 0.3,
