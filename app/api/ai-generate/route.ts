@@ -48,6 +48,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
     }
 
+    console.log('ai-generate started', { document_type, company_prefix, region })
+
     // Ищем подходящий шаблон
     let templateContext = ''
     let templateUsed = false
@@ -89,6 +91,7 @@ export async function POST(request: NextRequest) {
       `- Output only the document text without explanations`,
     ].filter(Boolean).join('\n')
 
+    console.log('calling OpenRouter...')
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -116,6 +119,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Создаём DOCX файл
+    console.log('OpenRouter response status:', response.status)
     const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
 
     const paragraphs = generatedText.split('\n').map((line: string) => {
