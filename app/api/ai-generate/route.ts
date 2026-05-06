@@ -73,23 +73,46 @@ export async function POST(request: NextRequest) {
     }
 
     // Генерируем документ
-    const systemPrompt = `You are a legal document drafting expert for EPOTOS Group of Companies. Generate professional legal documents in Russian language. Always output complete, ready-to-use documents.`
+    const companyNames: Record<string, string> = {
+      'ТХ': 'ООО «Техно»',
+      'НПП': 'ООО «НПП ЭПОТОС»',
+      'СПТ': 'ООО «СПТ»',
+      'ОС': 'ООО «ОС»',
+      'Э-К': 'ООО «Эпотос-К»',
+    }
+    const companyName = companyNames[company_prefix ?? ''] ?? 'ГК ЭПОТОС'
 
-    const userPrompt = [
-      `Create a legal document of type: ${document_type}`,
-      `Company: ${company_prefix ?? 'not specified'}`,
-      `Counterparty: ${counterparty ?? 'not specified'}`,
-      `Region: ${region ?? 'Russia'}`,
-      `Task description: ${prompt}`,
-      templateContext ? `Use this template as a basis: ${templateContext}` : '',
-      `Requirements:`,
-      `- Write the complete document in Russian language`,
-      `- Include header with party details`,
-      `- Include all main sections and clauses`,
-      `- Include signature blocks`,
-      `- Include date and place`,
-      `- Output only the document text without explanations`,
-    ].filter(Boolean).join('\n')
+    const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
+
+    const templateInstruction = templateContext
+      ? `ВАЖНО: Используй следующий шаблон как точную основу документа. Сохраняй структуру, нумерацию разделов и ключевые условия шаблона. Заполни реквизиты сторон и адаптируй под конкретные условия задачи:\n\n${templateContext}`
+      : `Создай документ по стандартной структуре для данного типа документа по законодательству РФ.`
+
+    const userPrompt = `Составь ${document_type} со следующими параметрами:
+
+СТОРОНЫ:
+- Сторона 1 (наша компания): ${companyName}
+- Сторона 2 (контрагент): ${counterparty ?? 'указать наименование'}
+- Регион применения: ${region ?? 'Российская Федерация'}
+
+ЗАДАЧА:
+${prompt}
+
+${templateInstruction}
+
+ТРЕБОВАНИЯ К ДОКУМЕНТУ:
+1. Полные реквизиты обеих сторон (наименование, ИНН, адрес, банковские реквизиты — использовать шаблонные значения если не указаны)
+2. Предмет договора с конкретным описанием
+3. Права и обязанности сторон
+4. Цена и порядок расчётов
+5. Сроки исполнения
+6. Ответственность сторон
+7. Форс-мажор
+8. Порядок разрешения споров
+9. Заключительные положения
+10. Подписи и реквизиты сторон
+
+Выводи только текст документа. Не добавляй пояснений, комментариев или вступительных фраз.`
 
     console.log('calling OpenRouter...')
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -101,13 +124,13 @@ export async function POST(request: NextRequest) {
         'X-Title': 'EpotosYurIntel',
       },
       body: JSON.stringify({
-        model: 'qwen/qwen3.5-flash-02-23',
+        model: 'google/gemini-2.0-flash-001',
         messages: [
-          { role: 'system', content: systemPrompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) },
-          { role: 'user', content: userPrompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
-        max_tokens: 4000,
-        temperature: 0.3,
+        max_tokens: 6000,
+        temperature: 0.2,
       }),
     })
 
