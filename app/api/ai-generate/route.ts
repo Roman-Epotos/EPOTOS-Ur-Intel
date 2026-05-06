@@ -95,12 +95,12 @@ export async function POST(request: NextRequest) {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'Epotos-YurIntel',
+        'X-Title': 'EpotosYurIntel',
       },
       body: JSON.stringify({
         model: 'qwen/qwen3.5-flash-02-23',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: systemPrompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) },
           { role: 'user', content: userPrompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) },
         ],
         max_tokens: 4000,
