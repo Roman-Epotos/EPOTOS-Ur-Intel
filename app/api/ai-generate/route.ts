@@ -97,15 +97,15 @@ export async function POST(request: NextRequest) {
         'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
         'X-Title': 'Epotos-YurIntel',
       },
-      body: new TextEncoder().encode(JSON.stringify({
+      body: JSON.stringify({
         model: 'qwen/qwen3.5-flash-02-23',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          { role: 'user', content: userPrompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) },
         ],
         max_tokens: 4000,
         temperature: 0.3,
-      })),
+      }),
     })
 
     const data = await response.json()
