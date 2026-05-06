@@ -71,23 +71,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Генерируем документ
-    const systemPrompt = `You are a legal document drafting expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Generate professional legal documents in Russian language. Always output complete, ready-to-use documents.`
+    const systemPrompt = `You are a legal document drafting expert for EPOTOS Group of Companies. Generate professional legal documents in Russian language. Always output complete, ready-to-use documents.`
 
-    const userPrompt = `Создай ${document_type} документ на русском языке.
-
-Компания ЭПОТОС: ${company_prefix ?? 'не указана'}
-Контрагент: ${counterparty ?? 'не указан'}
-Регион: ${region ?? 'РФ'}
-Описание задачи: ${prompt}
-${templateContext}
-
-Создай полный профессиональный документ с:
-- Заголовком и реквизитами сторон
-- Основными разделами и пунктами
-- Подписями сторон
-- Датой и местом заключения
-
-Выводи только текст документа без пояснений.`
+    const userPrompt = [
+      `Create a legal document of type: ${document_type}`,
+      `Company: ${company_prefix ?? 'not specified'}`,
+      `Counterparty: ${counterparty ?? 'not specified'}`,
+      `Region: ${region ?? 'Russia'}`,
+      `Task description: ${prompt}`,
+      templateContext ? `Use this template as a basis: ${templateContext}` : '',
+      `Requirements:`,
+      `- Write the complete document in Russian language`,
+      `- Include header with party details`,
+      `- Include all main sections and clauses`,
+      `- Include signature blocks`,
+      `- Include date and place`,
+      `- Output only the document text without explanations`,
+    ].filter(Boolean).join('\n')
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
