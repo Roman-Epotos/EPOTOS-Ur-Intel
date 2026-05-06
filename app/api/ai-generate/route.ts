@@ -125,6 +125,8 @@ ${templateInstruction}
       },
       body: JSON.stringify({
         model: 'google/gemini-2.0-flash-001',
+        route: 'fallback',
+        models: ['google/gemini-2.0-flash-001', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
