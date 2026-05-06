@@ -647,6 +647,16 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
             </div>
           )}
 
+          {/* Генерация */}
+          {activeTab === 'generate' && (
+            <div className="p-6">
+              <AIGenerate
+                contractId={contract.id}
+                onGenerated={() => {}}
+              />
+            </div>
+          )}
+
           {/* Чат */}
           {activeTab === 'chat' && (
             <div className="p-6">

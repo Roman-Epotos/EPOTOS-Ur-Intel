@@ -489,7 +489,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {analyzing && (
+      {analyzing && activeTab !== 'chat' && (
         <div className="text-center py-8">
           <div className="text-2xl mb-2">🤖</div>
           <p className="text-sm text-gray-600">AI анализирует документ...</p>
@@ -497,7 +497,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && latestReview && latestReview.type === 'document_review' && (
+      {!analyzing && activeTab !== 'chat' && latestReview && latestReview.type === 'document_review' && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
@@ -506,7 +506,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && activeTab === 'legal_review' && latestReview && latestReview.type !== 'document_review' && (
+      {!analyzing && activeTab === 'legal_review' && activeTab !== 'chat' && latestReview && latestReview.type !== 'document_review' && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
@@ -515,7 +515,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && activeTab === 'passport' && latestPassport && (
+      {!analyzing && activeTab === 'passport' && activeTab !== 'chat' && latestPassport && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Создан {new Date(latestPassport.created_at).toLocaleString('ru-RU')} · {latestPassport.model_used}
