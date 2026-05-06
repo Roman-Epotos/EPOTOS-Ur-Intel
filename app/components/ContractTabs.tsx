@@ -339,7 +339,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
-    { id: 'generate', label: 'Генерация', icon: '✨' },
+    // { id: 'generate', label: 'Генерация', icon: '✨' }, // В разработке
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
