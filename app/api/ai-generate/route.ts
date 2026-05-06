@@ -111,17 +111,16 @@ export async function POST(request: NextRequest) {
       }),
     })
 
-    
+    console.log('OpenRouter response status:', response.status)
+    const data = await response.json()
+    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
+    const generatedText = data.choices?.[0]?.message?.content ?? ''
 
     if (!generatedText) {
       return NextResponse.json({ error: 'AI не вернул результат' }, { status: 400 })
     }
 
     // Создаём DOCX файл
-    console.log('OpenRouter response status:', response.status)
-    const data = await response.json()
-    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
-    const generatedText = data.choices?.[0]?.message?.content ?? ''
     const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
 
     const paragraphs = generatedText.split('\n').map((line: string) => {
