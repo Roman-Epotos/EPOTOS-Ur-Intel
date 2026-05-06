@@ -12,16 +12,18 @@ async function getTemplateText(fileUrl: string, fileName: string): Promise<strin
   try {
     const response = await fetch(fileUrl)
     const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    const uint8 = new Uint8Array(arrayBuffer)
+    const buffer = Buffer.from(uint8)
 
     if (fileName.toLowerCase().endsWith('.pdf')) {
       const { extractText } = await import('unpdf')
-      const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
-      return text.slice(0, 6000)
+      const { text } = await extractText(uint8, { mergePages: true })
+      // Encode to ASCII-safe string
+      return text.slice(0, 6000).replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c))
     } else if (fileName.toLowerCase().endsWith('.docx')) {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, 6000)
+      return result.value.slice(0, 6000).replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c))
     }
     return ''
   } catch {
