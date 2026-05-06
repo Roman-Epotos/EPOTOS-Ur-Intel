@@ -19,11 +19,11 @@ async function getTemplateText(fileUrl: string, fileName: string): Promise<strin
       const { extractText } = await import('unpdf')
       const { text } = await extractText(uint8, { mergePages: true })
       // Encode to ASCII-safe string
-      return text.slice(0, 6000).replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c))
+      return text.slice(0, 12000)
     } else if (fileName.toLowerCase().endsWith('.docx')) {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, 6000).replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c))
+      return result.value.slice(0, 12000)
     }
     return ''
   } catch {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       const template = templates[0]
       const text = await getTemplateText(template.file_url, template.file_name)
       if (text) {
-        templateContext = `\n\nИспользуй следующий шаблон как основу:\n${text}`
+        templateContext = text
         templateUsed = true
       }
     }
@@ -85,8 +85,19 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
 
     const templateInstruction = templateContext
-      ? `ВАЖНО: Используй следующий шаблон как точную основу документа. Сохраняй структуру, нумерацию разделов и ключевые условия шаблона. Заполни реквизиты сторон и адаптируй под конкретные условия задачи:\n\n${templateContext}`
-      : `Создай документ по стандартной структуре для данного типа документа по законодательству РФ.`
+      ? `КРИТИЧЕСКИ ВАЖНО: Ниже приведён корпоративный шаблон документа. Ты ОБЯЗАН:
+1. Сохранить ВСЕ разделы и пункты шаблона без исключения
+2. Сохранить нумерацию и структуру разделов точно как в шаблоне
+3. Сохранить ВСЕ условия, формулировки и специальные оговорки из шаблона
+4. Только заменить: наименования сторон, реквизиты, предмет договора и конкретные параметры сделки
+5. НЕ упрощать, НЕ сокращать, НЕ удалять разделы шаблона
+
+ШАБЛОН ДОКУМЕНТА:
+---
+${templateContext}
+---
+Конец шаблона. Создай документ строго по этой структуре с учётом параметров задачи.`
+      : `Создай полный профессиональный документ по стандартной структуре для данного типа по законодательству РФ. Включи все стандартные разделы без сокращений.`
 
     const userPrompt = `Составь ${document_type} со следующими параметрами:
 
