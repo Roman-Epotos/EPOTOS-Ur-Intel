@@ -73,22 +73,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Генерируем документ
-    const companyDetails: Record<string, string> = {
-      'ТХ': 'ООО «Техно», ИНН: [ИНН ТХ], КПП: [КПП ТХ], Адрес: [адрес ТХ], р/с: [р/с ТХ] в Банк ВТБ (ПАО), БИК: [БИК], к/с: [к/с]',
-      'НПП': 'ООО «НПП ЭПОТОС», ИНН: [ИНН НПП], КПП: [КПП НПП], Адрес: [адрес НПП], р/с: [р/с НПП] в Банк ВТБ (ПАО), БИК: [БИК], к/с: [к/с]',
-      'СПТ': 'ООО «СПТ», ИНН: [ИНН СПТ], КПП: [КПП СПТ], Адрес: [адрес СПТ], р/с: [р/с СПТ] в Банк ВТБ (ПАО), БИК: [БИК], к/с: [к/с]',
-      'ОС': 'ООО «ОС», ИНН: [ИНН ОС], КПП: [КПП ОС], Адрес: [адрес ОС], р/с: [р/с ОС] в Банк ВТБ (ПАО), БИК: [БИК], к/с: [к/с]',
-      'Э-К': 'ООО «Эпотос-К», ИНН: [ИНН ЭК], КПП: [КПП ЭК], Адрес: [адрес ЭК], р/с: [р/с ЭК] в Банк ВТБ (ПАО), БИК: [БИК], к/с: [к/с]',
+    // Загружаем реквизиты компании из базы
+    let companyName = 'ГК ЭПОТОС'
+    let companyRequisites = 'ГК ЭПОТОС, реквизиты не заполнены — обратитесь к администратору'
+
+    if (company_prefix) {
+      const { data: reqData } = await supabase
+        .from('company_requisites')
+        .select('*')
+        .eq('company_prefix', company_prefix)
+        .single()
+
+      if (reqData) {
+        companyName = reqData.company_name || company_prefix
+        companyRequisites = [
+          reqData.company_name,
+          reqData.inn ? `ИНН: ${reqData.inn}` : '',
+          reqData.kpp ? `КПП: ${reqData.kpp}` : '',
+          reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
+          reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
+          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
+          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
+          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
+          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
+          reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
+        ].filter(Boolean).join(', ')
+      }
     }
-    const companyNames: Record<string, string> = {
-      'ТХ': 'ООО «Техно»',
-      'НПП': 'ООО «НПП ЭПОТОС»',
-      'СПТ': 'ООО «СПТ»',
-      'ОС': 'ООО «ОС»',
-      'Э-К': 'ООО «Эпотос-К»',
-    }
-    const companyName = companyNames[company_prefix ?? ''] ?? 'ГК ЭПОТОС'
-    const companyRequisites = companyDetails[company_prefix ?? ''] ?? 'ГК ЭПОТОС, реквизиты уточнить'
 
     const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
 
