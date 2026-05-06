@@ -6,6 +6,7 @@ import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import AIAnalysis from '@/app/components/AIAnalysis'
+import AIGenerate from '@/app/components/AIGenerate'
 import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
@@ -338,6 +339,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
+    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
