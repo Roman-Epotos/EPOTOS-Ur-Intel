@@ -506,7 +506,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && activeTab === 'legal_review' && activeTab !== 'chat' && latestReview && latestReview.type !== 'document_review' && (
+      {!analyzing && activeTab === 'legal_review' && latestReview && latestReview.type !== 'document_review' && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
