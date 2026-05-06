@@ -515,7 +515,7 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
         </div>
       )}
 
-      {!analyzing && activeTab === 'passport' && activeTab !== 'chat' && latestPassport && (
+      {!analyzing && activeTab === 'passport' && latestPassport && (
         <div>
           <p className="text-xs text-gray-400 mb-3">
             Создан {new Date(latestPassport.created_at).toLocaleString('ru-RU')} · {latestPassport.model_used}
