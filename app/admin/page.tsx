@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { DOCUMENT_TYPES } from '@/app/lib/documentTypes'
+import { DOCUMENT_TYPES, REGIONS } from '@/app/lib/documentTypes'
 
 const STAGES = [
   { id: 'legal', label: 'Юридический отдел' },
@@ -75,7 +75,7 @@ export default function AdminPage() {
   // Шаблоны
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateFile, setTemplateFile] = useState<File | null>(null)
-  const [templateForm, setTemplateForm] = useState({ name: '', type: '', company_prefix: '', description: '' })
+  const [templateForm, setTemplateForm] = useState({ name: '', type: '', company_prefix: '', description: '', region: '' })
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateSuccess, setTemplateSuccess] = useState('')
   const [templateError, setTemplateError] = useState('')
@@ -188,6 +188,7 @@ export default function AdminPage() {
     formData.append('type', templateForm.type)
     formData.append('company_prefix', templateForm.company_prefix)
     formData.append('description', templateForm.description)
+    formData.append('region', templateForm.region)
     formData.append('admin_bitrix_id', user?.id ?? '0')
 
     const res = await fetch(`${baseUrl}/api/templates`, { method: 'POST', body: formData })
@@ -431,6 +432,13 @@ export default function AdminPage() {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Регион</label>
+                    <select value={templateForm.region} onChange={e => setTemplateForm(p => ({...p, region: e.target.value}))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                      {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Описание</label>
                     <input value={templateForm.description} onChange={e => setTemplateForm(p => ({...p, description: e.target.value}))}
                       placeholder="Краткое описание шаблона"
@@ -439,10 +447,28 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Файл шаблона <span className="text-red-500">*</span></label>
-                  <input type="file" accept=".pdf,.docx,.xlsx"
-                    onChange={e => setTemplateFile(e.target.files?.[0] ?? null)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  {templateFile && <p className="text-xs text-gray-500 mt-1">Выбран: {templateFile.name}</p>}
+                  <div className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-colors ${templateFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                    {templateFile ? (
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{templateFile.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">{(templateFile.size / 1024 / 1024).toFixed(2)} МБ</p>
+                        <button type="button" onClick={() => setTemplateFile(null)}
+                          className="mt-2 text-xs text-red-500 hover:text-red-700 underline">
+                          Удалить
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Нажмите для выбора файла</p>
+                        <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 50 МБ</p>
+                      </div>
+                    )}
+                    {!templateFile && (
+                      <input type="file" accept=".pdf,.docx,.xlsx"
+                        onChange={e => setTemplateFile(e.target.files?.[0] ?? null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    )}
+                  </div>
                 </div>
                 <button type="submit" disabled={uploadingTemplate}
                   className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">

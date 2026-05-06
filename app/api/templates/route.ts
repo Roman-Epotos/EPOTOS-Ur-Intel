@@ -66,7 +66,16 @@ export async function POST(request: NextRequest) {
         }
         return map[char] ?? char
       })
-    const filePath = `${company_prefix ?? 'general'}/${Date.now()}_${safeFileName}`
+    const safePrefix = (company_prefix ?? 'general')
+      .replace(/[а-яёА-ЯЁ]/g, (char) => {
+        const map: Record<string, string> = {
+          'ТХ':'TX','НПП':'NPP','СПТ':'SPT','ОС':'OS','Э-К':'EK',
+          'т':'t','х':'h','н':'n','п':'p','с':'s','о':'o','э':'e','к':'k'
+        }
+        return map[char] ?? char
+      })
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+    const filePath = `${safePrefix}/${Date.now()}_${safeFileName}`
     const arrayBuffer = await file.arrayBuffer()
 
     const { error: uploadError } = await supabase.storage
