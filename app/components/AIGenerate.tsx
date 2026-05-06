@@ -32,10 +32,17 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
+  const AVAILABLE_TYPES = ['письмо', 'служебная-записка']
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.prompt || !form.document_type) {
       setError('Заполните описание задачи и тип документа')
+      return
+    }
+
+    if (!AVAILABLE_TYPES.includes(form.document_type)) {
+      setError('Генерация для данного типа документа находится в разработке. Сейчас доступно: Письмо, Служебная записка.')
       return
     }
 
