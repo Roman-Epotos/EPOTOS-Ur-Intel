@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         fileType: fileExt,
         key: documentKey,
         title: fileName,
-        url: version.file_url,
+        url: `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?version_id=${version_id}`,
         permissions: {
           edit: mode !== 'view',
           download: true,
