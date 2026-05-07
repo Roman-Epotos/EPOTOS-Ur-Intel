@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
     // Подписываем JWT
     const token = jwt.sign(config, JWT_SECRET, { algorithm: 'HS256' })
 
+    console.log('OnlyOffice config:', JSON.stringify(config))
+    console.log('JWT token:', token)
+
     return NextResponse.json({
       config,
       token,
