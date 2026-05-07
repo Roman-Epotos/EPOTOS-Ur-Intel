@@ -53,6 +53,7 @@ function EditorContent() {
         script.src = `${onlyofficeUrl}/web-apps/apps/api/documents/api.js`
         script.onload = () => {
           setLoading(false)
+          document.title = 'Эпотос-ЮрИнтел — Редактор'
           new window.DocsAPI.DocEditor('onlyoffice-editor', {
             ...data.config,
             token: data.token,
