@@ -55,8 +55,9 @@ function EditorContent() {
           new window.DocsAPI.DocEditor('onlyoffice-editor', {
             ...data.config,
             token: data.token,
-            height: '100%',
+            height: '100vh',
             width: '100%',
+            type: 'desktop',
           })
         }
         script.onerror = () => {
@@ -91,7 +92,7 @@ function EditorContent() {
           <p className="text-gray-500 text-sm">Загрузка редактора...</p>
         </div>
       )}
-      <div id="onlyoffice-editor" className="flex-1 w-full h-screen" />
+      <div id="onlyoffice-editor" style={{width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0}} />
     </div>
   )
 }
