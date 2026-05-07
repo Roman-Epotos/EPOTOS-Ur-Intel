@@ -25,6 +25,8 @@ function EditorContent() {
   const onlyofficeUrl = 'https://office.epotos-port.ru'
 
   useEffect(() => {
+    document.title = 'Эпотос-ЮрИнтел — Редактор'
+
     if (!version_id) return
 
     const initEditor = async () => {
