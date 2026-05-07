@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
@@ -12,7 +13,7 @@ declare global {
   }
 }
 
-export default function EditorPage() {
+function EditorContent() {
   const searchParams = useSearchParams()
   const version_id = searchParams.get('version_id')
   const mode = searchParams.get('mode') ?? 'edit'
@@ -28,7 +29,6 @@ export default function EditorPage() {
 
     const initEditor = async () => {
       try {
-        // Получаем конфигурацию от нашего API
         const res = await fetch(`${baseUrl}/api/onlyoffice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -46,7 +46,6 @@ export default function EditorPage() {
           return
         }
 
-        // Загружаем скрипт OnlyOffice
         const script = document.createElement('script')
         script.src = `${onlyofficeUrl}/web-apps/apps/api/documents/api.js`
         script.onload = () => {
@@ -92,5 +91,17 @@ export default function EditorPage() {
       )}
       <div id="onlyoffice-editor" className="flex-1 w-full h-screen" />
     </div>
+  )
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Загрузка...</p>
+      </div>
+    }>
+      <EditorContent />
+    </Suspense>
   )
 }
