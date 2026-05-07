@@ -3,7 +3,6 @@
 import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 declare global {
   interface Window {
@@ -26,7 +25,6 @@ function EditorContent() {
   const onlyofficeUrl = 'https://office.epotos-port.ru'
 
   useEffect(() => {
-    console.log('Editor init:', { version_id, user_name })
     if (!version_id) return
 
     const initEditor = async () => {
@@ -45,6 +43,7 @@ function EditorContent() {
         const data = await res.json()
         if (!res.ok) {
           setError(data.error)
+          setLoading(false)
           return
         }
 
@@ -55,7 +54,7 @@ function EditorContent() {
           new window.DocsAPI.DocEditor('onlyoffice-editor', {
             ...data.config,
             token: data.token,
-            height: '100vh',
+            height: '100%',
             width: '100%',
             type: 'desktop',
           })
@@ -76,23 +75,23 @@ function EditorContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 font-medium">Ошибка</p>
-          <p className="text-gray-500 text-sm mt-1">{error}</p>
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+        <div style={{textAlign:'center'}}>
+          <p style={{color:'red', fontWeight:500}}>Ошибка</p>
+          <p style={{color:'gray', fontSize:14, marginTop:4}}>{error}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div style={{position:'fixed', top:0, left:0, width:'100vw', height:'100vh', overflow:'hidden'}}>
       {loading && (
-        <div className="flex items-center justify-center h-screen">
-          <p className="text-gray-500 text-sm">Загрузка редактора...</p>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+          <p style={{color:'gray', fontSize:14}}>Загрузка редактора...</p>
         </div>
       )}
-      <div id="onlyoffice-editor" style={{width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0}} />
+      <div id="onlyoffice-editor" style={{width:'100%', height:'100%'}} />
     </div>
   )
 }
@@ -100,8 +99,8 @@ function EditorContent() {
 export default function EditorPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500 text-sm">Загрузка...</p>
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+        <p style={{color:'gray', fontSize:14}}>Загрузка...</p>
       </div>
     }>
       <EditorContent />
