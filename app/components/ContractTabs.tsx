@@ -456,7 +456,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         Скачать
                       </a>
                       {(version.file_name.endsWith('.docx') || version.file_name.endsWith('.xlsx')) && (
-                        <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit`}
+                        <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
                           target="_blank" rel="noopener noreferrer"
                           className="text-xs text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700">
                           ✏️ Редактировать

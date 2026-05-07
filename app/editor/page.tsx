@@ -17,7 +17,8 @@ function EditorContent() {
   const searchParams = useSearchParams()
   const version_id = searchParams.get('version_id')
   const mode = searchParams.get('mode') ?? 'edit'
-  const { user } = useBitrixAuth()
+  const user_id = searchParams.get('user_id') ?? ''
+  const user_name = searchParams.get('user_name') ?? 'Пользователь'
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -25,11 +26,8 @@ function EditorContent() {
   const onlyofficeUrl = 'https://office.epotos-port.ru'
 
   useEffect(() => {
-    console.log('Editor init:', { version_id, user: user?.name })
-    if (!version_id || !user) {
-      console.log('Missing version_id or user - waiting...')
-      return
-    }
+    console.log('Editor init:', { version_id, user_name })
+    if (!version_id) return
 
     const initEditor = async () => {
       try {
@@ -38,8 +36,8 @@ function EditorContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             version_id,
-            user_name: user.name,
-            user_id: user.id,
+            user_name,
+            user_id,
             mode,
           }),
         })
@@ -73,7 +71,7 @@ function EditorContent() {
     }
 
     initEditor()
-  }, [version_id, user])
+  }, [version_id])
 
   if (error) {
     return (
