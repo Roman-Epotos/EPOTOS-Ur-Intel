@@ -25,7 +25,11 @@ function EditorContent() {
   const onlyofficeUrl = 'https://office.epotos-port.ru'
 
   useEffect(() => {
-    if (!version_id || !user) return
+    console.log('Editor init:', { version_id, user: user?.name })
+    if (!version_id || !user) {
+      console.log('Missing version_id or user - waiting...')
+      return
+    }
 
     const initEditor = async () => {
       try {
