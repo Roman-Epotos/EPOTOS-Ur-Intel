@@ -12,6 +12,7 @@
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "docx": "^9.6.1",
+    "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.0",
     "next": "16.2.3",
     "pdf-parse": "^2.4.5",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

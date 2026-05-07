@@ -455,6 +455,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                         Скачать
                       </a>
+                      {(version.file_name.endsWith('.docx') || version.file_name.endsWith('.xlsx')) && (
+                        <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700">
+                          ✏️ Редактировать
+                        </a>
+                      )}
                       {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
                         <button
                           onClick={async () => {
