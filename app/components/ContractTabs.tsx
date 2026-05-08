@@ -407,7 +407,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   </div>
                 </div>
                 <div>
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">История действий</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">История действий</h2>
+                    <button onClick={() => window.location.reload()}
+                      className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">
+                      🔄 Обновить
+                    </button>
+                  </div>
                   <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
                     {logs.length === 0 ? (
                       <p className="text-sm text-gray-400">История пуста</p>
