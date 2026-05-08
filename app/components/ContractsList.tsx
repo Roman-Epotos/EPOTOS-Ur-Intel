@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
-function ChatIndicator({ contractId, unreadCount }: { contractId: string, unreadCount: number }) {
+function ChatIndicator({ contractId, unreadCount, lastMessageAt }: { contractId: string, unreadCount: number, lastMessageAt: string | null }) {
   const [displayCount, setDisplayCount] = useState(unreadCount)
 
   const refresh = () => {
@@ -22,8 +22,8 @@ function ChatIndicator({ contractId, unreadCount }: { contractId: string, unread
     // API считает новыми сообщения за последние 24 часа
     // Если пользователь читал чат после того как пришли новые сообщения — обнуляем
     const lastRead = new Date(lastReadStr).getTime()
-    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
-    if (lastRead > oneDayAgo) {
+    const lastMsg = lastMessageAt ? new Date(lastMessageAt).getTime() : 0
+    if (lastRead >= lastMsg) {
       setDisplayCount(0)
     } else {
       setDisplayCount(unreadCount)
@@ -57,6 +57,7 @@ interface Contract {
   has_files?: boolean
   file_type?: string | null
   unread_messages?: number
+  last_message_at?: string | null
 }
 
 interface UserRole {
@@ -294,7 +295,7 @@ export default function ContractsList() {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <ChatIndicator contractId={contract.id} unreadCount={contract.unread_messages ?? 0} />
+                  <ChatIndicator contractId={contract.id} unreadCount={contract.unread_messages ?? 0} lastMessageAt={contract.last_message_at ?? null} />
                 </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>

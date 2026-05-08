@@ -99,6 +99,7 @@ export async function GET(request: NextRequest) {
     // Получаем количество сообщений в чатах согласования
     const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
     let unreadMap: Record<string, number> = {}
+    let lastMsgTimeMap: Record<string, string> = {}
 
     if (contractIds2.length > 0) {
       const { data: sessions } = await supabase
@@ -120,13 +121,12 @@ export async function GET(request: NextRequest) {
           .in('session_id', sessionIds)
           .order('created_at', { ascending: false })
 
-        // Считаем сообщения за последние 24 часа как "новые"
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
         ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
-          if (m.created_at > oneDayAgo) {
-            const contractId = sessionContractMap[m.session_id]
-            if (contractId) {
-              unreadMap[contractId] = (unreadMap[contractId] ?? 0) + 1
+          const contractId = sessionContractMap[m.session_id]
+          if (contractId) {
+            unreadMap[contractId] = (unreadMap[contractId] ?? 0) + 1
+            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
+              lastMsgTimeMap[contractId] = m.created_at
             }
           }
         })
@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
       has_files: versionsMap[c.id] ?? false,
       file_type: fileTypeMap[c.id] ?? null,
       unread_messages: unreadMap[c.id] ?? 0,
+      last_message_at: lastMsgTimeMap[c.id] ?? null,
     }))
 
     if (error) {
