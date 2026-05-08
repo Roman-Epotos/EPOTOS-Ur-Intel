@@ -56,12 +56,18 @@ export async function POST(request: NextRequest) {
       if (uploadError) {
         console.error('Upload error:', uploadError)
       } else {
+        // Получаем имена пользователей из callback
+        const editors = body.users ?? []
+        const userNames = editors.length > 0
+          ? editors.join(', ')
+          : 'Неизвестный пользователь'
+
         // Записываем в лог
         await supabase.from('contract_logs').insert({
           contract_id: version.contract_id,
           action: 'Документ отредактирован в OnlyOffice',
-          details: `Файл: ${version.file_name}`,
-          user_name: 'OnlyOffice',
+          details: `Файл: ${version.file_name}. Редактировал(и): ${userNames}`,
+          user_name: userNames,
         })
       }
     }
