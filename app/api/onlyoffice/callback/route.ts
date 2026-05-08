@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
+    console.log('OnlyOffice body:', JSON.stringify(body))
 
     // Статусы OnlyOffice:
     // 1 - документ редактируется
