@@ -15,30 +15,52 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { version_id, attachment_id, user_name, user_id, mode } = body
 
-    if (!version_id) {
-      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
+    if (!version_id && !attachment_id) {
+      return NextResponse.json({ error: 'version_id или attachment_id обязателен' }, { status: 400 })
     }
 
-    // Получаем версию документа
-    const { data: version } = await supabase
-      .from('versions')
-      .select('*, contracts(id, title, number)')
-      .eq('id', version_id)
-      .single()
+    let fileName: string
+    let fileExt: string | undefined
+    let recordId: string
+    let fileApiUrl: string
 
-    if (!version) {
-      return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
+    if (version_id) {
+      const { data: version } = await supabase
+        .from('versions')
+        .select('*, contracts(id, title, number)')
+        .eq('id', version_id)
+        .single()
+
+      if (!version) {
+        return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
+      }
+
+      fileName = version.file_name
+      fileExt = fileName.split('.').pop()?.toLowerCase()
+      recordId = version_id
+      fileApiUrl = `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?version_id=${version_id}`
+    } else {
+      const { data: attachment } = await supabase
+        .from('document_attachments')
+        .select('*')
+        .eq('id', attachment_id)
+        .single()
+
+      if (!attachment) {
+        return NextResponse.json({ error: 'Вложение не найдено' }, { status: 404 })
+      }
+
+      fileName = attachment.file_name
+      fileExt = fileName.split('.').pop()?.toLowerCase()
+      recordId = attachment_id
+      fileApiUrl = `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?attachment_id=${attachment_id}`
     }
-
-    const fileName = version.file_name
-    const fileExt = fileName.split('.').pop()?.toLowerCase()
 
     // Определяем тип документа для OnlyOffice
     const docType = fileExt === 'xlsx' || fileExt === 'xls' ? 'cell' :
                     fileExt === 'docx' || fileExt === 'doc' ? 'word' : 'word'
 
-    const recordId = version_id || attachment_id
-  const documentKey = `${recordId}_${Date.now()}`
+    const documentKey = `${recordId}_${Date.now()}`
 
     // Конфигурация OnlyOffice
     const config = {
@@ -46,7 +68,7 @@ export async function POST(request: NextRequest) {
         fileType: fileExt,
         key: documentKey,
         title: fileName,
-        url: `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?version_id=${version_id}`,
+        url: fileApiUrl,
         permissions: {
           edit: mode !== 'view',
           download: true,

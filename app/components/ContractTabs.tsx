@@ -729,20 +729,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                           {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
                         </div>
                         <div className="flex gap-2">
-                          {(att.file_name.endsWith('.docx') || att.file_name.endsWith('.xlsx')) && (
-                            <>
-                              <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${att.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
-                                target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
-                                👁️ Просмотр
-                              </a>
-                              <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
-                                target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
-                                ✏️ Редактировать
-                              </a>
-                            </>
-                          )}
+                          
                           {(att.file_name.endsWith('.docx') || att.file_name.endsWith('.xlsx')) && (
                             <>
                               <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}

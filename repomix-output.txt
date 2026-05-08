@@ -267,6 +267,84 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/approvals/[sessionId]/participants/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { user_name, bitrix_user_id, department, role, stage, added_by_name, contract_id } = body
+
+    if (!user_name || !role || !stage) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    }
+
+    // Проверяем что сессия активна
+    const { data: session } = await supabase
+      .from('approval_sessions')
+      .select('id, status')
+      .eq('id', sessionId)
+      .single()
+
+    if (!session || session.status !== 'active') {
+      return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
+    }
+
+    // Добавляем участника
+    const { error: insertError } = await supabase
+      .from('approval_participants')
+      .insert({
+        session_id: sessionId,
+        user_name,
+        bitrix_user_id: bitrix_user_id ?? null,
+        department: department ?? null,
+        role,
+        stage,
+        status: 'pending',
+      })
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 400 })
+    }
+
+    // Сообщение в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `➕ ${added_by_name} добавил участника: ${user_name} (${role === 'required' ? 'Обязательный' : 'Для информирования'})`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Добавлен участник согласования',
+        details: `${user_name} — ${role === 'required' ? 'обязательный' : 'для информирования'}`,
+        user_name: added_by_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/bitrix/auth/route.ts">
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -1700,25 +1778,6 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 </file>
 
-<file path="repomix.config.json">
-{
-  "output": {
-    "filePath": "repomix-output.txt"
-  },
-  "ignore": {
-    "customPatterns": [
-      "node_modules/**",
-      ".next/**",
-      ".env*",
-      "*.lock",
-      "*.xml",
-      "repomix-output.txt",
-      "public/**"
-    ]
-  }
-}
-</file>
-
 <file path="tsconfig.json">
 {
   "compilerOptions": {
@@ -1944,84 +2003,6 @@ export async function DELETE(
 }
 </file>
 
-<file path="app/api/approvals/[sessionId]/participants/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { user_name, bitrix_user_id, department, role, stage, added_by_name, contract_id } = body
-
-    if (!user_name || !role || !stage) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
-    }
-
-    // Проверяем что сессия активна
-    const { data: session } = await supabase
-      .from('approval_sessions')
-      .select('id, status')
-      .eq('id', sessionId)
-      .single()
-
-    if (!session || session.status !== 'active') {
-      return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
-    }
-
-    // Добавляем участника
-    const { error: insertError } = await supabase
-      .from('approval_participants')
-      .insert({
-        session_id: sessionId,
-        user_name,
-        bitrix_user_id: bitrix_user_id ?? null,
-        department: department ?? null,
-        role,
-        stage,
-        status: 'pending',
-      })
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 400 })
-    }
-
-    // Сообщение в чат
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: `➕ ${added_by_name} добавил участника: ${user_name} (${role === 'required' ? 'Обязательный' : 'Для информирования'})`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Добавлен участник согласования',
-        details: `${user_name} — ${role === 'required' ? 'обязательный' : 'для информирования'}`,
-        user_name: added_by_name ?? 'Система',
-      })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/approvals/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2138,166 +2119,6 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ session: session ?? null })
-}
-</file>
-
-<file path="app/api/attachments/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const contract_id = request.nextUrl.searchParams.get('contract_id')
-  if (!contract_id) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from('document_attachments')
-    .select('*')
-    .eq('contract_id', contract_id)
-    .order('attachment_type')
-    .order('number')
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ attachments: data ?? [] })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const contract_id = formData.get('contract_id') as string
-    const attachment_type = formData.get('attachment_type') as string
-    const title = formData.get('title') as string
-    const comment = formData.get('comment') as string
-    const user_name = formData.get('user_name') as string
-    const user_bitrix_id = formData.get('user_bitrix_id') as string
-
-    if (!file || !contract_id || !attachment_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    // Получаем следующий номер для данного типа
-    const { count } = await supabase
-      .from('document_attachments')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contract_id)
-      .eq('attachment_type', attachment_type)
-
-    const nextNumber = (count ?? 0) + 1
-
-    // Транслитерация имени файла
-    const safeFileName = file.name.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
-      const map: Record<string, string> = {
-        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-        'э':'e','ю':'yu','я':'ya',' ':'_',
-        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
-        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
-        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
-        'Э':'E','Ю':'Yu','Я':'Ya'
-      }
-      return map[char] ?? '_'
-    })
-
-    const filePath = `attachments/${contract_id}/${attachment_type}_${nextNumber}_${Date.now()}_${safeFileName}`
-    const arrayBuffer = await file.arrayBuffer()
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
-
-    const { error: dbError } = await supabase
-      .from('document_attachments')
-      .insert({
-        contract_id,
-        attachment_type,
-        number: nextNumber,
-        title: title || null,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        comment: comment || null,
-        uploaded_by_name: user_name || null,
-        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
-      })
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: `Загружено: ${attachment_type} №${nextNumber}`,
-      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, file_url, contract_id, user_name } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_url) {
-      const filePath = file_url.split('/contracts/')[1]
-      if (filePath) {
-        await supabase.storage.from('contracts').remove([filePath])
-      }
-    }
-
-    const { error } = await supabase
-      .from('document_attachments')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: 'Дополнительный материал удалён',
-      details: `Файл удалён`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
 }
 </file>
 
@@ -2871,6 +2692,25 @@ export function renderDocumentTypeOptions() {
 }
 </file>
 
+<file path="repomix.config.json">
+{
+  "output": {
+    "filePath": "repomix-output.txt"
+  },
+  "ignore": {
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      ".env*",
+      "*.lock",
+      "*.xml",
+      "repomix-output.txt",
+      "public/**"
+    ]
+  }
+}
+</file>
+
 <file path="app/api/ai-chat/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3011,6 +2851,179 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ messages: data ?? [] })
+}
+</file>
+
+<file path="app/api/attachments/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const contract_id = request.nextUrl.searchParams.get('contract_id')
+  if (!contract_id) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('document_attachments')
+    .select('*')
+    .eq('contract_id', contract_id)
+    .order('attachment_type')
+    .order('number')
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ attachments: data ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+    const contract_id = formData.get('contract_id') as string
+    const attachment_type = formData.get('attachment_type') as string
+    const title = formData.get('title') as string
+    const comment = formData.get('comment') as string
+    const user_name = formData.get('user_name') as string
+    const user_bitrix_id = formData.get('user_bitrix_id') as string
+
+    if (!file || !contract_id || !attachment_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    // Получаем следующий номер для данного типа
+    const { count } = await supabase
+      .from('document_attachments')
+      .select('*', { count: 'exact', head: true })
+      .eq('contract_id', contract_id)
+      .eq('attachment_type', attachment_type)
+
+    const nextNumber = (count ?? 0) + 1
+
+    // Транслитерация имени файла
+    const safeFileName = file.name.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+      const map: Record<string, string> = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+        'э':'e','ю':'yu','я':'ya',' ':'_',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+        'Э':'E','Ю':'Yu','Я':'Ya'
+      }
+      return map[char] ?? '_'
+    })
+
+    const safeType = attachment_type.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+      const map: Record<string, string> = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+        'э':'e','ю':'yu','я':'ya',' ':'_',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+        'Э':'E','Ю':'Yu','Я':'Ya'
+      }
+      return map[char] ?? '_'
+    })
+    const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${safeFileName}`
+    const arrayBuffer = await file.arrayBuffer()
+
+    const { error: uploadError } = await supabase.storage
+      .from('contracts')
+      .upload(filePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('contracts')
+      .getPublicUrl(filePath)
+
+    const { error: dbError } = await supabase
+      .from('document_attachments')
+      .insert({
+        contract_id,
+        attachment_type,
+        number: nextNumber,
+        title: title || null,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        comment: comment || null,
+        uploaded_by_name: user_name || null,
+        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
+      })
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: `Загружено: ${attachment_type} №${nextNumber}`,
+      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, file_url, contract_id, user_name } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_url) {
+      const filePath = file_url.split('/contracts/')[1]
+      if (filePath) {
+        await supabase.storage.from('contracts').remove([filePath])
+      }
+    }
+
+    const { error } = await supabase
+      .from('document_attachments')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Дополнительный материал удалён',
+      details: `Файл удалён`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
@@ -4532,92 +4545,154 @@ export async function PATCH(
 }
 </file>
 
-<file path="app/api/onlyoffice/route.ts">
+<file path="app/api/contracts-list/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import * as jwt from 'jsonwebtoken'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SECRET_KEY!
 )
 
-const ONLYOFFICE_URL = process.env.ONLYOFFICE_URL ?? 'https://office.epotos-port.ru'
-const JWT_SECRET = process.env.ONLYOFFICE_JWT_SECRET ?? 'epotos_office_secret_2026'
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  const role = request.nextUrl.searchParams.get('role')
+  const companiesParam = request.nextUrl.searchParams.get('companies')
 
-export async function POST(request: NextRequest) {
+  if (!bitrixUserId || !role) {
+    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
   try {
-    const body = await request.json()
-    const { version_id, user_name, user_id, mode } = body
+    let query = supabase
+      .from('contracts')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    if (!version_id) {
-      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
+    if (role === 'admin') {
+      // Администратор видит все договоры
+    } else if (role === 'director' || role === 'legal') {
+      // ГД и юристы видят договоры своих компаний
+      if (companiesParam) {
+        const companies = companiesParam.split(',')
+        const prefixFilters = companies.map(c => `number.like.${c}-%`).join(',')
+        query = query.or(prefixFilters)
+      }
+    } else {
+      // Обычный пользователь — только свои договоры
+      // 1. Созданные им
+      // 2. В согласовании которых участвовал
+      const { data: participantSessions } = await supabase
+        .from('approval_participants')
+        .select('approval_sessions!inner(contract_id)')
+        .eq('bitrix_user_id', userId)
+
+      const contractIds = participantSessions?.map(
+        (p: { approval_sessions: { contract_id: string }[] }) =>
+          Array.isArray(p.approval_sessions)
+            ? p.approval_sessions[0]?.contract_id
+            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
+      ).filter(Boolean) as string[] ?? []
+
+      // Добавляем ID договоров где он автор
+      const { data: authorContracts } = await supabase
+        .from('contracts')
+        .select('id')
+        .eq('author_bitrix_id', userId)
+
+      const authorIds = authorContracts?.map(c => c.id) ?? []
+      const allIds = [...new Set([...contractIds, ...authorIds])]
+
+      if (allIds.length === 0) {
+        return NextResponse.json({ contracts: [] })
+      }
+
+      query = query.in('id', allIds)
     }
 
-    // Получаем версию документа
-    const { data: version } = await supabase
+    const { data: contractsRaw, error } = await query
+    
+    // Проверяем наличие файлов для каждого договора
+    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let versionsMap: Record<string, boolean> = {}
+    
+    if (contractIds.length > 0) {
+      const { data: versions } = await supabase
+        .from('versions')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+      
+      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
+        acc[v.contract_id] = true
+        return acc
+      }, {})
+    }
+    
+    // Собираем тип последнего файла по договору
+    const { data: versions2 } = await supabase
       .from('versions')
-      .select('*, contracts(id, title, number)')
-      .eq('id', version_id)
-      .single()
+      .select('contract_id, file_name')
+      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
+      .order('version_number', { ascending: false })
 
-    if (!version) {
-      return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
-    }
-
-    const fileName = version.file_name
-    const fileExt = fileName.split('.').pop()?.toLowerCase()
-
-    // Определяем тип документа для OnlyOffice
-    const docType = fileExt === 'xlsx' || fileExt === 'xls' ? 'cell' :
-                    fileExt === 'docx' || fileExt === 'doc' ? 'word' : 'word'
-
-    const documentKey = `${version_id}_${Date.now()}`
-
-    // Конфигурация OnlyOffice
-    const config = {
-      document: {
-        fileType: fileExt,
-        key: documentKey,
-        title: fileName,
-        url: `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?version_id=${version_id}`,
-        permissions: {
-          edit: mode !== 'view',
-          download: true,
-          print: true,
-          review: true,
-        },
-      },
-      documentType: docType,
-      editorConfig: {
-        mode: mode === 'view' ? 'view' : 'edit',
-        lang: 'ru',
-        user: {
-          id: String(user_id ?? 'guest'),
-          name: user_name ?? 'Пользователь',
-        },
-        customization: {
-          autosave: true,
-          forcesave: true,
-          compactHeader: true,
-          toolbarNoTabs: false,
-          hideRightMenu: false,
-        },
-        callbackUrl: `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?version_id=${version_id}`,
-      },
-    }
-
-    // Подписываем JWT
-    const token = jwt.sign(config, JWT_SECRET, { algorithm: 'HS256' })
-
-    console.log('OnlyOffice config:', JSON.stringify(config))
-    console.log('JWT token:', token)
-
-    return NextResponse.json({
-      config,
-      token,
-      onlyofficeUrl: ONLYOFFICE_URL,
+    const fileTypeMap: Record<string, string> = {}
+    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
+      if (!fileTypeMap[v.contract_id]) {
+        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
+      }
     })
+
+    // Получаем количество сообщений в чатах согласования
+    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let unreadMap: Record<string, number> = {}
+    let lastMsgTimeMap: Record<string, string> = {}
+
+    if (contractIds2.length > 0) {
+      const { data: sessions } = await supabase
+        .from('approval_sessions')
+        .select('id, contract_id')
+        .in('contract_id', contractIds2)
+        .eq('status', 'active')
+
+      if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s: { id: string }) => s.id)
+        const sessionContractMap: Record<string, string> = {}
+        sessions.forEach((s: { id: string, contract_id: string }) => {
+          sessionContractMap[s.id] = s.contract_id
+        })
+
+        const { data: messages } = await supabase
+          .from('approval_messages')
+          .select('session_id, created_at')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: false })
+
+        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
+          const contractId = sessionContractMap[m.session_id]
+          if (contractId) {
+            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
+              lastMsgTimeMap[contractId] = m.created_at
+            }
+          }
+        })
+      }
+    }
+
+    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
+      ...c,
+      has_files: versionsMap[c.id] ?? false,
+      file_type: fileTypeMap[c.id] ?? null,
+      unread_messages: unreadMap[c.id] ?? 0,
+      last_message_at: lastMsgTimeMap[c.id] ?? null,
+    }))
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ contracts: contracts ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -4846,125 +4921,99 @@ export async function PATCH(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/onlyoffice/callback/route.ts">
+<file path="app/api/onlyoffice/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import * as jwt from 'jsonwebtoken'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SECRET_KEY!
 )
 
+const ONLYOFFICE_URL = process.env.ONLYOFFICE_URL ?? 'https://office.epotos-port.ru'
+const JWT_SECRET = process.env.ONLYOFFICE_JWT_SECRET ?? 'epotos_office_secret_2026'
+
 export async function POST(request: NextRequest) {
   try {
-    const version_id = request.nextUrl.searchParams.get('version_id')
     const body = await request.json()
+    const { version_id, attachment_id, user_name, user_id, mode } = body
 
-    console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
-    console.log('OnlyOffice body:', JSON.stringify(body))
-
-    // Статусы OnlyOffice:
-    // 1 - документ редактируется
-    // 2 - документ готов к сохранению
-    // 3 - ошибка сохранения
-    // 4 - документ закрыт без изменений
-    // 6 - принудительное сохранение
-
-    // Получаем имя пользователя из actions
-    const getUserName = async (userId: string): Promise<string> => {
-      const { data } = await supabase
-        .from('approval_settings')
-        .select('user_name')
-        .eq('bitrix_user_id', parseInt(userId))
-        .limit(1)
-        .single()
-      return data?.user_name ?? `Пользователь ID:${userId}`
+    if (!version_id) {
+      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
     }
 
-    // Записываем лог при начале редактирования (статус 1)
-    if (body.status === 1 && body.actions?.length > 0) {
-      const version = await supabase
-        .from('versions')
-        .select('*')
-        .eq('id', version_id)
-        .single()
+    // Получаем версию документа
+    const { data: version } = await supabase
+      .from('versions')
+      .select('*, contracts(id, title, number)')
+      .eq('id', version_id)
+      .single()
 
-      if (version.data) {
-        const userId = body.actions[0]?.userid
-        const userName = userId ? await getUserName(userId) : 'Неизвестный'
-        await supabase.from('contract_logs').insert({
-          contract_id: version.data.contract_id,
-          action: 'Документ открыт на редактирование',
-          details: `Файл: ${version.data.file_name}`,
-          user_name: userName,
-        })
-      }
+    if (!version) {
+      return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
     }
 
-    if (body.status === 2 || body.status === 6) {
-      if (!body.url || !version_id) {
-        return NextResponse.json({ error: 0 })
-      }
+    const fileName = version.file_name
+    const fileExt = fileName.split('.').pop()?.toLowerCase()
 
-      // Скачиваем обновлённый файл от OnlyOffice
-      const fileResponse = await fetch(body.url)
-      const arrayBuffer = await fileResponse.arrayBuffer()
-      const buffer = new Uint8Array(arrayBuffer)
+    // Определяем тип документа для OnlyOffice
+    const docType = fileExt === 'xlsx' || fileExt === 'xls' ? 'cell' :
+                    fileExt === 'docx' || fileExt === 'doc' ? 'word' : 'word'
 
-      // Получаем текущую версию
-      const { data: version } = await supabase
-        .from('versions')
-        .select('*')
-        .eq('id', version_id)
-        .single()
+    const recordId = version_id || attachment_id
+  const documentKey = `${recordId}_${Date.now()}`
 
-      if (!version) {
-        return NextResponse.json({ error: 0 })
-      }
-
-      // Загружаем обновлённый файл в Supabase Storage
-      const filePath = version.file_url.split('/contracts/')[1]
-
-      const { error: uploadError } = await supabase.storage
-        .from('contracts')
-        .update(filePath, buffer, {
-          contentType: version.file_name.endsWith('.xlsx')
-            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          upsert: true,
-        })
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError)
-      } else {
-        // Получаем имена пользователей из actions
-        const actions = body.actions ?? []
-        const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
-        const userNames = await Promise.all(
-          userIds.map((uid) => getUserName(uid as string))
-        )
-        const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
-
-        // Записываем в лог
-        await supabase.from('contract_logs').insert({
-          contract_id: version.contract_id,
-          action: 'Документ отредактирован в OnlyOffice',
-          details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
-          user_name: editorsStr,
-        })
-      }
+    // Конфигурация OnlyOffice
+    const config = {
+      document: {
+        fileType: fileExt,
+        key: documentKey,
+        title: fileName,
+        url: `https://epotos-ur-intel.vercel.app/api/onlyoffice/file?version_id=${version_id}`,
+        permissions: {
+          edit: mode !== 'view',
+          download: true,
+          print: true,
+          review: true,
+        },
+      },
+      documentType: docType,
+      editorConfig: {
+        mode: mode === 'view' ? 'view' : 'edit',
+        lang: 'ru',
+        user: {
+          id: String(user_id ?? 'guest'),
+          name: user_name ?? 'Пользователь',
+        },
+        customization: {
+          autosave: true,
+          forcesave: true,
+          compactHeader: true,
+          toolbarNoTabs: false,
+          hideRightMenu: false,
+        },
+        callbackUrl: version_id
+          ? `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?version_id=${version_id}`
+          : `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?attachment_id=${attachment_id}`,
+      },
     }
 
-    // OnlyOffice ожидает ответ { error: 0 } для подтверждения
-    return NextResponse.json({ error: 0 })
+    // Подписываем JWT
+    const token = jwt.sign(config, JWT_SECRET, { algorithm: 'HS256' })
+
+    console.log('OnlyOffice config:', JSON.stringify(config))
+    console.log('JWT token:', token)
+
+    return NextResponse.json({
+      config,
+      token,
+      onlyofficeUrl: ONLYOFFICE_URL,
+    })
   } catch (err) {
-    console.error('Callback error:', err)
-    return NextResponse.json({ error: 0 })
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ error: 0 })
 }
 </file>
 
@@ -5258,7 +5307,7 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/contracts-list/route.ts">
+<file path="app/api/onlyoffice/callback/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -5267,149 +5316,140 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY!
 )
 
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  const role = request.nextUrl.searchParams.get('role')
-  const companiesParam = request.nextUrl.searchParams.get('companies')
-
-  if (!bitrixUserId || !role) {
-    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
+export async function POST(request: NextRequest) {
   try {
-    let query = supabase
-      .from('contracts')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const version_id = request.nextUrl.searchParams.get('version_id')
+    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
+    const body = await request.json()
 
-    if (role === 'admin') {
-      // Администратор видит все договоры
-    } else if (role === 'director' || role === 'legal') {
-      // ГД и юристы видят договоры своих компаний
-      if (companiesParam) {
-        const companies = companiesParam.split(',')
-        const prefixFilters = companies.map(c => `number.like.${c}-%`).join(',')
-        query = query.or(prefixFilters)
-      }
-    } else {
-      // Обычный пользователь — только свои договоры
-      // 1. Созданные им
-      // 2. В согласовании которых участвовал
-      const { data: participantSessions } = await supabase
-        .from('approval_participants')
-        .select('approval_sessions!inner(contract_id)')
-        .eq('bitrix_user_id', userId)
+    console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
+    console.log('OnlyOffice body:', JSON.stringify(body))
 
-      const contractIds = participantSessions?.map(
-        (p: { approval_sessions: { contract_id: string }[] }) =>
-          Array.isArray(p.approval_sessions)
-            ? p.approval_sessions[0]?.contract_id
-            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
-      ).filter(Boolean) as string[] ?? []
+    // Статусы OnlyOffice:
+    // 1 - документ редактируется
+    // 2 - документ готов к сохранению
+    // 3 - ошибка сохранения
+    // 4 - документ закрыт без изменений
+    // 6 - принудительное сохранение
 
-      // Добавляем ID договоров где он автор
-      const { data: authorContracts } = await supabase
-        .from('contracts')
-        .select('id')
-        .eq('author_bitrix_id', userId)
-
-      const authorIds = authorContracts?.map(c => c.id) ?? []
-      const allIds = [...new Set([...contractIds, ...authorIds])]
-
-      if (allIds.length === 0) {
-        return NextResponse.json({ contracts: [] })
-      }
-
-      query = query.in('id', allIds)
+    // Получаем имя пользователя из actions
+    const getUserName = async (userId: string): Promise<string> => {
+      const { data } = await supabase
+        .from('approval_settings')
+        .select('user_name')
+        .eq('bitrix_user_id', parseInt(userId))
+        .limit(1)
+        .single()
+      return data?.user_name ?? `Пользователь ID:${userId}`
     }
 
-    const { data: contractsRaw, error } = await query
-    
-    // Проверяем наличие файлов для каждого договора
-    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let versionsMap: Record<string, boolean> = {}
-    
-    if (contractIds.length > 0) {
-      const { data: versions } = await supabase
+    // Записываем лог при начале редактирования (статус 1)
+    if (body.status === 1 && body.actions?.length > 0) {
+      const version = await supabase
         .from('versions')
-        .select('contract_id')
-        .in('contract_id', contractIds)
-      
-      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
-        acc[v.contract_id] = true
-        return acc
-      }, {})
-    }
-    
-    // Собираем тип последнего файла по договору
-    const { data: versions2 } = await supabase
-      .from('versions')
-      .select('contract_id, file_name')
-      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
-      .order('version_number', { ascending: false })
+        .select('*')
+        .eq('id', version_id)
+        .single()
 
-    const fileTypeMap: Record<string, string> = {}
-    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
-      if (!fileTypeMap[v.contract_id]) {
-        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
-      }
-    })
-
-    // Получаем количество сообщений в чатах согласования
-    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let unreadMap: Record<string, number> = {}
-    let lastMsgTimeMap: Record<string, string> = {}
-
-    if (contractIds2.length > 0) {
-      const { data: sessions } = await supabase
-        .from('approval_sessions')
-        .select('id, contract_id')
-        .in('contract_id', contractIds2)
-        .eq('status', 'active')
-
-      if (sessions && sessions.length > 0) {
-        const sessionIds = sessions.map((s: { id: string }) => s.id)
-        const sessionContractMap: Record<string, string> = {}
-        sessions.forEach((s: { id: string, contract_id: string }) => {
-          sessionContractMap[s.id] = s.contract_id
-        })
-
-        const { data: messages } = await supabase
-          .from('approval_messages')
-          .select('session_id, created_at')
-          .in('session_id', sessionIds)
-          .order('created_at', { ascending: false })
-
-        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
-          const contractId = sessionContractMap[m.session_id]
-          if (contractId) {
-            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
-              lastMsgTimeMap[contractId] = m.created_at
-            }
-          }
+      if (version.data) {
+        const userId = body.actions[0]?.userid
+        const userName = userId ? await getUserName(userId) : 'Неизвестный'
+        await supabase.from('contract_logs').insert({
+          contract_id: version.data.contract_id,
+          action: 'Документ открыт на редактирование',
+          details: `Файл: ${version.data.file_name}`,
+          user_name: userName,
         })
       }
     }
 
-    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
-      ...c,
-      has_files: versionsMap[c.id] ?? false,
-      file_type: fileTypeMap[c.id] ?? null,
-      unread_messages: unreadMap[c.id] ?? 0,
-      last_message_at: lastMsgTimeMap[c.id] ?? null,
-    }))
+    if (body.status === 2 || body.status === 6) {
+      if (!body.url || (!version_id && !attachment_id)) {
+        return NextResponse.json({ error: 0 })
+      }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      // Скачиваем обновлённый файл от OnlyOffice
+      const fileResponse = await fetch(body.url)
+      const arrayBuffer = await fileResponse.arrayBuffer()
+      const buffer = new Uint8Array(arrayBuffer)
+
+      // Получаем имена редакторов
+      const actions = body.actions ?? []
+      const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
+      const userNames = await Promise.all(
+        userIds.map((uid) => getUserName(uid as string))
+      )
+      const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
+
+      if (version_id) {
+        // Режим версии документа
+        const { data: version } = await supabase
+          .from('versions')
+          .select('*')
+          .eq('id', version_id)
+          .single()
+
+        if (!version) return NextResponse.json({ error: 0 })
+
+        const filePath = version.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: version.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
+
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: version.contract_id,
+            action: 'Документ отредактирован в OnlyOffice',
+            details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
+      } else if (attachment_id) {
+        // Режим дополнительного материала
+        const { data: attachment } = await supabase
+          .from('document_attachments')
+          .select('*')
+          .eq('id', attachment_id)
+          .single()
+
+        if (!attachment) return NextResponse.json({ error: 0 })
+
+        const filePath = attachment.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: attachment.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
+
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: attachment.contract_id,
+            action: 'Дополнительный материал отредактирован в OnlyOffice',
+            details: `Файл: ${attachment.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
+      }
     }
 
-    return NextResponse.json({ contracts: contracts ?? [] })
+    // OnlyOffice ожидает ответ { error: 0 } для подтверждения
+    return NextResponse.json({ error: 0 })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
+    console.error('Callback error:', err)
+    return NextResponse.json({ error: 0 })
   }
+}
+
+export async function GET() {
+  return NextResponse.json({ error: 0 })
 }
 </file>
 
@@ -5722,6 +5762,7 @@ declare global {
 function EditorContent() {
   const searchParams = useSearchParams()
   const version_id = searchParams.get('version_id')
+  const attachment_id = searchParams.get('attachment_id')
   const mode = searchParams.get('mode') ?? 'edit'
   const user_id = searchParams.get('user_id') ?? ''
   const user_name = searchParams.get('user_name') ?? 'Пользователь'
@@ -5734,7 +5775,7 @@ function EditorContent() {
   useEffect(() => {
     document.title = 'Эпотос-ЮрИнтел — Редактор'
 
-    if (!version_id) return
+    if (!version_id && !attachment_id) return
 
     const initEditor = async () => {
       try {
@@ -5742,7 +5783,8 @@ function EditorContent() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            version_id,
+            version_id: version_id || undefined,
+            attachment_id: attachment_id || undefined,
             user_name,
             user_id,
             mode,
@@ -7092,238 +7134,6 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
 }
 </file>
 
-<file path="app/api/ai-generate/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
-
-async function getTemplateText(fileUrl: string, fileName: string): Promise<string> {
-  try {
-    const response = await fetch(fileUrl)
-    const arrayBuffer = await response.arrayBuffer()
-    const uint8 = new Uint8Array(arrayBuffer)
-    const buffer = Buffer.from(uint8)
-
-    if (fileName.toLowerCase().endsWith('.pdf')) {
-      const { extractText } = await import('unpdf')
-      const { text } = await extractText(uint8, { mergePages: true })
-      // Encode to ASCII-safe string
-      return text.slice(0, 12000)
-    } else if (fileName.toLowerCase().endsWith('.docx')) {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, 12000)
-    }
-    return ''
-  } catch {
-    return ''
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const {
-      prompt,
-      document_type,
-      company_prefix,
-      region,
-      counterparty,
-      user_name,
-      contract_id,
-    } = body
-
-    if (!prompt || !document_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    console.log('ai-generate started', { document_type, company_prefix, region })
-
-    // Ищем подходящий шаблон
-    let templateContext = ''
-    let templateUsed = false
-
-    const { data: templates } = await supabase
-      .from('document_templates')
-      .select('*')
-      .eq('type', document_type)
-      .eq('is_active', true)
-      .or(`company_prefix.eq.${company_prefix},company_prefix.is.null`)
-      .order('company_prefix', { ascending: false })
-      .limit(1)
-
-    if (templates && templates.length > 0) {
-      const template = templates[0]
-      const text = await getTemplateText(template.file_url, template.file_name)
-      if (text) {
-        templateContext = text
-        templateUsed = true
-      }
-    }
-
-    // Генерируем документ
-    // Загружаем реквизиты компании из базы
-    let companyName = 'ГК ЭПОТОС'
-    let companyRequisites = 'ГК ЭПОТОС, реквизиты не заполнены — обратитесь к администратору'
-
-    if (company_prefix) {
-      const { data: reqData } = await supabase
-        .from('company_requisites')
-        .select('*')
-        .eq('company_prefix', company_prefix)
-        .single()
-
-      if (reqData) {
-        companyName = reqData.company_name || company_prefix
-        companyRequisites = [
-          reqData.company_name,
-          reqData.inn ? `ИНН: ${reqData.inn}` : '',
-          reqData.kpp ? `КПП: ${reqData.kpp}` : '',
-          reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
-          reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
-          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
-          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
-          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
-          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
-          reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
-        ].filter(Boolean).join(', ')
-      }
-    }
-
-    const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
-
-    const templateInstruction = templateContext
-      ? `КРИТИЧЕСКИ ВАЖНО: Ниже приведён корпоративный шаблон документа. Ты ОБЯЗАН:
-1. Сохранить ВСЕ разделы и пункты шаблона без исключения
-2. Сохранить нумерацию и структуру разделов точно как в шаблоне
-3. Сохранить ВСЕ условия, формулировки и специальные оговорки из шаблона
-4. Только заменить: наименования сторон, реквизиты, предмет договора и конкретные параметры сделки
-5. НЕ упрощать, НЕ сокращать, НЕ удалять разделы шаблона
-
-ШАБЛОН ДОКУМЕНТА:
----
-${templateContext}
----
-Конец шаблона. Создай документ строго по этой структуре с учётом параметров задачи.`
-      : `Создай полный профессиональный документ по стандартной структуре для данного типа по законодательству РФ. Включи все стандартные разделы без сокращений.`
-
-    const userPrompt = `Составь ${document_type} со следующими параметрами:
-
-СТОРОНЫ:
-- Сторона 1 (наша компания): ${companyRequisites}
-- Сторона 2 (контрагент): ${counterparty ?? 'указать наименование'} (реквизиты указать в квадратных скобках)
-- Регион применения: ${region ?? 'Российская Федерация'}
-
-ЗАДАЧА:
-${prompt}
-
-${templateInstruction}
-
-ТРЕБОВАНИЯ К ДОКУМЕНТУ:
-1. Используй реквизиты компании ЭПОТОС ТОЧНО как указано выше — не заменяй банк и не выдумывай реквизиты
-2. Сохраняй сквозную нумерацию пунктов без пропусков (1.1, 1.2, 1.3... 2.1, 2.2...)
-3. Включи ВСЕ разделы — не обрывай документ, доведи до подписей
-4. Реквизиты контрагента указывай в квадратных скобках [заполнить]
-5. Документ должен быть полным и готовым к подписанию
-
-Выводи только текст документа без пояснений и комментариев.`
-
-    console.log('calling OpenRouter...')
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'EpotosYurIntel',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        route: 'fallback',
-        models: ['google/gemini-2.0-flash-001', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 8000,
-        temperature: 0.1,
-      }),
-    })
-
-    console.log('OpenRouter response status:', response.status)
-    const data = await response.json()
-    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
-    const generatedText = data.choices?.[0]?.message?.content ?? ''
-
-    if (!generatedText) {
-      return NextResponse.json({ error: 'AI не вернул результат' }, { status: 400 })
-    }
-
-    // Создаём DOCX файл
-    const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
-
-    const paragraphs = generatedText.split('\n').map((line: string) => {
-      if (line.startsWith('# ')) {
-        return new Paragraph({
-          text: line.replace('# ', ''),
-          heading: HeadingLevel.HEADING_1,
-        })
-      } else if (line.startsWith('## ')) {
-        return new Paragraph({
-          text: line.replace('## ', ''),
-          heading: HeadingLevel.HEADING_2,
-        })
-      } else if (line.trim() === '') {
-        return new Paragraph({ text: '' })
-      } else {
-        return new Paragraph({
-          children: [new TextRun({ text: line, size: 24, font: 'Times New Roman' })],
-          spacing: { after: 120 },
-        })
-      }
-    })
-
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: paragraphs,
-      }],
-    })
-
-    const buffer = await Packer.toBuffer(doc)
-
-    // Сохраняем в лог если есть contract_id
-    if (contract_id) {
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'AI генерация документа',
-        details: `Тип: ${document_type}. Шаблон: ${templateUsed ? 'использован' : 'не найден'}`,
-        user_name: user_name ?? 'Система',
-      })
-    }
-
-    const uint8 = new Uint8Array(buffer)
-
-    return new NextResponse(uint8, {
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="generated.docx"`,
-        'X-Template-Used': templateUsed ? 'true' : 'false',
-      },
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/components/ContractsList.tsx">
 'use client'
 
@@ -7659,6 +7469,238 @@ export default function ContractsList() {
       )}
     </div>
   )
+}
+</file>
+
+<file path="app/api/ai-generate/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
+async function getTemplateText(fileUrl: string, fileName: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const uint8 = new Uint8Array(arrayBuffer)
+    const buffer = Buffer.from(uint8)
+
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      const { extractText } = await import('unpdf')
+      const { text } = await extractText(uint8, { mergePages: true })
+      // Encode to ASCII-safe string
+      return text.slice(0, 12000)
+    } else if (fileName.toLowerCase().endsWith('.docx')) {
+      const mammoth = await import('mammoth')
+      const result = await mammoth.extractRawText({ buffer })
+      return result.value.slice(0, 12000)
+    }
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      prompt,
+      document_type,
+      company_prefix,
+      region,
+      counterparty,
+      user_name,
+      contract_id,
+    } = body
+
+    if (!prompt || !document_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    console.log('ai-generate started', { document_type, company_prefix, region })
+
+    // Ищем подходящий шаблон
+    let templateContext = ''
+    let templateUsed = false
+
+    const { data: templates } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('type', document_type)
+      .eq('is_active', true)
+      .or(`company_prefix.eq.${company_prefix},company_prefix.is.null`)
+      .order('company_prefix', { ascending: false })
+      .limit(1)
+
+    if (templates && templates.length > 0) {
+      const template = templates[0]
+      const text = await getTemplateText(template.file_url, template.file_name)
+      if (text) {
+        templateContext = text
+        templateUsed = true
+      }
+    }
+
+    // Генерируем документ
+    // Загружаем реквизиты компании из базы
+    let companyName = 'ГК ЭПОТОС'
+    let companyRequisites = 'ГК ЭПОТОС, реквизиты не заполнены — обратитесь к администратору'
+
+    if (company_prefix) {
+      const { data: reqData } = await supabase
+        .from('company_requisites')
+        .select('*')
+        .eq('company_prefix', company_prefix)
+        .single()
+
+      if (reqData) {
+        companyName = reqData.company_name || company_prefix
+        companyRequisites = [
+          reqData.company_name,
+          reqData.inn ? `ИНН: ${reqData.inn}` : '',
+          reqData.kpp ? `КПП: ${reqData.kpp}` : '',
+          reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
+          reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
+          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
+          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
+          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
+          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
+          reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
+        ].filter(Boolean).join(', ')
+      }
+    }
+
+    const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
+
+    const templateInstruction = templateContext
+      ? `КРИТИЧЕСКИ ВАЖНО: Ниже приведён корпоративный шаблон документа. Ты ОБЯЗАН:
+1. Сохранить ВСЕ разделы и пункты шаблона без исключения
+2. Сохранить нумерацию и структуру разделов точно как в шаблоне
+3. Сохранить ВСЕ условия, формулировки и специальные оговорки из шаблона
+4. Только заменить: наименования сторон, реквизиты, предмет договора и конкретные параметры сделки
+5. НЕ упрощать, НЕ сокращать, НЕ удалять разделы шаблона
+
+ШАБЛОН ДОКУМЕНТА:
+---
+${templateContext}
+---
+Конец шаблона. Создай документ строго по этой структуре с учётом параметров задачи.`
+      : `Создай полный профессиональный документ по стандартной структуре для данного типа по законодательству РФ. Включи все стандартные разделы без сокращений.`
+
+    const userPrompt = `Составь ${document_type} со следующими параметрами:
+
+СТОРОНЫ:
+- Сторона 1 (наша компания): ${companyRequisites}
+- Сторона 2 (контрагент): ${counterparty ?? 'указать наименование'} (реквизиты указать в квадратных скобках)
+- Регион применения: ${region ?? 'Российская Федерация'}
+
+ЗАДАЧА:
+${prompt}
+
+${templateInstruction}
+
+ТРЕБОВАНИЯ К ДОКУМЕНТУ:
+1. Используй реквизиты компании ЭПОТОС ТОЧНО как указано выше — не заменяй банк и не выдумывай реквизиты
+2. Сохраняй сквозную нумерацию пунктов без пропусков (1.1, 1.2, 1.3... 2.1, 2.2...)
+3. Включи ВСЕ разделы — не обрывай документ, доведи до подписей
+4. Реквизиты контрагента указывай в квадратных скобках [заполнить]
+5. Документ должен быть полным и готовым к подписанию
+
+Выводи только текст документа без пояснений и комментариев.`
+
+    console.log('calling OpenRouter...')
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'EpotosYurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        route: 'fallback',
+        models: ['google/gemini-2.0-flash-001', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 8000,
+        temperature: 0.1,
+      }),
+    })
+
+    console.log('OpenRouter response status:', response.status)
+    const data = await response.json()
+    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
+    const generatedText = data.choices?.[0]?.message?.content ?? ''
+
+    if (!generatedText) {
+      return NextResponse.json({ error: 'AI не вернул результат' }, { status: 400 })
+    }
+
+    // Создаём DOCX файл
+    const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
+
+    const paragraphs = generatedText.split('\n').map((line: string) => {
+      if (line.startsWith('# ')) {
+        return new Paragraph({
+          text: line.replace('# ', ''),
+          heading: HeadingLevel.HEADING_1,
+        })
+      } else if (line.startsWith('## ')) {
+        return new Paragraph({
+          text: line.replace('## ', ''),
+          heading: HeadingLevel.HEADING_2,
+        })
+      } else if (line.trim() === '') {
+        return new Paragraph({ text: '' })
+      } else {
+        return new Paragraph({
+          children: [new TextRun({ text: line, size: 24, font: 'Times New Roman' })],
+          spacing: { after: 120 },
+        })
+      }
+    })
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: paragraphs,
+      }],
+    })
+
+    const buffer = await Packer.toBuffer(doc)
+
+    // Сохраняем в лог если есть contract_id
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'AI генерация документа',
+        details: `Тип: ${document_type}. Шаблон: ${templateUsed ? 'использован' : 'не найден'}`,
+        user_name: user_name ?? 'Система',
+      })
+    }
+
+    const uint8 = new Uint8Array(buffer)
+
+    return new NextResponse(uint8, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="generated.docx"`,
+        'X-Template-Used': templateUsed ? 'true' : 'false',
+      },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
@@ -8394,6 +8436,34 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                           {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
                         </div>
                         <div className="flex gap-2">
+                          {(att.file_name.endsWith('.docx') || att.file_name.endsWith('.xlsx')) && (
+                            <>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${att.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                                👁️ Просмотр
+                              </a>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
+                                ✏️ Редактировать
+                              </a>
+                            </>
+                          )}
+                          {(att.file_name.endsWith('.docx') || att.file_name.endsWith('.xlsx')) && (
+                            <>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                                👁️ Просмотр
+                              </a>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
+                                ✏️ Редактировать
+                              </a>
+                            </>
+                          )}
                           <a href={att.file_url} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
@@ -8427,189 +8497,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     authorBitrixId={contract.author_bitrix_id ?? null}
                     allowOthers={contract.allow_others_to_approve ?? false}
                   />
-
-                {showAttachmentForm && (
-                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
-                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
-                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
-                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
-                          placeholder="Например: к договору №..."
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
-                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
-                        placeholder="Необязательный комментарий"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
-                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
-                        {attachmentFile ? (
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
-                            <button type="button" onClick={() => setAttachmentFile(null)}
-                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
-                        )}
-                        {!attachmentFile && (
-                          <input type="file" accept=".pdf,.docx,.xlsx"
-                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
-                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
-                      </button>
-                      <button onClick={() => setShowAttachmentForm(false)}
-                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                        Отмена
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {attachments.length === 0 ? (
-                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map(att => (
-                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {att.attachment_type} №{att.number}
-                            {att.title && ` — ${att.title}`}
-                          </p>
-                          <p className="text-xs text-gray-500">{att.file_name}</p>
-                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
-                        </div>
-                        <div className="flex gap-2">
-                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
-                            Скачать
-                          </a>
-                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
-                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
-                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
-                              Удалить
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              
-                {showAttachmentForm && (
-                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
-                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
-                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
-                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
-                          placeholder="Например: к договору №..."
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
-                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
-                        placeholder="Необязательный комментарий"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
-                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
-                        {attachmentFile ? (
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
-                            <button type="button" onClick={() => setAttachmentFile(null)}
-                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
-                        )}
-                        {!attachmentFile && (
-                          <input type="file" accept=".pdf,.docx,.xlsx"
-                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
-                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
-                      </button>
-                      <button onClick={() => setShowAttachmentForm(false)}
-                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                        Отмена
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {attachments.length === 0 ? (
-                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map(att => (
-                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {att.attachment_type} №{att.number}
-                            {att.title && ` — ${att.title}`}
-                          </p>
-                          <p className="text-xs text-gray-500">{att.file_name}</p>
-                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
-                        </div>
-                        <div className="flex gap-2">
-                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
-                            Скачать
-                          </a>
-                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
-                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
-                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
-                              Удалить
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              
-                    contractId={contract.id}
-                    contractNumber={contract.number}
-                    authorBitrixId={contract.author_bitrix_id ?? null}
-                    allowOthers={contract.allow_others_to_approve ?? false}
-                  />
                   <div className="mt-3">
-                  
+                    <DelegateApproveCheckbox
+                      contractId={contract.id}
+                      contractNumber={contract.number}
+                      authorBitrixId={contract.author_bitrix_id ?? null}
+                      allowOthers={contract.allow_others_to_approve ?? false}
+                    />
                   </div>
                 </div>
               ) : (
