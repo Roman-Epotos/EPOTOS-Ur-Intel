@@ -6,24 +6,35 @@ import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
 function ChatIndicator({ contractId, unreadCount }: { contractId: string, unreadCount: number }) {
-  const [lastReadTime, setLastReadTime] = useState<string | null>(null)
+  const [displayCount, setDisplayCount] = useState(unreadCount)
 
   const refresh = () => {
-    const stored = localStorage.getItem(`chat_read_time_${contractId}`)
-    setLastReadTime(stored)
+    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
+    if (!lastReadStr) {
+      setDisplayCount(unreadCount)
+      return
+    }
+    const lastRead = new Date(lastReadStr).getTime()
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
+    // Если последнее прочтение позже чем час назад — считаем прочитанным
+    if (lastRead > oneDayAgo) {
+      setDisplayCount(0)
+    } else {
+      setDisplayCount(unreadCount)
+    }
   }
 
   useEffect(() => {
     refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
-  }, [contractId])
+  }, [contractId, unreadCount])
 
-  if (unreadCount === 0) return <span className="text-gray-300 text-xs">—</span>
+  if (displayCount === 0) return <span className="text-gray-300 text-xs">—</span>
 
   return (
     <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-      💬 {unreadCount}
+      💬 {displayCount}
     </span>
   )
 }
