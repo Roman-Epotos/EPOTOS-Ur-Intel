@@ -736,7 +736,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               </div>
                             </div>
                           ) : (
-                            <div className="relative group/msg">
+                            <div className="relative group/msg inline-block">
                               <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
                                 msg.bitrix_user_id === parseInt(user?.id ?? '0')
                                   ? 'bg-blue-500 text-white'
@@ -744,17 +744,26 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
                                 {msg.message}
                               </div>
-                              <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5">
-                                <button onClick={() => navigator.clipboard.writeText(msg.message)}
+                              <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(msg.message)
+                                      const btn = document.getElementById(`copy-${msg.id}`)
+                                      if (btn) { btn.textContent = '✓'; setTimeout(() => { if(btn) btn.textContent = '📋' }, 1500) }
+                                    } catch { }
+                                  }}
+                                  id={`copy-${msg.id}`}
                                   title="Копировать"
-                                  className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded w-5 h-5 flex items-center justify-center"
+                                  className="bg-black bg-opacity-25 hover:bg-opacity-40 active:bg-opacity-60 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
                                   style={{fontSize:'10px'}}>
                                   📋
                                 </button>
                                 {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
-                                  <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
+                                  <button
+                                    onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
                                     title="Редактировать"
-                                    className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded w-5 h-5 flex items-center justify-center"
+                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 active:bg-opacity-60 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
                                     style={{fontSize:'10px'}}>
                                     ✏️
                                   </button>
