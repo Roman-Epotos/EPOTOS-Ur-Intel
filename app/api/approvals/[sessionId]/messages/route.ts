@@ -39,7 +39,6 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }

@@ -733,7 +733,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               </button>
                             </div>
                           ) : (
-                            <div className="group relative">
+                            <div className="relative" style={{position:'relative'}}>
                               <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
                                 msg.bitrix_user_id === parseInt(user?.id ?? '0')
                                   ? 'bg-blue-500 text-white'
@@ -743,7 +743,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               </div>
                               {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
                                 <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
-                                  className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-gray-50">
+                                  className="absolute -top-2 -right-2 bg-white border border-gray-200 rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-gray-50"
+                                style={{position:'absolute', top:'-8px', right:'-8px'}}>
                                   ✏️
                                 </button>
                               )}
