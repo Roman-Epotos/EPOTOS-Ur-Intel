@@ -6,10 +6,10 @@ import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
 function ChatIndicator({ contractId, unreadCount, lastMessageAt }: { contractId: string, unreadCount: number, lastMessageAt: string | null }) {
-  const [displayCount, setDisplayCount] = useState(unreadCount)
+  const [displayCount, setDisplayCount] = useState<number | null>(null)
 
   const refresh = () => {
-    if (unreadCount === 0) {
+    if (unreadCount === 0 || !lastMessageAt) {
       setDisplayCount(0)
       return
     }
@@ -18,11 +18,8 @@ function ChatIndicator({ contractId, unreadCount, lastMessageAt }: { contractId:
       setDisplayCount(unreadCount)
       return
     }
-    // Сравниваем время последнего прочтения с текущим временем минус 24 часа
-    // API считает новыми сообщения за последние 24 часа
-    // Если пользователь читал чат после того как пришли новые сообщения — обнуляем
     const lastRead = new Date(lastReadStr).getTime()
-    const lastMsg = lastMessageAt ? new Date(lastMessageAt).getTime() : 0
+    const lastMsg = new Date(lastMessageAt).getTime()
     if (lastRead >= lastMsg) {
       setDisplayCount(0)
     } else {
