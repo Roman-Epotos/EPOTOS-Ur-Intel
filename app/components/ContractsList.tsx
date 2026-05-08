@@ -271,7 +271,8 @@ export default function ContractsList() {
           )}
         </div>
       ) : (
-        <table className="w-full">
+        <div className="overflow-x-auto">
+<table className="w-full min-w-[900px]">
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
               <th className="px-6 py-3 font-medium">Номер</th>
@@ -327,6 +328,7 @@ export default function ContractsList() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )
