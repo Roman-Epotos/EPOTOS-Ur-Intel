@@ -5,6 +5,25 @@ import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
+function ChatIndicator({ contractId, unreadCount }: { contractId: string, unreadCount: number }) {
+  const [lastReadTime, setLastReadTime] = useState<string | null>(null)
+
+  useEffect(() => {
+    const stored = localStorage.getItem(`chat_read_time_${contractId}`)
+    setLastReadTime(stored)
+  }, [contractId])
+
+  if (unreadCount === 0 && !lastReadTime) return <span className="text-gray-300 text-xs">—</span>
+
+  if (unreadCount === 0 && lastReadTime) return <span className="text-gray-400 text-sm">💬</span>
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+      💬 {unreadCount}
+    </span>
+  )
+}
+
 interface Contract {
   id: string
   number: string
@@ -254,13 +273,7 @@ export default function ContractsList() {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  {contract.unread_messages && contract.unread_messages > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                      💬 {contract.unread_messages}
-                    </span>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
+                  <ChatIndicator contractId={contract.id} unreadCount={contract.unread_messages ?? 0} />
                 </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
