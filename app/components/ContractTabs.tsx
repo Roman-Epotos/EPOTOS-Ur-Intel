@@ -8,6 +8,8 @@ import DeleteContractButton from '@/app/components/DeleteContractButton'
 import AIAnalysis from '@/app/components/AIAnalysis'
 import AIGenerate from '@/app/components/AIGenerate'
 import CancelApprovalButton from '@/app/components/CancelApprovalButton'
+import dynamic from 'next/dynamic'
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
@@ -146,6 +148,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState('')
   const [newParticipantName, setNewParticipantName] = useState('')
@@ -765,15 +768,33 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     ))}
                     <div ref={chatEndRef} />
                   </div>
-                  <div className="flex gap-2 border-t border-gray-100 pt-4">
-                    <input value={message} onChange={e => setMessage(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                      placeholder="Написать сообщение..."
-                      className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
-                    <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
-                      className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
-                      {sendingMessage ? '...' : '➤'}
-                    </button>
+                  <div className="relative">
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-14 left-0 z-50">
+                        <EmojiPicker
+                          onEmojiClick={(emojiData) => {
+                            setMessage(prev => prev + emojiData.emoji)
+                            setShowEmojiPicker(false)
+                          }}
+                          width={300}
+                          height={350}
+                        />
+                      </div>
+                    )}
+                    <div className="flex gap-2 border-t border-gray-100 pt-4">
+                      <button onClick={() => setShowEmojiPicker(p => !p)}
+                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors">
+                        😊
+                      </button>
+                      <input value={message} onChange={e => setMessage(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                        placeholder="Написать сообщение..."
+                        className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+                      <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
+                        {sendingMessage ? '...' : '➤'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
