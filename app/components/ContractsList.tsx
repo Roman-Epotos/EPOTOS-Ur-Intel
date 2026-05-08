@@ -11,13 +11,14 @@ function ChatIndicator({ contractId, unreadCount }: { contractId: string, unread
   const refresh = () => {
     const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
     if (!lastReadStr) {
+      // Никогда не читали — показываем все новые
       setDisplayCount(unreadCount)
       return
     }
     const lastRead = new Date(lastReadStr).getTime()
-    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
-    // Если последнее прочтение позже чем час назад — считаем прочитанным
-    if (lastRead > oneDayAgo) {
+    const now = Date.now()
+    // Если прочитали недавно (в этой сессии) — обнуляем
+    if (lastRead > now - 60 * 60 * 1000) {
       setDisplayCount(0)
     } else {
       setDisplayCount(unreadCount)
