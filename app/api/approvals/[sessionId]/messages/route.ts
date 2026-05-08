@@ -13,9 +13,9 @@ export async function POST(
   try {
     const { sessionId } = await params
     const body = await request.json()
-    const { message, author_name, bitrix_user_id } = body
+    const { message, author_name, bitrix_user_id, file_url, file_name, file_type } = body
 
-    if (!message?.trim()) {
+    if (!message?.trim() && !file_url) {
       return NextResponse.json({ error: 'Сообщение не может быть пустым' }, { status: 400 })
     }
 
@@ -23,10 +23,13 @@ export async function POST(
       .from('approval_messages')
       .insert({
         session_id: sessionId,
-        message: message.trim(),
+        message: message?.trim() ?? '',
         author_name: author_name ?? 'Система',
         bitrix_user_id: bitrix_user_id ?? null,
         is_ai: false,
+        file_url: file_url ?? null,
+        file_name: file_name ?? null,
+        file_type: file_type ?? null,
       })
 
     if (error) {

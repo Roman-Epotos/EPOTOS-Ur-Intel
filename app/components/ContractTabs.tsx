@@ -149,6 +149,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState('')
   const [newParticipantName, setNewParticipantName] = useState('')
@@ -292,6 +294,54 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     })
     setEditingMessageId(null)
     setEditingMessageText('')
+  }
+
+  const handleFileUpload = async (file: File) => {
+    if (!session) return
+    setUploadingFile(true)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const filePath = `chat/${session.id}/${Date.now()}_${file.name}`
+
+      const { createClient } = await import('@supabase/supabase-js')
+      const supabaseClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+      )
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from('contracts')
+        .upload(filePath, file, { contentType: file.type, upsert: false })
+
+      if (uploadError) {
+        alert('Ошибка загрузки файла: ' + uploadError.message)
+        return
+      }
+
+      const { data: urlData } = supabaseClient.storage
+        .from('contracts')
+        .getPublicUrl(filePath)
+
+      const isImage = file.type.startsWith('image/')
+
+      await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: isImage ? '' : file.name,
+          author_name: user?.name ?? 'Гость',
+          bitrix_user_id: user?.id ? parseInt(user.id) : null,
+          file_url: urlData.publicUrl,
+          file_name: file.name,
+          file_type: file.type,
+        }),
+      })
+    } catch {
+      alert('Ошибка загрузки файла')
+    } finally {
+      setUploadingFile(false)
+    }
   }
 
   const handleSendMessage = async () => {
@@ -747,7 +797,18 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                                   ? 'bg-blue-500 text-white'
                                   : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
                               }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
-                                {msg.message}
+                                {msg.message && <p>{msg.message}</p>}
+                                {msg.file_url && msg.file_type?.startsWith('image/') && (
+                                  <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
+                                    className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
+                                    onClick={() => window.open(msg.file_url, '_blank')} />
+                                )}
+                                {msg.file_url && !msg.file_type?.startsWith('image/') && (
+                                  <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1 mt-1 underline text-xs">
+                                    📎 {msg.file_name}
+                                  </a>
+                                )}
                               </div>
                               <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
                                 
@@ -786,6 +847,19 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors">
                         😊
                       </button>
+                      <button onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingFile}
+                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50">
+                        {uploadingFile ? '⏳' : '📎'}
+                      </button>
+                      <input ref={fileInputRef} type="file"
+                        accept="image/*,.pdf,.docx,.xlsx"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file)
+                          e.target.value = ''
+                        }} />
                       <input value={message} onChange={e => setMessage(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                         placeholder="Написать сообщение..."
