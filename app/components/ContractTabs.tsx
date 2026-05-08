@@ -717,23 +717,26 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                             <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleString('ru-RU')}</span>
                           </div>
                           {editingMessageId === msg.id ? (
-                            <div className="flex gap-2 items-center">
-                              <input value={editingMessageText}
+                            <div className="space-y-2">
+                              <textarea value={editingMessageText}
                                 onChange={e => setEditingMessageText(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleEditMessage(msg.id)}
-                                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white"
+                                onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleEditMessage(msg.id)}
+                                rows={3}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white resize-none"
                                 autoFocus />
-                              <button onClick={() => handleEditMessage(msg.id)}
-                                className="text-xs bg-gray-900 text-white px-3 py-2 rounded-xl hover:bg-gray-700">
-                                ✓
-                              </button>
-                              <button onClick={() => setEditingMessageId(null)}
-                                className="text-xs border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50">
-                                ✕
-                              </button>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleEditMessage(msg.id)}
+                                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                                  Сохранить
+                                </button>
+                                <button onClick={() => setEditingMessageId(null)}
+                                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-600">
+                                  Отмена
+                                </button>
+                              </div>
                             </div>
                           ) : (
-                            <div className="relative" style={{position:'relative'}}>
+                            <div className="relative group/msg">
                               <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
                                 msg.bitrix_user_id === parseInt(user?.id ?? '0')
                                   ? 'bg-blue-500 text-white'
@@ -741,13 +744,20 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
                                 {msg.message}
                               </div>
-                              {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
-                                <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
-                                  className="absolute -top-2 -right-2 bg-white border border-gray-200 rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-gray-50"
-                                style={{position:'absolute', top:'-8px', right:'-8px'}}>
-                                  ✏️
+                              <div className="absolute -top-3 right-0 hidden group-hover/msg:flex gap-1">
+                                <button onClick={() => navigator.clipboard.writeText(msg.message)}
+                                  title="Копировать"
+                                  className="bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-md w-6 h-6 text-xs flex items-center justify-center">
+                                  📋
                                 </button>
-                              )}
+                                {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
+                                  <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
+                                    title="Редактировать"
+                                    className="bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-md w-6 h-6 text-xs flex items-center justify-center">
+                                    ✏️
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
