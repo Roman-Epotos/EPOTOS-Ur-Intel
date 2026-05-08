@@ -124,7 +124,6 @@ export async function GET(request: NextRequest) {
         ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
           const contractId = sessionContractMap[m.session_id]
           if (contractId) {
-            unreadMap[contractId] = (unreadMap[contractId] ?? 0) + 1
             if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
               lastMsgTimeMap[contractId] = m.created_at
             }

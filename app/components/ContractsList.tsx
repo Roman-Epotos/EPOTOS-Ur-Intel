@@ -5,39 +5,29 @@ import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
 
-function ChatIndicator({ contractId, unreadCount, lastMessageAt }: { contractId: string, unreadCount: number, lastMessageAt: string | null }) {
-  const [displayCount, setDisplayCount] = useState<number | null>(null)
+function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
+  const [hasNew, setHasNew] = useState(false)
 
   const refresh = () => {
-    if (unreadCount === 0 || !lastMessageAt) {
-      setDisplayCount(0)
-      return
-    }
+    if (!lastMessageAt) { setHasNew(false); return }
     const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
-    if (!lastReadStr) {
-      setDisplayCount(unreadCount)
-      return
-    }
+    if (!lastReadStr) { setHasNew(true); return }
     const lastRead = new Date(lastReadStr).getTime()
     const lastMsg = new Date(lastMessageAt).getTime()
-    if (lastRead >= lastMsg) {
-      setDisplayCount(0)
-    } else {
-      setDisplayCount(unreadCount)
-    }
+    setHasNew(lastMsg > lastRead)
   }
 
   useEffect(() => {
     refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
-  }, [contractId, unreadCount])
+  }, [contractId, lastMessageAt])
 
-  if (displayCount === 0) return <span className="text-gray-300 text-xs">—</span>
-
+  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
+  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
   return (
     <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-      💬 {displayCount}
+      💬 new
     </span>
   )
 }
@@ -292,7 +282,7 @@ export default function ContractsList() {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <ChatIndicator contractId={contract.id} unreadCount={contract.unread_messages ?? 0} lastMessageAt={contract.last_message_at ?? null} />
+                  <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
                 </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
