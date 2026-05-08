@@ -6,6 +6,15 @@ import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import AIAnalysis from '@/app/components/AIAnalysis'
+
+const ATTACHMENT_TYPES = [
+  'Спецификация',
+  'Приложение',
+  'Дополнительное соглашение',
+  'Протокол разногласий',
+  'Акт',
+  'Другое',
+]
 import AIGenerate from '@/app/components/AIGenerate'
 import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import dynamic from 'next/dynamic'
@@ -151,6 +160,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
+  const [showAttachmentForm, setShowAttachmentForm] = useState(false)
+  const [attachmentType, setAttachmentType] = useState('Спецификация')
+  const [attachmentTitle, setAttachmentTitle] = useState('')
+  const [attachmentComment, setAttachmentComment] = useState('')
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -166,6 +182,50 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [acknowledging, setAcknowledging] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
+  const loadAttachments = async () => {
+    const res = await fetch(`${baseUrl}/api/attachments?contract_id=${contract.id}`)
+    const data = await res.json()
+    setAttachments(data.attachments ?? [])
+  }
+
+  const handleUploadAttachment = async () => {
+    if (!attachmentFile) return
+    setUploadingAttachment(true)
+
+    const formData = new FormData()
+    formData.append('file', attachmentFile)
+    formData.append('contract_id', contract.id)
+    formData.append('attachment_type', attachmentType)
+    formData.append('title', attachmentTitle)
+    formData.append('comment', attachmentComment)
+    formData.append('user_name', user?.name ?? 'Система')
+    formData.append('user_bitrix_id', user?.id ?? '')
+
+    const res = await fetch(`${baseUrl}/api/attachments`, { method: 'POST', body: formData })
+    const data = await res.json()
+
+    if (!res.ok) {
+      alert('Ошибка: ' + data.error)
+    } else {
+      setShowAttachmentForm(false)
+      setAttachmentFile(null)
+      setAttachmentTitle('')
+      setAttachmentComment('')
+      await loadAttachments()
+    }
+    setUploadingAttachment(false)
+  }
+
+  const handleDeleteAttachment = async (id: string, file_url: string) => {
+    if (!confirm('Удалить дополнительный материал?')) return
+    await fetch(`${baseUrl}/api/attachments`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, file_url, contract_id: contract.id, user_name: user?.name }),
+    })
+    await loadAttachments()
+  }
+
   const loadSession = async () => {
     const res = await fetch(`${baseUrl}/api/approvals?contract_id=${contract.id}`)
     const data = await res.json()
@@ -179,6 +239,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
   useEffect(() => {
     loadSession()
+    loadAttachments()
   }, [contract.id])
 
   useEffect(() => {
@@ -606,7 +667,104 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     authorBitrixId={contract.author_bitrix_id ?? null}
                     allowOthers={contract.allow_others_to_approve ?? false}
                   />
-                  <DelegateApproveCheckbox
+                  {/* Дополнительные материалы */}
+              <div className="mt-6 border-t border-gray-100 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Дополнительные материалы</h3>
+                  <button onClick={() => setShowAttachmentForm(p => !p)}
+                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                    + Добавить
+                  </button>
+                </div>
+
+                {showAttachmentForm && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
+                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
+                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
+                          placeholder="Например: к договору №..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
+                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
+                        placeholder="Необязательный комментарий"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
+                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                        {attachmentFile ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
+                            <button type="button" onClick={() => setAttachmentFile(null)}
+                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
+                        )}
+                        {!attachmentFile && (
+                          <input type="file" accept=".pdf,.docx,.xlsx"
+                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
+                      </button>
+                      <button onClick={() => setShowAttachmentForm(false)}
+                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map(att => (
+                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {att.attachment_type} №{att.number}
+                            {att.title && ` — ${att.title}`}
+                          </p>
+                          <p className="text-xs text-gray-500">{att.file_name}</p>
+                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
+                            Скачать
+                          </a>
+                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
+                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <DelegateApproveCheckbox
                     contractId={contract.id}
                     contractNumber={contract.number}
                     authorBitrixId={contract.author_bitrix_id ?? null}
