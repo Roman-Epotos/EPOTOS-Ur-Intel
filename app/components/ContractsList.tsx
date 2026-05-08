@@ -311,7 +311,12 @@ export default function ContractsList() {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
+                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
+                    const now = new Date().toISOString()
+                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
+                  }}>
+                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
+                  </a>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>

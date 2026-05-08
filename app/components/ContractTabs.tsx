@@ -131,7 +131,9 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ContractTabs({ contract, versions, logs }: Props) {
   const { user } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState('details')
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const initialTab = searchParams?.get('tab') ?? 'details'
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
