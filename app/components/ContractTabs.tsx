@@ -804,7 +804,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                                 {msg.file_url && msg.file_type?.startsWith('image/') && (
                                   <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
                                     className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
-                                    onClick={() => window.open(msg.file_url, '_blank')} />
+                                    onClick={() => window.open(msg.file_url ?? '', '_blank')} />
                                 )}
                                 {msg.file_url && !msg.file_type?.startsWith('image/') && (
                                   <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
