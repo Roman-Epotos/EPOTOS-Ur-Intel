@@ -16,6 +16,7 @@ interface Contract {
   author_bitrix_id: number | null
   has_files?: boolean
   file_type?: string | null
+  unread_messages?: number
 }
 
 interface UserRole {
@@ -222,6 +223,7 @@ export default function ContractsList() {
               <th className="px-6 py-3 font-medium">Сумма</th>
               <th className="px-6 py-3 font-medium">Срок</th>
               <th className="px-6 py-3 font-medium">Файлы</th>
+              <th className="px-6 py-3 font-medium">Чат</th>
               <th className="px-6 py-3 font-medium">Статус</th>
             </tr>
           </thead>
@@ -247,6 +249,15 @@ export default function ContractsList() {
                       alt={contract.file_type}
                       className="w-6 h-6"
                     />
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {contract.unread_messages && contract.unread_messages > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                      💬 {contract.unread_messages}
+                    </span>
                   ) : (
                     <span className="text-gray-300 text-xs">—</span>
                   )}

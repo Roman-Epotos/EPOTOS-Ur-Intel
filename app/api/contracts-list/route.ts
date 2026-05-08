@@ -96,10 +96,48 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Получаем количество сообщений в чатах согласования
+    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let unreadMap: Record<string, number> = {}
+
+    if (contractIds2.length > 0) {
+      const { data: sessions } = await supabase
+        .from('approval_sessions')
+        .select('id, contract_id')
+        .in('contract_id', contractIds2)
+        .eq('status', 'active')
+
+      if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s: { id: string }) => s.id)
+        const sessionContractMap: Record<string, string> = {}
+        sessions.forEach((s: { id: string, contract_id: string }) => {
+          sessionContractMap[s.id] = s.contract_id
+        })
+
+        const { data: messages } = await supabase
+          .from('approval_messages')
+          .select('session_id, created_at')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: false })
+
+        // Считаем сообщения за последние 24 часа как "новые"
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
+          if (m.created_at > oneDayAgo) {
+            const contractId = sessionContractMap[m.session_id]
+            if (contractId) {
+              unreadMap[contractId] = (unreadMap[contractId] ?? 0) + 1
+            }
+          }
+        })
+      }
+    }
+
     const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
       ...c,
       has_files: versionsMap[c.id] ?? false,
       file_type: fileTypeMap[c.id] ?? null,
+      unread_messages: unreadMap[c.id] ?? 0,
     }))
 
     if (error) {
