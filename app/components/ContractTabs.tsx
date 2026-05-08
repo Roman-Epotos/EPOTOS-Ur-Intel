@@ -144,6 +144,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageText, setEditingMessageText] = useState('')
   const [newParticipantName, setNewParticipantName] = useState('')
   const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
   const [addingParticipant, setAddingParticipant] = useState(false)
@@ -270,6 +272,21 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
     setAddParticipantOptions(filtered)
     setShowAddParticipantModal(true)
+  }
+
+  const handleEditMessage = async (messageId: string) => {
+    if (!editingMessageText.trim() || !session) return
+    await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: messageId,
+        message: editingMessageText.trim(),
+        bitrix_user_id: user?.id ? parseInt(user.id) : null,
+      }),
+    })
+    setEditingMessageId(null)
+    setEditingMessageText('')
   }
 
   const handleSendMessage = async () => {
@@ -699,13 +716,39 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                             <span className="text-xs font-medium text-gray-900">{msg.author_name}</span>
                             <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleString('ru-RU')}</span>
                           </div>
-                          <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
-                            msg.bitrix_user_id === parseInt(user?.id ?? '0')
-                              ? 'bg-blue-500 text-white'
-                              : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
-                          }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
-                            {msg.message}
-                          </div>
+                          {editingMessageId === msg.id ? (
+                            <div className="flex gap-2 items-center">
+                              <input value={editingMessageText}
+                                onChange={e => setEditingMessageText(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleEditMessage(msg.id)}
+                                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white"
+                                autoFocus />
+                              <button onClick={() => handleEditMessage(msg.id)}
+                                className="text-xs bg-gray-900 text-white px-3 py-2 rounded-xl hover:bg-gray-700">
+                                ✓
+                              </button>
+                              <button onClick={() => setEditingMessageId(null)}
+                                className="text-xs border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50">
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="group relative">
+                              <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
+                                msg.bitrix_user_id === parseInt(user?.id ?? '0')
+                                  ? 'bg-blue-500 text-white'
+                                  : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
+                              }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
+                                {msg.message}
+                              </div>
+                              {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
+                                <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
+                                  className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-gray-50">
+                                  ✏️
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
