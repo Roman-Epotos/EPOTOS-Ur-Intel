@@ -744,16 +744,18 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
                                 {msg.message}
                               </div>
-                              <div className="absolute -top-3 right-0 hidden group-hover/msg:flex gap-1">
+                              <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5">
                                 <button onClick={() => navigator.clipboard.writeText(msg.message)}
                                   title="Копировать"
-                                  className="bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-md w-6 h-6 text-xs flex items-center justify-center">
+                                  className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded w-5 h-5 flex items-center justify-center"
+                                  style={{fontSize:'10px'}}>
                                   📋
                                 </button>
                                 {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
                                   <button onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
                                     title="Редактировать"
-                                    className="bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-md w-6 h-6 text-xs flex items-center justify-center">
+                                    className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded w-5 h-5 flex items-center justify-center"
+                                    style={{fontSize:'10px'}}>
                                     ✏️
                                   </button>
                                 )}
