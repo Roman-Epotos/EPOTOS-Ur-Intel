@@ -650,118 +650,6 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Согласование */}
-          {activeTab === 'approval' && (
-            <div className="p-6">
-              {sessionLoading ? (
-                <p className="text-sm text-gray-400">Загрузка...</p>
-              ) : !hasActiveSession ? (
-                <div>
-                  <p className="text-sm text-gray-600 mb-4">Согласование не запущено.</p>
-                  <ApproveButton
-                    contractId={contract.id}
-                    contractStatus={contract.status}
-                    authorBitrixId={contract.author_bitrix_id ?? null}
-                    allowOthers={contract.allow_others_to_approve ?? false}
-                  />
-                  
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Дополнительные материалы</h3>
-                  <button onClick={() => setShowAttachmentForm(p => !p)}
-                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
-                    + Добавить
-                  </button>
-                </div>
-
-                {showAttachmentForm && (
-                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
-                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
-                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
-                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
-                          placeholder="Например: к договору №..."
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
-                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
-                        placeholder="Необязательный комментарий"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
-                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
-                        {attachmentFile ? (
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
-                            <button type="button" onClick={() => setAttachmentFile(null)}
-                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
-                        )}
-                        {!attachmentFile && (
-                          <input type="file" accept=".pdf,.docx,.xlsx"
-                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
-                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
-                      </button>
-                      <button onClick={() => setShowAttachmentForm(false)}
-                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                        Отмена
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {attachments.length === 0 ? (
-                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map(att => (
-                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {att.attachment_type} №{att.number}
-                            {att.title && ` — ${att.title}`}
-                          </p>
-                          <p className="text-xs text-gray-500">{att.file_name}</p>
-                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
-                        </div>
-                        <div className="flex gap-2">
-                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
-                            Скачать
-                          </a>
-                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
-                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
-                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
-                              Удалить
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               {/* Дополнительные материалы */}
               <div className="mt-6 border-t border-gray-100 pt-6">
@@ -857,8 +745,199 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   </div>
                 )}
               </div>
+            </div>
+          )}
 
-              <DelegateApproveCheckbox
+          {/* Согласование */}
+          {activeTab === 'approval' && (
+            <div className="p-6">
+              {sessionLoading ? (
+                <p className="text-sm text-gray-400">Загрузка...</p>
+              ) : !hasActiveSession ? (
+                <div>
+                  <p className="text-sm text-gray-600 mb-4">Согласование не запущено.</p>
+                  <ApproveButton
+                    contractId={contract.id}
+                    contractStatus={contract.status}
+                    authorBitrixId={contract.author_bitrix_id ?? null}
+                    allowOthers={contract.allow_others_to_approve ?? false}
+                  />
+
+                {showAttachmentForm && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
+                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
+                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
+                          placeholder="Например: к договору №..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
+                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
+                        placeholder="Необязательный комментарий"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
+                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                        {attachmentFile ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
+                            <button type="button" onClick={() => setAttachmentFile(null)}
+                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
+                        )}
+                        {!attachmentFile && (
+                          <input type="file" accept=".pdf,.docx,.xlsx"
+                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
+                      </button>
+                      <button onClick={() => setShowAttachmentForm(false)}
+                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map(att => (
+                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {att.attachment_type} №{att.number}
+                            {att.title && ` — ${att.title}`}
+                          </p>
+                          <p className="text-xs text-gray-500">{att.file_name}</p>
+                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
+                            Скачать
+                          </a>
+                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
+                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              
+                {showAttachmentForm && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
+                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
+                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
+                          placeholder="Например: к договору №..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
+                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
+                        placeholder="Необязательный комментарий"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
+                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                        {attachmentFile ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
+                            <button type="button" onClick={() => setAttachmentFile(null)}
+                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
+                        )}
+                        {!attachmentFile && (
+                          <input type="file" accept=".pdf,.docx,.xlsx"
+                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
+                      </button>
+                      <button onClick={() => setShowAttachmentForm(false)}
+                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map(att => (
+                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {att.attachment_type} №{att.number}
+                            {att.title && ` — ${att.title}`}
+                          </p>
+                          <p className="text-xs text-gray-500">{att.file_name}</p>
+                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
+                            Скачать
+                          </a>
+                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
+                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              
                     contractId={contract.id}
                     contractNumber={contract.number}
                     authorBitrixId={contract.author_bitrix_id ?? null}
