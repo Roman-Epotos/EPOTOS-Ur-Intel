@@ -37,7 +37,7 @@ export async function POST(
         contract_id,
         action: isAcknowledge ? 'Ознакомлен' : 'Согласовано',
         details: isAcknowledge
-          ? 'Участник ознакомился с документом'
+          ? 'Участник ознакомился(ась) с документом'
           : comment ? `Комментарий: ${comment}` : 'Без комментария',
         user_name: user_name ?? 'Система',
       })
@@ -49,7 +49,7 @@ export async function POST(
         session_id: sessionId,
         message: isAcknowledge
           ? `👁 ${user_name} ознакомлен с документом`
-          : `✅ ${user_name} согласовал документ${comment ? `. Комментарий: «${comment}»` : ''}`,
+          : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
         author_name: 'Система',
         is_ai: false,
       })

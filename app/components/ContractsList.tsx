@@ -8,14 +8,18 @@ import { createClient } from '@supabase/supabase-js'
 function ChatIndicator({ contractId, unreadCount }: { contractId: string, unreadCount: number }) {
   const [lastReadTime, setLastReadTime] = useState<string | null>(null)
 
-  useEffect(() => {
+  const refresh = () => {
     const stored = localStorage.getItem(`chat_read_time_${contractId}`)
     setLastReadTime(stored)
+  }
+
+  useEffect(() => {
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
   }, [contractId])
 
-  if (unreadCount === 0 && !lastReadTime) return <span className="text-gray-300 text-xs">—</span>
-
-  if (unreadCount === 0 && lastReadTime) return <span className="text-gray-400 text-sm">💬</span>
+  if (unreadCount === 0) return <span className="text-gray-300 text-xs">—</span>
 
   return (
     <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
