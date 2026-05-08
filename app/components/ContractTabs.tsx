@@ -72,6 +72,9 @@ interface Message {
   created_at: string
   bitrix_user_id: number | null
   session_id: string
+  file_url?: string | null
+  file_name?: string | null
+  file_type?: string | null
 }
 
 interface Session {
