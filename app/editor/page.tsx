@@ -15,6 +15,7 @@ declare global {
 function EditorContent() {
   const searchParams = useSearchParams()
   const version_id = searchParams.get('version_id')
+  const attachment_id = searchParams.get('attachment_id')
   const mode = searchParams.get('mode') ?? 'edit'
   const user_id = searchParams.get('user_id') ?? ''
   const user_name = searchParams.get('user_name') ?? 'Пользователь'
@@ -27,7 +28,7 @@ function EditorContent() {
   useEffect(() => {
     document.title = 'Эпотос-ЮрИнтел — Редактор'
 
-    if (!version_id) return
+    if (!version_id && !attachment_id) return
 
     const initEditor = async () => {
       try {
@@ -35,7 +36,8 @@ function EditorContent() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            version_id,
+            version_id: version_id || undefined,
+            attachment_id: attachment_id || undefined,
             user_name,
             user_id,
             mode,

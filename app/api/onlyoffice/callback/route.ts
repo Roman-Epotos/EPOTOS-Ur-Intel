@@ -9,6 +9,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const version_id = request.nextUrl.searchParams.get('version_id')
+    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
     const body = await request.json()
 
     console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.status === 2 || body.status === 6) {
-      if (!body.url || !version_id) {
+      if (!body.url || (!version_id && !attachment_id)) {
         return NextResponse.json({ error: 0 })
       }
 
@@ -62,47 +63,70 @@ export async function POST(request: NextRequest) {
       const arrayBuffer = await fileResponse.arrayBuffer()
       const buffer = new Uint8Array(arrayBuffer)
 
-      // Получаем текущую версию
-      const { data: version } = await supabase
-        .from('versions')
-        .select('*')
-        .eq('id', version_id)
-        .single()
+      // Получаем имена редакторов
+      const actions = body.actions ?? []
+      const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
+      const userNames = await Promise.all(
+        userIds.map((uid) => getUserName(uid as string))
+      )
+      const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
 
-      if (!version) {
-        return NextResponse.json({ error: 0 })
-      }
+      if (version_id) {
+        // Режим версии документа
+        const { data: version } = await supabase
+          .from('versions')
+          .select('*')
+          .eq('id', version_id)
+          .single()
 
-      // Загружаем обновлённый файл в Supabase Storage
-      const filePath = version.file_url.split('/contracts/')[1]
+        if (!version) return NextResponse.json({ error: 0 })
 
-      const { error: uploadError } = await supabase.storage
-        .from('contracts')
-        .update(filePath, buffer, {
-          contentType: version.file_name.endsWith('.xlsx')
-            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          upsert: true,
-        })
+        const filePath = version.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: version.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
 
-      if (uploadError) {
-        console.error('Upload error:', uploadError)
-      } else {
-        // Получаем имена пользователей из actions
-        const actions = body.actions ?? []
-        const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
-        const userNames = await Promise.all(
-          userIds.map((uid) => getUserName(uid as string))
-        )
-        const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: version.contract_id,
+            action: 'Документ отредактирован в OnlyOffice',
+            details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
+      } else if (attachment_id) {
+        // Режим дополнительного материала
+        const { data: attachment } = await supabase
+          .from('document_attachments')
+          .select('*')
+          .eq('id', attachment_id)
+          .single()
 
-        // Записываем в лог
-        await supabase.from('contract_logs').insert({
-          contract_id: version.contract_id,
-          action: 'Документ отредактирован в OnlyOffice',
-          details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
-          user_name: editorsStr,
-        })
+        if (!attachment) return NextResponse.json({ error: 0 })
+
+        const filePath = attachment.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: attachment.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
+
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: attachment.contract_id,
+            action: 'Дополнительный материал отредактирован в OnlyOffice',
+            details: `Файл: ${attachment.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
       }
     }
 

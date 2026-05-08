@@ -13,7 +13,7 @@ const JWT_SECRET = process.env.ONLYOFFICE_JWT_SECRET ?? 'epotos_office_secret_20
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { version_id, user_name, user_id, mode } = body
+    const { version_id, attachment_id, user_name, user_id, mode } = body
 
     if (!version_id) {
       return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
     const docType = fileExt === 'xlsx' || fileExt === 'xls' ? 'cell' :
                     fileExt === 'docx' || fileExt === 'doc' ? 'word' : 'word'
 
-    const documentKey = `${version_id}_${Date.now()}`
+    const recordId = version_id || attachment_id
+  const documentKey = `${recordId}_${Date.now()}`
 
     // Конфигурация OnlyOffice
     const config = {
@@ -68,7 +69,9 @@ export async function POST(request: NextRequest) {
           toolbarNoTabs: false,
           hideRightMenu: false,
         },
-        callbackUrl: `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?version_id=${version_id}`,
+        callbackUrl: version_id
+          ? `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?version_id=${version_id}`
+          : `https://epotos-ur-intel.vercel.app/api/onlyoffice/callback?attachment_id=${attachment_id}`,
       },
     }
 
