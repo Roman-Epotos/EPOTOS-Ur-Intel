@@ -115,7 +115,36 @@ export default function ContractsList() {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Подписка на новые сообщения в чатах
+    const msgChannel = supabase
+      .channel('approval-messages-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'approval_messages',
+      }, () => {
+        if (!user?.id) return
+        const reload = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          setContracts(contractsData.contracts ?? [])
+        }
+        reload()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(msgChannel)
+    }
   }, [user?.id])
 
   useEffect(() => {
