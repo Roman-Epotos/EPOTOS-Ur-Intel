@@ -1,4 +1,5 @@
-'use client'
+﻿'use client'
+import { buildChatHtml } from '@/utils/chatPrint'
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
@@ -945,6 +946,58 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 </div>
               ) : (
                 <div>
+                  {/* Печать чата */}
+                  <div className="flex flex-wrap items-end gap-3 mb-4 print:hidden bg-gray-50 rounded-xl p-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">С даты</label>
+                      <input type="date" id="chat-date-from"
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">По дату</label>
+                      <input type="date" id="chat-date-to"
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const from = (document.getElementById('chat-date-from') as HTMLInputElement)?.value
+                        const to = (document.getElementById('chat-date-to') as HTMLInputElement)?.value
+                        const printWindow = window.open('', '_blank')
+                        if (!printWindow) return
+                        let messages = session.approval_messages
+                        if (from) messages = messages.filter(m => new Date(m.created_at) >= new Date(from))
+                        if (to) {
+                          const toDate = new Date(to)
+                          toDate.setHours(23, 59, 59, 999)
+                          messages = messages.filter(m => new Date(m.created_at) <= toDate)
+                        }
+                        const periodLabel = from || to
+                          ? 'За период: ' + (from ? new Date(from).toLocaleDateString('ru-RU') : '—') + ' — ' + (to ? new Date(to).toLocaleDateString('ru-RU') : '—')
+                          : 'Все сообщения'
+                        const html = buildChatHtml(contract, messages, periodLabel)
+                        printWindow.document.write(html)
+                        printWindow.document.close()
+                        printWindow.focus()
+                        printWindow.print()
+                      }}
+                      className="text-xs border border-gray-200 bg-white px-3 py-1.5 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
+                      🖨️ Печать за период
+                    </button>
+                    <button
+                      onClick={() => {
+                        const printWindow = window.open('', '_blank')
+                        if (!printWindow) return
+                        const messages = session.approval_messages
+                        const html = buildChatHtml(contract, messages, 'Все сообщения')
+                        printWindow.document.write(html)
+                        printWindow.document.close()
+                        printWindow.focus()
+                        printWindow.print()
+                      }}
+                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 flex items-center gap-1">
+                      🖨️ Печать всего чата
+                    </button>
+                  </div>
                   <div className="space-y-3 max-h-96 overflow-y-auto mb-4 pr-1">
                     {session.approval_messages.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-4">Сообщений пока нет</p>
