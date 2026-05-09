@@ -34,7 +34,7 @@ export default function NewContractPage() {
   })
 
   useEffect(() => {
-    if (!form.company_prefix) {
+    if (!form.company_prefix || !form.type) {
       setAutoNumber('')
       setManualNumber('')
       setNumberChanged(false)

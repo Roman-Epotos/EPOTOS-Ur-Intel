@@ -55,612 +55,13 @@ app/hooks/useBitrixAuth.ts
 app/layout.tsx
 app/lib/documentTypes.ts
 app/page.tsx
+utils/chatPrint.ts
 utils/supabase/client.ts
 utils/supabase/server.ts
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="app/contracts/[id]/page.tsx">
-import { createClient } from '@supabase/supabase-js'
-import { notFound } from 'next/navigation'
-import ContractTabs from '@/app/components/ContractTabs'
-
-export default async function ContractPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-
-  const { data: contract } = await supabase
-    .from('contracts')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (!contract) notFound()
-
-  const { data: logs } = await supabase
-    .from('contract_logs')
-    .select('*')
-    .eq('contract_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: versions } = await supabase
-    .from('versions')
-    .select('*')
-    .eq('contract_id', id)
-    .order('version_number', { ascending: false })
-
-  return (
-    <ContractTabs
-      contract={contract}
-      versions={versions ?? []}
-      logs={logs ?? []}
-    />
-  )
-}
-</file>
-
-<file path="app/globals.css">
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Фикс для Яндекс браузера и Safari — только поля ввода */
-input,
-select,
-textarea {
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827 !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #9ca3af !important;
-  -webkit-text-fill-color: #9ca3af !important;
-  opacity: 1;
-}
-
-input:disabled,
-select:disabled {
-  color: #6b7280 !important;
-  -webkit-text-fill-color: #6b7280 !important;
-}
-
-/* Кнопки — сброс webkit */
-button, a {
-  -webkit-text-fill-color: currentColor;
-}
-
-/* Белый текст на тёмном фоне */
-button.text-white,
-a.text-white,
-span.text-white {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-}
-
-/* Серый текст на светлом фоне */
-button.text-gray-700,
-button.text-gray-600,
-span.text-gray-700,
-span.text-gray-600 {
-  color: #374151 !important;
-  -webkit-text-fill-color: #374151 !important;
-}
-
-/* Счётчик на активной вкладке — тёмный текст на белом фоне */
-span.text-gray-900 {
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827 !important;
-}
-</file>
-
-<file path="app/hooks/useBitrixAuth.ts">
-'use client'
-
-import { useState, useEffect } from 'react'
-
-export interface BitrixUser {
-  id: string
-  name: string
-  email: string
-  avatar: string | null
-  auth_id: string
-  refresh_id: string
-  domain: string
-  member_id: string
-}
-
-export function useBitrixAuth() {
-  const [user, setUser] = useState<BitrixUser | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const authenticate = async () => {
-      try {
-        // Проверяем параметры в URL (от Битрикс24)
-        const params = new URLSearchParams(window.location.search)
-        const authId = params.get('auth_id')
-        const refreshId = params.get('refresh_id')
-        const domain = params.get('domain')
-        const memberId = params.get('member_id')
-
-        if (authId && domain && memberId) {
-          // Отправляем данные на сервер для верификации
-          const formData = new FormData()
-          formData.append('AUTH_ID', authId)
-          formData.append('REFRESH_ID', refreshId ?? '')
-          formData.append('DOMAIN', domain)
-          formData.append('member_id', memberId)
-
-          const response = await fetch('/api/bitrix/callback', {
-            method: 'POST',
-            body: formData,
-          })
-
-          const data = await response.json()
-
-          if (data.success) {
-            setUser(data.user)
-            // Сохраняем в sessionStorage
-            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
-            // Убираем параметры из URL
-            window.history.replaceState({}, '', '/')
-          }
-        } else {
-          // Проверяем sessionStorage
-          const stored = sessionStorage.getItem('bitrix_user')
-          if (stored) {
-            setUser(JSON.parse(stored))
-          }
-        }
-      } catch (err) {
-        console.error('Bitrix auth error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    authenticate()
-  }, [])
-
-  const logout = () => {
-    sessionStorage.removeItem('bitrix_user')
-    setUser(null)
-  }
-
-  return { user, loading, logout }
-}
-</file>
-
-<file path="app/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Create Next App",
-  description: "Generated by create next app",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
-  );
-}
-</file>
-
-<file path="app/page.tsx">
-import Link from 'next/link'
-import Header from '@/app/components/Header'
-import MyDocuments from '@/app/components/MyDocuments'
-import ContractsList from '@/app/components/ContractsList'
-import PersonalStats from '@/app/components/PersonalStats'
-import { createClient } from '@/utils/supabase/server'
-
-const statusLabel: Record<string, string> = {
-  черновик: 'Черновик',
-  на_согласовании: 'На согласовании',
-  подписан: 'Подписан',
-  отклонён: 'Отклонён',
-  архив: 'Архив',
-}
-
-const statusColor: Record<string, string> = {
-  черновик: 'bg-gray-100 text-gray-700',
-  на_согласовании: 'bg-yellow-100 text-yellow-800',
-  подписан: 'bg-green-100 text-green-800',
-  отклонён: 'bg-red-100 text-red-700',
-  архив: 'bg-gray-200 text-gray-500',
-}
-
-export default async function HomePage() {
-  const supabase = await createClient()
-
-  const { data: contracts } = await supabase
-    .from('contracts')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  const all = contracts ?? []
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-
-        <Header />
-
-        <MyDocuments />
-
-        <PersonalStats />
-
-        <ContractsList />
-
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="utils/supabase/client.ts">
-import { createBrowserClient } from '@supabase/ssr'
-
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-}
-</file>
-
-<file path="utils/supabase/server.ts">
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
-}
-</file>
-
-<file path="app/contracts/[id]/upload/page.tsx">
-'use client'
-
-import { useState } from 'react'
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-export default function UploadVersionPage() {
-  const params = useParams()
-  const contractId = params.id as string
-  const { user } = useBitrixAuth()
-
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [comment, setComment] = useState('')
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0]
-    if (!selected) return
-
-    const allowed = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ]
-
-    if (!allowed.includes(selected.type)) {
-      setError('Допустимые форматы: PDF, DOC, DOCX')
-      return
-    }
-
-    if (selected.size > 20 * 1024 * 1024) {
-      setError('Файл не должен превышать 20 МБ')
-      return
-    }
-
-    setFile(selected)
-    setError('')
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!file) { setError('Выберите файл'); return }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('contract_id', contractId)
-      formData.append('comment', comment)
-      formData.append('user_name', user?.name ?? 'Система')
-
-      const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError('Ошибка загрузки файла: ' + (data.error ?? 'Неизвестная ошибка'))
-        setLoading(false)
-        return
-      }
-
-      window.location.href = `https://epotos-ur-intel.vercel.app/contracts/${contractId}`
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-      setError('Ошибка: ' + message)
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-
-        <div className="flex items-center gap-3 mb-8">
-          <Link href={`/contracts/${contractId}`}
-            className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-            ← Назад
-          </Link>
-          <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Загрузить версию документа</h1>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <form onSubmit={handleSubmit} className="space-y-5">
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Файл договора <span className="text-red-500">*</span>
-              </label>
-              <div className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
-                {file ? (
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {(file.size / 1024 / 1024).toFixed(2)} МБ
-                    </p>
-                    <button type="button" onClick={() => setFile(null)}
-                      className="mt-2 text-xs text-red-500 hover:text-red-700 underline">
-                      Удалить
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
-                    <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 20 МБ</p>
-                  </div>
-                )}
-                {!file && (
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.xlsx"
-                    onChange={handleFileChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Комментарий к версии
-              </label>
-              <input
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Например: первичная версия, правки юриста..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={loading || !file}
-                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
-                {loading ? 'Загрузка...' : 'Загрузить документ'}
-              </button>
-              <Link href={`/contracts/${contractId}`}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Отмена
-              </Link>
-            </div>
-
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/lib/documentTypes.ts">
-export const DOCUMENT_TYPES = [
-  {
-    group: 'Договоры',
-    types: [
-      { value: 'поставка', label: 'Договор поставки' },
-      { value: 'услуги', label: 'Договор услуг' },
-      { value: 'аренда', label: 'Договор аренды' },
-      { value: 'подряд', label: 'Договор подряда' },
-      { value: 'купля-продажа', label: 'Договор купли-продажи' },
-      { value: 'агентский', label: 'Агентский договор' },
-      { value: 'дилерский', label: 'Дилерский договор' },
-      { value: 'лицензионный', label: 'Лицензионный договор' },
-      { value: 'сервисный', label: 'Сервисный договор' },
-    ]
-  },
-  {
-    group: 'Соглашения',
-    types: [
-      { value: 'доп-соглашение', label: 'Дополнительное соглашение' },
-      { value: 'nda', label: 'NDA / Соглашение о конфиденциальности' },
-      { value: 'эдо', label: 'Соглашение о переходе на ЭДО' },
-      { value: 'протокол-разногласий', label: 'Протокол разногласий' },
-    ]
-  },
-  {
-    group: 'Претензионно-исковые',
-    types: [
-      { value: 'претензия', label: 'Претензия' },
-      { value: 'исковое', label: 'Исковое заявление' },
-      { value: 'ответ-претензию', label: 'Ответ на претензию' },
-    ]
-  },
-  {
-    group: 'Организационно-распорядительные',
-    types: [
-      { value: 'положение', label: 'Положение' },
-      { value: 'инструкция', label: 'Инструкция' },
-      { value: 'служебная-записка', label: 'Служебная записка' },
-    ]
-  },
-  {
-    group: 'Доверенности и согласия',
-    types: [
-      { value: 'доверенность', label: 'Доверенность' },
-      { value: 'персданные', label: 'Согласие на обработку персональных данных' },
-    ]
-  },
-  {
-    group: 'Акты и заключения',
-    types: [
-      { value: 'акт', label: 'Акт приёма-передачи' },
-      { value: 'заключение', label: 'Правовое заключение' },
-      { value: 'справка', label: 'Справка' },
-    ]
-  },
-  {
-    group: 'Учредительные',
-    types: [
-      { value: 'устав', label: 'Устав' },
-      { value: 'учредительный', label: 'Учредительный договор' },
-    ]
-  },
-  {
-    group: 'Прочие',
-    types: [
-      { value: 'письмо', label: 'Письмо' },
-      { value: 'счет', label: 'Счёт' },
-      { value: 'другое', label: 'Другое' },
-    ]
-  },
-]
-
-// Категории для определения типа анализа AI
-export const CONTRACT_DOCUMENT_TYPES = [
-  'поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа',
-  'агентский', 'дилерский', 'лицензионный', 'сервисный',
-  'доп-соглашение', 'nda', 'эдо', 'протокол-разногласий',
-  'претензия', 'исковое', 'ответ-претензию'
-]
-
-// Регионы
-export const REGIONS = [
-  { value: '', label: 'Не указан' },
-  { value: 'РФ', label: 'Российская Федерация' },
-  { value: 'СНГ', label: 'Страны СНГ' },
-  { value: 'международный', label: 'Международный' },
-]
-
-// Вспомогательная функция для получения label по value
-export function getDocumentTypeLabel(value: string): string {
-  for (const group of DOCUMENT_TYPES) {
-    const found = group.types.find(t => t.value === value)
-    if (found) return found.label
-  }
-  return value
-}
-
-// JSX helper для рендера optgroup
-export function renderDocumentTypeOptions() {
-  return DOCUMENT_TYPES.map(group => ({
-    group: group.group,
-    options: group.types,
-  }))
-}
-</file>
 
 <file path="app/contracts/[id]/approval-portal/page.tsx">
 'use client'
@@ -1593,6 +994,659 @@ export default function ApprovePage() {
 }
 </file>
 
+<file path="app/contracts/[id]/page.tsx">
+import { createClient } from '@supabase/supabase-js'
+import { notFound } from 'next/navigation'
+import ContractTabs from '@/app/components/ContractTabs'
+
+export default async function ContractPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (!contract) notFound()
+
+  const { data: logs } = await supabase
+    .from('contract_logs')
+    .select('*')
+    .eq('contract_id', id)
+    .order('created_at', { ascending: false })
+
+  const { data: versions } = await supabase
+    .from('versions')
+    .select('*')
+    .eq('contract_id', id)
+    .order('version_number', { ascending: false })
+
+  return (
+    <ContractTabs
+      contract={contract}
+      versions={versions ?? []}
+      logs={logs ?? []}
+    />
+  )
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Фикс для Яндекс браузера и Safari — только поля ввода */
+input,
+select,
+textarea {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+  opacity: 1;
+}
+
+input:disabled,
+select:disabled {
+  color: #6b7280 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+
+/* Кнопки — сброс webkit */
+button, a {
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Белый текст на тёмном фоне */
+button.text-white,
+a.text-white,
+span.text-white {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Серый текст на светлом фоне */
+button.text-gray-700,
+button.text-gray-600,
+span.text-gray-700,
+span.text-gray-600 {
+  color: #374151 !important;
+  -webkit-text-fill-color: #374151 !important;
+}
+
+/* Счётчик на активной вкладке — тёмный текст на белом фоне */
+span.text-gray-900 {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+</file>
+
+<file path="app/hooks/useBitrixAuth.ts">
+'use client'
+
+import { useState, useEffect } from 'react'
+
+export interface BitrixUser {
+  id: string
+  name: string
+  email: string
+  avatar: string | null
+  auth_id: string
+  refresh_id: string
+  domain: string
+  member_id: string
+}
+
+export function useBitrixAuth() {
+  const [user, setUser] = useState<BitrixUser | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const authenticate = async () => {
+      try {
+        // Проверяем параметры в URL (от Битрикс24)
+        const params = new URLSearchParams(window.location.search)
+        const authId = params.get('auth_id')
+        const refreshId = params.get('refresh_id')
+        const domain = params.get('domain')
+        const memberId = params.get('member_id')
+
+        if (authId && domain && memberId) {
+          // Отправляем данные на сервер для верификации
+          const formData = new FormData()
+          formData.append('AUTH_ID', authId)
+          formData.append('REFRESH_ID', refreshId ?? '')
+          formData.append('DOMAIN', domain)
+          formData.append('member_id', memberId)
+
+          const response = await fetch('/api/bitrix/callback', {
+            method: 'POST',
+            body: formData,
+          })
+
+          const data = await response.json()
+
+          if (data.success) {
+            setUser(data.user)
+            // Сохраняем в sessionStorage
+            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
+            // Убираем параметры из URL
+            window.history.replaceState({}, '', '/')
+          }
+        } else {
+          // Проверяем sessionStorage
+          const stored = sessionStorage.getItem('bitrix_user')
+          if (stored) {
+            setUser(JSON.parse(stored))
+          }
+        }
+      } catch (err) {
+        console.error('Bitrix auth error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    authenticate()
+  }, [])
+
+  const logout = () => {
+    sessionStorage.removeItem('bitrix_user')
+    setUser(null)
+  }
+
+  return { user, loading, logout }
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/page.tsx">
+import Link from 'next/link'
+import Header from '@/app/components/Header'
+import MyDocuments from '@/app/components/MyDocuments'
+import ContractsList from '@/app/components/ContractsList'
+import PersonalStats from '@/app/components/PersonalStats'
+import { createClient } from '@/utils/supabase/server'
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  подписан: 'Подписан',
+  отклонён: 'Отклонён',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  подписан: 'bg-green-100 text-green-800',
+  отклонён: 'bg-red-100 text-red-700',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+export default async function HomePage() {
+  const supabase = await createClient()
+
+  const { data: contracts } = await supabase
+    .from('contracts')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  const all = contracts ?? []
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+
+        <Header />
+
+        <MyDocuments />
+
+        <PersonalStats />
+
+        <ContractsList />
+
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="utils/supabase/client.ts">
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  )
+}
+</file>
+
+<file path="utils/supabase/server.ts">
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
+}
+</file>
+
+<file path="app/contracts/[id]/upload/page.tsx">
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+export default function UploadVersionPage() {
+  const params = useParams()
+  const contractId = params.id as string
+  const { user } = useBitrixAuth()
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [comment, setComment] = useState('')
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0]
+    if (!selected) return
+
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]
+
+    if (!allowed.includes(selected.type)) {
+      setError('Допустимые форматы: PDF, DOC, DOCX')
+      return
+    }
+
+    if (selected.size > 20 * 1024 * 1024) {
+      setError('Файл не должен превышать 20 МБ')
+      return
+    }
+
+    setFile(selected)
+    setError('')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) { setError('Выберите файл'); return }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('contract_id', contractId)
+      formData.append('comment', comment)
+      formData.append('user_name', user?.name ?? 'Система')
+
+      const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError('Ошибка загрузки файла: ' + (data.error ?? 'Неизвестная ошибка'))
+        setLoading(false)
+        return
+      }
+
+      window.location.href = `https://epotos-ur-intel.vercel.app/contracts/${contractId}`
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+      setError('Ошибка: ' + message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+
+        <div className="flex items-center gap-3 mb-8">
+          <Link href={`/contracts/${contractId}`}
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            ← Назад
+          </Link>
+          <span className="text-gray-300">/</span>
+          <h1 className="text-xl font-semibold text-gray-900">Загрузить версию документа</h1>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Файл договора <span className="text-red-500">*</span>
+              </label>
+              <div className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                {file ? (
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(file.size / 1024 / 1024).toFixed(2)} МБ
+                    </p>
+                    <button type="button" onClick={() => setFile(null)}
+                      className="mt-2 text-xs text-red-500 hover:text-red-700 underline">
+                      Удалить
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
+                    <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 20 МБ</p>
+                  </div>
+                )}
+                {!file && (
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.xlsx"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Комментарий к версии
+              </label>
+              <input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Например: первичная версия, правки юриста..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={loading || !file}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
+                {loading ? 'Загрузка...' : 'Загрузить документ'}
+              </button>
+              <Link href={`/contracts/${contractId}`}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                Отмена
+              </Link>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/lib/documentTypes.ts">
+export const DOCUMENT_TYPES = [
+  {
+    group: 'Договоры',
+    types: [
+      { value: 'поставка', label: 'Договор поставки' },
+      { value: 'услуги', label: 'Договор услуг' },
+      { value: 'аренда', label: 'Договор аренды' },
+      { value: 'подряд', label: 'Договор подряда' },
+      { value: 'купля-продажа', label: 'Договор купли-продажи' },
+      { value: 'агентский', label: 'Агентский договор' },
+      { value: 'дилерский', label: 'Дилерский договор' },
+      { value: 'лицензионный', label: 'Лицензионный договор' },
+      { value: 'сервисный', label: 'Сервисный договор' },
+    ]
+  },
+  {
+    group: 'Соглашения',
+    types: [
+      { value: 'доп-соглашение', label: 'Дополнительное соглашение' },
+      { value: 'nda', label: 'NDA / Соглашение о конфиденциальности' },
+      { value: 'эдо', label: 'Соглашение о переходе на ЭДО' },
+      { value: 'протокол-разногласий', label: 'Протокол разногласий' },
+    ]
+  },
+  {
+    group: 'Претензионно-исковые',
+    types: [
+      { value: 'претензия', label: 'Претензия' },
+      { value: 'исковое', label: 'Исковое заявление' },
+      { value: 'ответ-претензию', label: 'Ответ на претензию' },
+    ]
+  },
+  {
+    group: 'Организационно-распорядительные',
+    types: [
+      { value: 'положение', label: 'Положение' },
+      { value: 'инструкция', label: 'Инструкция' },
+      { value: 'служебная-записка', label: 'Служебная записка' },
+    ]
+  },
+  {
+    group: 'Доверенности и согласия',
+    types: [
+      { value: 'доверенность', label: 'Доверенность' },
+      { value: 'персданные', label: 'Согласие на обработку персональных данных' },
+    ]
+  },
+  {
+    group: 'Акты и заключения',
+    types: [
+      { value: 'акт', label: 'Акт приёма-передачи' },
+      { value: 'заключение', label: 'Правовое заключение' },
+      { value: 'справка', label: 'Справка' },
+    ]
+  },
+  {
+    group: 'Учредительные',
+    types: [
+      { value: 'устав', label: 'Устав' },
+      { value: 'учредительный', label: 'Учредительный договор' },
+    ]
+  },
+  {
+    group: 'Прочие',
+    types: [
+      { value: 'письмо', label: 'Письмо' },
+      { value: 'счет', label: 'Счёт' },
+      { value: 'другое', label: 'Другое' },
+    ]
+  },
+]
+
+// Категории для определения типа анализа AI
+export const CONTRACT_DOCUMENT_TYPES = [
+  'поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа',
+  'агентский', 'дилерский', 'лицензионный', 'сервисный',
+  'доп-соглашение', 'nda', 'эдо', 'протокол-разногласий',
+  'претензия', 'исковое', 'ответ-претензию'
+]
+
+// Регионы
+export const REGIONS = [
+  { value: '', label: 'Не указан' },
+  { value: 'РФ', label: 'Российская Федерация' },
+  { value: 'СНГ', label: 'Страны СНГ' },
+  { value: 'международный', label: 'Международный' },
+]
+
+// Вспомогательная функция для получения label по value
+export function getDocumentTypeLabel(value: string): string {
+  for (const group of DOCUMENT_TYPES) {
+    const found = group.types.find(t => t.value === value)
+    if (found) return found.label
+  }
+  return value
+}
+
+// JSX helper для рендера optgroup
+export function renderDocumentTypeOptions() {
+  return DOCUMENT_TYPES.map(group => ({
+    group: group.group,
+    options: group.types,
+  }))
+}
+</file>
+
+<file path="utils/chatPrint.ts">
+export function buildChatHtml(
+  contract: { number: string; title: string },
+  messages: {
+    author_name: string
+    created_at: string
+    message?: string | null
+    file_name?: string | null
+  }[],
+  periodLabel: string
+): string {
+  const rows = messages.length === 0
+    ? '<div class="empty">Нет сообщений за выбранный период</div>'
+    : messages.map(m => {
+        const text = m.message
+          ? '<div class="msg-text">' + m.message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>'
+          : ''
+        const file = m.file_name
+          ? '<div class="msg-file">📎 ' + m.file_name + '</div>'
+          : ''
+        const date = new Date(m.created_at).toLocaleString('ru-RU')
+        return '<div class="msg"><div class="msg-header"><span class="msg-author">' +
+          m.author_name + '</span><span class="msg-date">' + date + '</span></div>' +
+          text + file + '</div>'
+      }).join('')
+
+  const printDate = new Date().toLocaleString('ru-RU')
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<title>Чат согласования — ' + contract.number + '</title>' +
+    '<style>' +
+    'body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:24px;max-width:800px;margin:0 auto}' +
+    'h2{font-size:16px;margin-bottom:4px}' +
+    '.meta{color:#666;font-size:12px;margin-bottom:6px}' +
+    '.period{color:#333;font-size:12px;font-weight:bold;margin-bottom:20px;border-bottom:2px solid #333;padding-bottom:8px}' +
+    '.msg{border-bottom:1px solid #eee;padding:10px 0}' +
+    '.msg-header{display:flex;gap:12px;margin-bottom:4px}' +
+    '.msg-author{font-weight:bold}' +
+    '.msg-date{color:#888;font-size:11px}' +
+    '.msg-text{color:#333;white-space:pre-wrap}' +
+    '.msg-file{color:#555;font-size:11px;margin-top:4px}' +
+    '.empty{color:#888;font-style:italic;margin-top:20px}' +
+    '@media print{body{padding:0}}' +
+    '</style></head><body>' +
+    '<h2>Чат согласования — ' + contract.number + '</h2>' +
+    '<div class="meta">' + contract.title + '</div>' +
+    '<div class="meta">Распечатано: ' + printDate + '</div>' +
+    '<div class="period">' + periodLabel + ' · Сообщений: ' + messages.length + '</div>' +
+    rows +
+    '</body></html>'
+}
+</file>
+
 <file path="app/contracts/new/page.tsx">
 'use client'
 
@@ -1640,7 +1694,7 @@ export default function NewContractPage() {
     const generate = async () => {
       try {
         const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}`)
+      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
         const data = await res.json()
         if (data.number) {
           setAutoNumber(data.number)
@@ -1653,7 +1707,7 @@ export default function NewContractPage() {
       }
     }
     generate()
-  }, [form.company_prefix])
+  }, [form.company_prefix, form.type])
 
   const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
 
