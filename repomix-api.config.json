@@ -1,0 +1,14 @@
+﻿{
+  "include": ["app/api/**"],
+  "output": {
+    "filePath": "repomix-api.txt"
+  },
+  "ignore": {
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      ".env*",
+      "*.lock"
+    ]
+  }
+}

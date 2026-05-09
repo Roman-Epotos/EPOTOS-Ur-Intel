@@ -1,0 +1,16 @@
+﻿{
+  "include": ["app/**", "utils/**"],
+  "output": {
+    "filePath": "repomix-pages.txt"
+  },
+  "ignore": {
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      ".env*",
+      "*.lock",
+      "app/api/**",
+      "app/components/**"
+    ]
+  }
+}

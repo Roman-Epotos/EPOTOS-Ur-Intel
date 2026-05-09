@@ -1,0 +1,14 @@
+﻿{
+  "include": ["app/components/**"],
+  "output": {
+    "filePath": "repomix-components.txt"
+  },
+  "ignore": {
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      ".env*",
+      "*.lock"
+    ]
+  }
+}

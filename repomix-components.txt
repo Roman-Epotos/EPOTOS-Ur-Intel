@@ -1,0 +1,3151 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: app/components/**
+- Files matching these patterns are excluded: node_modules/**, .next/**, .env*, *.lock
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/components/AIAnalysis.tsx
+app/components/AIGenerate.tsx
+app/components/ApproveButton.tsx
+app/components/CancelApprovalButton.tsx
+app/components/ContractsList.tsx
+app/components/ContractTabs.tsx
+app/components/DelegateApproveCheckbox.tsx
+app/components/DeleteContractButton.tsx
+app/components/Header.tsx
+app/components/MyDocuments.tsx
+app/components/PersonalStats.tsx
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/components/ApproveButton.tsx">
+'use client'
+
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  contractId: string
+  contractStatus: string
+  authorBitrixId: number | null
+  allowOthers: boolean
+}
+
+export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
+  const { user } = useBitrixAuth()
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
+
+  if (contractStatus !== 'черновик') return null
+  if (!isAdmin && !isAuthor && !allowOthers) return null
+
+  return (
+    <Link
+      href={`/contracts/${contractId}/approve`}
+      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
+    >
+      Отправить на согласование
+    </Link>
+  )
+}
+</file>
+
+<file path="app/components/CancelApprovalButton.tsx">
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  sessionId: string
+  contractId: string
+  contractNumber: string
+  initiatedByBitrixId: number | null
+  onCancelled: () => void
+}
+
+export default function CancelApprovalButton({
+  sessionId,
+  contractId,
+  contractNumber,
+  initiatedByBitrixId,
+  onCancelled,
+}: Props) {
+  const { user } = useBitrixAuth()
+  const [showModal, setShowModal] = useState(false)
+  const [reason, setReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [error, setError] = useState('')
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isInitiator = user ? parseInt(user.id) === initiatedByBitrixId : false
+
+  if (!isAdmin && !isInitiator) return null
+
+  const handleCancel = async () => {
+    if (!reason.trim()) {
+      setError('Укажите причину прерывания')
+      return
+    }
+
+    setCancelling(true)
+    setError('')
+
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const response = await fetch(`${baseUrl}/api/approvals/${sessionId}/approve`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason,
+          user_name: user?.name ?? 'Система',
+          contract_id: contractId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error ?? 'Ошибка прерывания')
+        setCancelling(false)
+        return
+      }
+
+      setShowModal(false)
+      onCancelled()
+    } catch {
+      setError('Ошибка соединения')
+      setCancelling(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setShowModal(true)}
+        className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+      >
+        Прервать согласование
+      </button>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Прерывание согласования</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Согласование по договору <strong>{contractNumber}</strong> будет прервано.
+              Договор перейдёт в статус <strong>Архив</strong>.
+            </p>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Причина прерывания <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="Например: отказ от сделки, изменились условия..."
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {cancelling ? 'Прерывание...' : 'Прервать согласование'}
+              </button>
+              <button
+                onClick={() => { setShowModal(false); setReason(''); setError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+</file>
+
+<file path="app/components/DelegateApproveCheckbox.tsx">
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  contractId: string
+  contractNumber: string
+  authorBitrixId: number | null
+  allowOthers: boolean
+}
+
+export default function DelegateApproveCheckbox({
+  contractId,
+  contractNumber,
+  authorBitrixId,
+  allowOthers,
+}: Props) {
+  const { user } = useBitrixAuth()
+  const [checked, setChecked] = useState(allowOthers)
+  const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
+
+  if (!isAdmin && !isAuthor) return null
+
+  const handleChange = () => {
+    setShowModal(true)
+  }
+
+  const handleConfirm = async () => {
+    setSaving(true)
+    const newValue = !checked
+
+    try {
+      await fetch(`https://epotos-ur-intel.vercel.app/api/contracts/${contractId}/delegate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allow_others_to_approve: newValue,
+          user_name: user?.name ?? 'Система',
+          user_bitrix_id: user?.id ? parseInt(user.id) : null,
+        }),
+      })
+      setChecked(newValue)
+    } catch {
+      console.error('Ошибка сохранения')
+    }
+
+    setSaving(false)
+    setShowModal(false)
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mt-3">
+        <input
+          type="checkbox"
+          id="delegate-approve"
+          checked={checked}
+          onChange={handleChange}
+          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+        />
+        <label htmlFor="delegate-approve" className="text-xs text-gray-600 cursor-pointer">
+          Разрешить другим сотрудникам запускать согласование
+        </label>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {checked
+                ? `Вы собираетесь запретить другим сотрудникам запускать согласование по договору ${contractNumber}. Только вы и администраторы сможете отправить его на согласование.`
+                : `Вы собираетесь разрешить другим сотрудникам запускать согласование по договору ${contractNumber}. Любой сотрудник системы сможет отправить его на согласование.`
+              }
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleConfirm}
+                disabled={saving}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+              >
+                {saving ? 'Сохранение...' : 'Подтвердить'}
+              </button>
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+</file>
+
+<file path="app/components/MyDocuments.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+}
+
+interface ApprovalItem {
+  id: string
+  role: string
+  status: string
+  stage: string
+  session_id: string
+  approval_sessions: {
+    id: string
+    contract_id: string
+    deadline: string
+    initiated_by_name: string
+    contracts: Contract
+  }
+}
+
+interface SessionItem {
+  id: string
+  deadline: string
+  status: string
+  created_at: string
+  contracts: Contract
+}
+
+interface MyDocsData {
+  required_approvals: ApprovalItem[]
+  optional_approvals: ApprovalItem[]
+  my_drafts: Contract[]
+  my_initiated: SessionItem[]
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  legal: 'Юридический',
+  finance: 'Финансовый',
+  accounting: 'Бухгалтерия',
+  director: 'Директор',
+  custom: 'Доп.',
+}
+
+export default function MyDocuments() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [data, setData] = useState<MyDocsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('approvals')
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}`
+        )
+        const json = await res.json()
+        setData(json)
+      } catch {
+        console.error('Ошибка загрузки моих документов')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+
+    // Realtime подписка
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('my-docs-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => load())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => load())
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id])
+
+  if (authLoading || loading) return null
+
+  if (!user) return null
+
+  const totalActions = (data?.required_approvals.length ?? 0) +
+    (data?.optional_approvals.length ?? 0)
+
+  const hasAnything = totalActions > 0 ||
+    (data?.my_drafts.length ?? 0) > 0 ||
+    (data?.my_initiated.length ?? 0) > 0
+
+  if (!hasAnything) return null
+
+  const tabs = [
+    {
+      id: 'approvals',
+      label: 'Требуют действия',
+      count: totalActions,
+      show: totalActions > 0
+    },
+    {
+      id: 'initiated',
+      label: 'Я инициатор',
+      count: data?.my_initiated.length ?? 0,
+      show: (data?.my_initiated.length ?? 0) > 0
+    },
+    {
+      id: 'drafts',
+      label: 'Мои черновики',
+      count: data?.my_drafts.length ?? 0,
+      show: (data?.my_drafts.length ?? 0) > 0
+    },
+  ].filter(t => t.show)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mb-6">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-gray-900">
+            Мои документы
+            {totalActions > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {totalActions}
+              </span>
+            )}
+          </h2>
+        </div>
+
+        {/* Вкладки */}
+        <div className="flex gap-2 mt-3">
+          {tabs.map(tab => (
+            <button key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}>
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                  ? 'bg-white text-gray-900'
+                  : 'bg-gray-400 text-white'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4">
+
+        {/* Требуют действия */}
+        {activeTab === 'approvals' && (
+          <div className="space-y-2">
+            {data?.required_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Согласовать
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {STAGE_LABELS[item.stage] ?? item.stage}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {data?.optional_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Ознакомиться
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {totalActions === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">
+                Нет документов требующих действий
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Я инициатор */}
+        {activeTab === 'initiated' && (
+          <div className="space-y-2">
+            {data?.my_initiated.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      На согласовании
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.contracts.number} — {item.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Мои черновики */}
+        {activeTab === 'drafts' && (
+          <div className="space-y-2">
+            {data?.my_drafts.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/DeleteContractButton.tsx">
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  contractId: string
+  contractNumber: string
+}
+
+export default function DeleteContractButton({ contractId, contractNumber }: Props) {
+  const { user } = useBitrixAuth()
+  const [showModal, setShowModal] = useState(false)
+  const [reason, setReason] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+
+  if (!isAdmin) return null
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    setError('')
+
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const response = await fetch(`${baseUrl}/api/contracts/${contractId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_bitrix_id: parseInt(user?.id ?? '0'),
+          user_name: user?.name ?? 'Администратор',
+          reason,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error ?? 'Ошибка удаления')
+        setDeleting(false)
+        return
+      }
+
+      window.location.href = '/'
+    } catch {
+      setError('Ошибка соединения')
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setShowModal(true)}
+        className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+      >
+        Удалить документ
+      </button>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Удаление договора</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Вы собираетесь Удалить документ <strong>{contractNumber}</strong>. Это действие необратимо — все версии, история и данные согласования будут удалены.
+            </p>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Причина удаления
+              </label>
+              <textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="Укажите причину удаления..."
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Удаление...' : 'Удалить документ'}
+              </button>
+              <button
+                onClick={() => { setShowModal(false); setReason(''); setError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+</file>
+
+<file path="app/components/PersonalStats.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Stats {
+  total: number
+  on_approval: number
+  signed: number
+  drafts: number
+  pending_my_action: number
+}
+
+export default function PersonalStats() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const [contractsRes, myDocsRes] = await Promise.all([
+          fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
+          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}`),
+        ])
+
+        const contractsData = await contractsRes.json()
+        const myDocsData = await myDocsRes.json()
+
+        const contracts = contractsData.contracts ?? []
+        const pendingActions = (myDocsData.required_approvals?.length ?? 0) +
+          (myDocsData.optional_approvals?.length ?? 0)
+
+        setStats({
+          total: contracts.length,
+          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
+          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
+          pending_my_action: pendingActions,
+        })
+      } catch {
+        console.error('Ошибка загрузки статистики')
+      }
+    }
+
+    load()
+  }, [user?.id])
+
+  if (authLoading || !stats) return (
+    <div className="grid grid-cols-4 gap-4 mb-8">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
+          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const items = [
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
+    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
+    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
+  ]
+
+  return (
+    <div className="grid grid-cols-4 gap-4 mb-8">
+      {items.map(stat => (
+        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+          <p className="text-sm text-gray-500">{stat.label}</p>
+          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/AIGenerate.tsx">
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { DOCUMENT_TYPES, REGIONS } from '@/app/lib/documentTypes'
+
+const COMPANIES = [
+  { id: 'ТХ', name: 'ООО Техно' },
+  { id: 'НПП', name: 'ООО НПП ЭПОТОС' },
+  { id: 'СПТ', name: 'ООО СПТ' },
+  { id: 'ОС', name: 'ООО ОС' },
+  { id: 'Э-К', name: 'ООО Эпотос-К' },
+]
+
+interface Props {
+  contractId?: string
+  onGenerated?: () => void
+}
+
+export default function AIGenerate({ contractId, onGenerated }: Props) {
+  const { user } = useBitrixAuth()
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [form, setForm] = useState({
+    prompt: '',
+    document_type: '',
+    company_prefix: '',
+    region: '',
+    counterparty: '',
+  })
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  const AVAILABLE_TYPES = ['письмо', 'служебная-записка']
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.prompt || !form.document_type) {
+      setError('Заполните описание задачи и тип документа')
+      return
+    }
+
+    if (!AVAILABLE_TYPES.includes(form.document_type)) {
+      setError('Генерация для данного типа документа находится в разработке. Сейчас доступно: Письмо, Служебная записка.')
+      return
+    }
+
+    setGenerating(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const response = await fetch(`${baseUrl}/api/ai-generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          user_name: user?.name ?? 'Система',
+          contract_id: contractId ?? null,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        setError(data.error ?? 'Ошибка генерации')
+        return
+      }
+
+      const templateUsed = response.headers.get('X-Template-Used') === 'true'
+
+      // Скачиваем файл
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${form.document_type}_${Date.now()}.docx`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      setSuccess(`Документ успешно создан${templateUsed ? ' на основе шаблона' : ' без шаблона (шаблон не найден)'}`)
+      onGenerated?.()
+    } catch {
+      setError('Ошибка соединения')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center text-white text-lg">✨</div>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">AI Генерация документа</h3>
+          <p className="text-xs text-gray-500">Опишите задачу — AI создаст документ на основе шаблона</p>
+        </div>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">{error}</div>}
+      {success && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-4">{success}</div>}
+
+      <form onSubmit={handleGenerate} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Тип документа <span className="text-red-500">*</span></label>
+            <select value={form.document_type} onChange={e => setForm(p => ({...p, document_type: e.target.value}))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+              <option value="">— Выберите тип —</option>
+              {DOCUMENT_TYPES.map(group => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.types.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Компания ЭПОТОС</label>
+            <select value={form.company_prefix} onChange={e => setForm(p => ({...p, company_prefix: e.target.value}))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+              <option value="">— Выберите компанию —</option>
+              {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Контрагент</label>
+            <input value={form.counterparty} onChange={e => setForm(p => ({...p, counterparty: e.target.value}))}
+              placeholder="Название организации"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Регион</label>
+            <select value={form.region} onChange={e => setForm(p => ({...p, region: e.target.value}))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+              {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Описание задачи <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={form.prompt}
+            onChange={e => setForm(p => ({...p, prompt: e.target.value}))}
+            placeholder="Опишите что нужно создать. Например: договор поставки противопожарного оборудования, срок 1 год, оплата в течение 30 дней, доставка за счёт поставщика..."
+            rows={4}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+          />
+        </div>
+
+        <button type="submit" disabled={generating}
+          className="w-full bg-gray-900 text-white py-3 rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+          {generating ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              AI создаёт документ... (30-60 сек)
+            </>
+          ) : (
+            <>✨ Создать документ</>
+          )}
+        </button>
+      </form>
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/Header.tsx">
+'use client'
+
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
+        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Link
+          href="/contracts/new"
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+        >
+          + Новый документ
+        </Link>
+
+        {/* Профиль пользователя */}
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/AIAnalysis.tsx">
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { CONTRACT_DOCUMENT_TYPES } from '@/app/lib/documentTypes'
+
+interface RedFlag {
+  severity: 'high' | 'medium' | 'low'
+  title: string
+  description: string
+  recommendation: string
+}
+
+interface LegalReview {
+  red_flags: RedFlag[]
+  warnings: { title: string; description: string }[]
+  positives: { title: string; description: string }[]
+  overall_risk: 'high' | 'medium' | 'low'
+  summary: string
+}
+
+interface Passport {
+  essence: string
+  parties: {
+    our_obligations: string[]
+    counterparty_obligations: string[]
+  }
+  key_terms: {
+    amount: string
+    payment_terms: string
+    start_date: string
+    end_date: string
+    auto_renewal: string
+  }
+  termination: string
+  control_points: string[]
+  attention_zones: string[]
+}
+
+interface Analysis {
+  id: string
+  type: string
+  status: string
+  result_json: LegalReview | Passport | { error: string } | null
+  created_at: string
+  model_used: string
+  version_id: string | null
+}
+
+interface DocumentReview {
+  summary: string
+  purpose: string
+  attention_points: string[]
+  recommendations: string[]
+  document_type: string
+  urgency: 'high' | 'medium' | 'low'
+}
+
+interface ChatMessage {
+  id: string
+  role: string
+  message: string
+  user_name: string
+  created_at: string
+}
+
+interface Version {
+  id: string
+  file_url: string
+  file_name: string
+  version_number: number
+}
+
+
+
+interface Props {
+  contractId: string
+  versions: Version[]
+  userName?: string
+  userId?: number
+  documentType?: string | null
+  documentCategory?: string | null
+}
+
+const RISK_COLORS = {
+  high: 'bg-red-50 border-red-200 text-red-800',
+  medium: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+  low: 'bg-blue-50 border-blue-200 text-blue-800',
+}
+
+const RISK_ICONS = {
+  high: '🔴',
+  medium: '🟡',
+  low: '🔵',
+}
+
+const RISK_LABELS = {
+  high: 'Высокий риск',
+  medium: 'Средний риск',
+  low: 'Низкий риск',
+}
+
+export default function AIAnalysis({ contractId, versions, userName, userId, documentType, documentCategory }: Props) {
+  const [analyses, setAnalyses] = useState<Analysis[]>([])
+  const [loading, setLoading] = useState(false)
+  const [analyzing, setAnalyzing] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat' | 'document_review'>('legal_review')
+  const [selectedVersion, setSelectedVersion] = useState<string>('')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatQuestion, setChatQuestion] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (versions.length > 0) {
+      setSelectedVersion(versions[0].id)
+    }
+    loadAnalyses()
+    loadChat()
+  }, [contractId])
+
+  useEffect(() => {
+    setActiveTab('legal_review')
+  }, [selectedVersion])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  const loadAnalyses = async () => {
+    const res = await fetch(`${baseUrl}/api/ai-analysis?contract_id=${contractId}`)
+    const data = await res.json()
+    setAnalyses(data.analyses ?? [])
+  }
+
+  const loadChat = async () => {
+    const res = await fetch(`${baseUrl}/api/ai-chat?contract_id=${contractId}`)
+    const data = await res.json()
+    setChatMessages(data.messages ?? [])
+  }
+
+  const runAnalysis = async (type: 'legal_review' | 'passport' | 'document_review') => {
+    if (!selectedVersion) {
+      alert('Выберите версию документа для анализа')
+      return
+    }
+
+    const version = versions.find(v => v.id === selectedVersion)
+    if (!version) return
+
+    setAnalyzing(type)
+
+    try {
+      const res = await fetch(`${baseUrl}/api/ai-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          version_id: version.id,
+          file_url: version.file_url,
+          file_name: version.file_name,
+          analysis_type: type,
+          user_name: userName ?? 'Система',
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        await loadAnalyses()
+        setActiveTab(type)
+      } else {
+        alert('Ошибка анализа: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setAnalyzing(null)
+    }
+  }
+
+  const handleChatQuestion = async () => {
+    if (!chatQuestion.trim() || chatLoading) return
+    const question = chatQuestion
+    setChatQuestion('')
+    setChatLoading(true)
+
+    const version = versions.find(v => v.id === selectedVersion)
+
+    const tempUserMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      message: question,
+      user_name: userName ?? 'Пользователь',
+      created_at: new Date().toISOString(),
+    }
+    setChatMessages(prev => [...prev, tempUserMsg])
+
+    const res = await fetch(`${baseUrl}/api/ai-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contract_id: contractId,
+        version_id: selectedVersion,
+        file_url: version?.file_url,
+        file_name: version?.file_name,
+        question,
+        user_name: userName ?? 'Пользователь',
+        bitrix_user_id: userId ?? null,
+      }),
+    })
+
+    const data = await res.json()
+    if (data.success) {
+      const tempAiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        message: data.answer,
+        user_name: 'EpotosGPT',
+        created_at: new Date().toISOString(),
+      }
+      setChatMessages(prev => [...prev, tempAiMsg])
+    }
+    setChatLoading(false)
+  }
+
+  const latestReview = analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed')
+  const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => a.type === 'passport' && a.status === 'completed')
+
+  const renderLegalReview = (result: LegalReview) => (
+    <div className="space-y-4">
+      <div className={`rounded-lg border px-4 py-3 ${RISK_COLORS[result.overall_risk]}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{RISK_ICONS[result.overall_risk]}</span>
+          <div>
+            <p className="text-sm font-semibold">Общий уровень риска: {RISK_LABELS[result.overall_risk]}</p>
+            <p className="text-xs mt-0.5">{result.summary}</p>
+          </div>
+        </div>
+      </div>
+
+      {result.red_flags?.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">⚠️ Риски</h4>
+          <div className="space-y-2">
+            {result.red_flags.map((flag, i) => (
+              <div key={i} className={`rounded-lg border p-3 ${RISK_COLORS[flag.severity]}`}>
+                <div className="flex items-start gap-2">
+                  <span>{RISK_ICONS[flag.severity]}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{flag.title}</p>
+                    <p className="text-xs mt-0.5">{flag.description}</p>
+                    {flag.recommendation && <p className="text-xs mt-1 italic">💡 {flag.recommendation}</p>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.warnings?.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">📋 Замечания</h4>
+          <div className="space-y-2">
+            {result.warnings.map((w, i) => (
+              <div key={i} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-sm font-medium text-gray-800">{w.title}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{w.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.positives?.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">✅ Защита интересов</h4>
+          <div className="space-y-2">
+            {result.positives.map((p, i) => (
+              <div key={i} className="rounded-lg border border-green-200 bg-green-50 p-3">
+                <p className="text-sm font-medium text-green-800">{p.title}</p>
+                <p className="text-xs text-green-700 mt-0.5">{p.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderDocumentReview = (result: DocumentReview) => (
+    <div className="space-y-4">
+      <div className={`rounded-lg border px-4 py-3 ${result.urgency === 'high' ? 'bg-red-50 border-red-200' : result.urgency === 'medium' ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+        <p className="text-xs font-semibold text-gray-600 uppercase mb-1">Тип документа</p>
+        <p className="text-sm font-medium text-gray-900">{result.document_type}</p>
+      </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">📋 Краткое содержание</h4>
+        <p className="text-sm text-blue-900">{result.summary}</p>
+      </div>
+      <div className="bg-white border border-gray-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">🎯 Цель документа</h4>
+        <p className="text-sm text-gray-900">{result.purpose}</p>
+      </div>
+      {result.attention_points?.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-yellow-800 mb-2 uppercase tracking-wide">⚡ Требуют внимания</h4>
+          <ul className="space-y-1">
+            {result.attention_points.map((p, i) => <li key={i} className="text-xs text-yellow-900">• {p}</li>)}
+          </ul>
+        </div>
+      )}
+      {result.recommendations?.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-green-800 mb-2 uppercase tracking-wide">✅ Рекомендации</h4>
+          <ul className="space-y-1">
+            {result.recommendations.map((r, i) => <li key={i} className="text-xs text-green-900">• {r}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderPassport = (result: Passport) => (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">📄 Суть договора</h4>
+        <p className="text-sm text-blue-900">{result.essence}</p>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">💰 Ключевые условия</h4>
+        <div className="space-y-1.5">
+          {Object.entries(result.key_terms ?? {}).map(([key, value]) => {
+            const labels: Record<string, string> = {
+              amount: 'Сумма',
+              payment_terms: 'Оплата',
+              start_date: 'Начало',
+              end_date: 'Окончание',
+              auto_renewal: 'Автопролонгация',
+            }
+            return (
+              <div key={key} className="flex gap-2">
+                <span className="text-xs text-gray-500 w-28 flex-shrink-0">{labels[key] ?? key}:</span>
+                <span className="text-xs text-gray-900">{value}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-gray-700 mb-2">Наши обязательства</h4>
+          <ul className="space-y-1">
+            {result.parties?.our_obligations?.map((o, i) => (
+              <li key={i} className="text-xs text-gray-600">• {o}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-gray-700 mb-2">Обязательства контрагента</h4>
+          <ul className="space-y-1">
+            {result.parties?.counterparty_obligations?.map((o, i) => (
+              <li key={i} className="text-xs text-gray-600">• {o}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {result.control_points?.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-gray-700 mb-2">🎯 Контрольные точки</h4>
+          <ul className="space-y-1">
+            {result.control_points.map((p, i) => (
+              <li key={i} className="text-xs text-gray-600">• {p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.attention_zones?.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-yellow-800 mb-2">⚡ Зоны внимания</h4>
+          <ul className="space-y-1">
+            {result.attention_zones.map((z, i) => (
+              <li key={i} className="text-xs text-yellow-800">• {z}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.termination && (
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <h4 className="text-xs font-semibold text-gray-700 mb-1">🚪 Расторжение</h4>
+          <p className="text-xs text-gray-600">{result.termination}</p>
+        </div>
+      )}
+    </div>
+  )
+
+  if (versions.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-sm font-medium text-gray-700 mb-2">🤖 EpotosGPT — AI анализ</h2>
+        <p className="text-sm text-gray-400">Загрузите документ чтобы запустить AI анализ</p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Заголовок */}
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">EpotosGPT — AI анализ документа</h2>
+        <p className="text-xs text-gray-500">Выберите документ и запустите нужный анализ</p>
+      </div>
+
+      {/* Выбор версии и запуск */}
+      <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-40">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Документ для анализа</label>
+            <select value={selectedVersion} onChange={e => setSelectedVersion(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900">
+              {versions.map(v => (
+                <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-2 pt-4">
+            {(documentCategory === 'contract' || CONTRACT_DOCUMENT_TYPES.includes(documentType ?? '')) ? (
+              <>
+                <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  🔍 {analyzing === 'legal_review' ? 'Анализируется...' : 'Запустить Legal Review'}
+                </button>
+                <button onClick={() => runAnalysis('passport')} disabled={!!analyzing}
+                  className="text-xs font-medium bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                  📄 {analyzing === 'passport' ? 'Создаётся...' : 'Создать паспорт документа'}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => runAnalysis('document_review')} disabled={!!analyzing}
+                className="text-xs font-medium bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                📝 {analyzing === 'document_review' ? 'Анализируется...' : 'Анализировать документ'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Результаты */}
+      {(latestReview || latestPassport) && (
+        <div className="mb-4">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Результаты анализа</p>
+          <div className="flex gap-2 border-b border-gray-200">
+            {latestReview && (
+              <button onClick={() => setActiveTab('legal_review')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'legal_review' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                🔍 Legal Review
+              </button>
+            )}
+            {latestPassport && (
+              <button onClick={() => setActiveTab('passport')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'passport' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                📄 Паспорт документа
+              </button>
+            )}
+            <button onClick={() => setActiveTab('chat')}
+              className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              💬 Чат с AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!(latestReview || latestPassport) && (
+        <div className="mb-4">
+          <div className="flex gap-2 border-b border-gray-200">
+            <button onClick={() => setActiveTab('chat')}
+              className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              💬 Чат с AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {analyzing && activeTab !== 'chat' && (
+        <div className="text-center py-8">
+          <div className="text-2xl mb-2">🤖</div>
+          <p className="text-sm text-gray-600">AI анализирует документ...</p>
+          <p className="text-xs text-gray-400 mt-1">Это может занять 20-40 секунд</p>
+        </div>
+      )}
+
+      {!analyzing && activeTab !== 'chat' && latestReview && latestReview.type === 'document_review' && (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">
+            Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
+          </p>
+          {renderDocumentReview(latestReview.result_json as unknown as DocumentReview)}
+        </div>
+      )}
+
+      {!analyzing && activeTab === 'legal_review' && latestReview && latestReview.type !== 'document_review' && (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">
+            Анализ от {new Date(latestReview.created_at).toLocaleString('ru-RU')} · {latestReview.model_used}
+          </p>
+          {renderLegalReview(latestReview.result_json as LegalReview)}
+        </div>
+      )}
+
+      {!analyzing && activeTab === 'passport' && latestPassport && (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">
+            Создан {new Date(latestPassport.created_at).toLocaleString('ru-RU')} · {latestPassport.model_used}
+          </p>
+          {renderPassport(latestPassport.result_json as Passport)}
+        </div>
+      )}
+
+      {!analyzing && !latestReview && !latestPassport && activeTab !== 'chat' && (
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-400">Нажмите кнопку для запуска анализа</p>
+          <p className="text-xs text-gray-300 mt-1">Legal Review найдёт риски · Паспорт создаст резюме</p>
+        </div>
+      )}
+
+      {/* EpotosGPT чат — вкладка */}
+      {activeTab === 'chat' && (
+      <div className="mt-2">
+        <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+          <div className="bg-white rounded-lg border border-purple-100 p-3 space-y-3 max-h-64 overflow-y-auto mb-3">
+          {chatMessages.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-4">
+              Задайте вопрос по документу — EpotosGPT ответит на основе содержимого файла
+            </p>
+          ) : chatMessages.map(msg => (
+            <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${msg.role === 'assistant' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                {msg.role === 'assistant' ? 'AI' : (userName ?? 'П').charAt(0).toUpperCase()}
+              </div>
+              <div className={`flex-1 max-w-xs ${msg.role === 'user' ? 'items-end' : ''}`}>
+                <div className={`text-xs rounded-xl px-3 py-2 inline-block ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'}`}
+                  style={msg.role === 'user' ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
+                  {msg.message}
+                </div>
+              </div>
+            </div>
+          ))}
+          {chatLoading && (
+            <div className="flex gap-2">
+              <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-medium">AI</div>
+              <div className="bg-gray-100 rounded-xl px-3 py-2 text-xs text-gray-500">EpotosGPT думает...</div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+        <div className="flex gap-2 mt-3">
+          <input value={chatQuestion} onChange={e => setChatQuestion(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleChatQuestion()}
+            placeholder="Спросите что-нибудь о документе..."
+            className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white" />
+          <button onClick={handleChatQuestion} disabled={chatLoading || !chatQuestion.trim()}
+            className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-purple-700 disabled:opacity-50">
+            {chatLoading ? '...' : '➤'}
+          </button>
+        </div>
+        </div>
+      </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/ContractsList.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
+  const [hasNew, setHasNew] = useState(false)
+
+  const refresh = () => {
+    if (!lastMessageAt) { setHasNew(false); return }
+    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
+    if (!lastReadStr) { setHasNew(true); return }
+    const lastRead = new Date(lastReadStr).getTime()
+    const lastMsg = new Date(lastMessageAt).getTime()
+    setHasNew(lastMsg > lastRead)
+  }
+
+  useEffect(() => {
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [contractId, lastMessageAt])
+
+  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
+  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+      💬 new
+    </span>
+  )
+}
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+  end_date: string | null
+  author_bitrix_id: number | null
+  has_files?: boolean
+  file_type?: string | null
+  unread_messages?: number
+  last_message_at?: string | null
+}
+
+interface UserRole {
+  role: 'admin' | 'director' | 'legal' | 'user'
+  companies: string[]
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  подписан: 'Подписан',
+  отклонён: 'Отклонён',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  подписан: 'bg-green-100 text-green-800',
+  отклонён: 'bg-red-100 text-red-700',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+export default function ContractsList() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('all')
+  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
+  const [counterparties, setCounterparties] = useState<string[]>([])
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  // Realtime подписка на новые договоры
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('contracts-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => {
+        if (!user?.id) return
+        const load = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          setContracts(contractsData.contracts ?? [])
+          const unique = [...new Set((contractsData.contracts ?? []).map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+          setCounterparties(unique.sort())
+        }
+        load()
+      })
+      .subscribe()
+
+    // Подписка на новые сообщения в чатах
+    const msgChannel = supabase
+      .channel('approval-messages-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'approval_messages',
+      }, () => {
+        if (!user?.id) return
+        const reload = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          setContracts(contractsData.contracts ?? [])
+        }
+        reload()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(msgChannel)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        // Получаем роль пользователя
+        const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+        const roleData = await roleRes.json()
+        setUserRole(roleData)
+
+        // Получаем договоры в зависимости от роли
+        const params = new URLSearchParams()
+        params.append('bitrix_user_id', user.id)
+        params.append('role', roleData.role)
+        if (roleData.companies.length > 0) {
+          params.append('companies', roleData.companies.join(','))
+        }
+
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+        const contractsData = await contractsRes.json()
+        const allContracts = contractsData.contracts ?? []
+        setContracts(allContracts)
+        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+        setCounterparties(unique.sort())
+      } catch {
+        console.error('Ошибка загрузки')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [user?.id])
+
+  if (authLoading || loading) return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 text-sm text-gray-400">Загрузка...</div>
+    </div>
+  )
+
+  if (!user) return null
+
+  // Фильтрация
+  const filtered = contracts.filter(c => {
+    if (filter !== 'all' && c.status !== filter) return false
+    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
+    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
+    if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
+        !c.title.toLowerCase().includes(search.toLowerCase()) &&
+        !c.counterparty.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  const roleLabels: Record<string, string> = {
+    admin: 'Все документы (Администратор)',
+    director: 'Договоры компании',
+    legal: 'Договоры на юридическом сопровождении',
+    user: 'Мои договоры',
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-700">
+            {roleLabels[userRole?.role ?? 'user']}
+          </h2>
+          <span className="text-xs text-gray-400">{filtered.length} записей</span>
+        </div>
+
+        <div className="flex gap-2 flex-wrap mt-3">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск по номеру, названию..."
+            className="flex-1 min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все статусы</option>
+            <option value="черновик">Черновики</option>
+            <option value="на_согласовании">На согласовании</option>
+            <option value="подписан">Подписанные</option>
+            <option value="архив">Архив</option>
+          </select>
+          <select
+            value={companyFilter}
+            onChange={e => setCompanyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все компании</option>
+            <option value="ТХ">ООО Техно</option>
+            <option value="НПП">НПП ЭПОТОС</option>
+            <option value="СПТ">ООО СПТ</option>
+            <option value="ОС">ООО ОС</option>
+            <option value="Э-К">ООО Эпотос-К</option>
+          </select>
+          <select
+            value={counterpartyFilter}
+            onChange={e => setCounterpartyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-32"
+          >
+            <option value="all">Все контрагенты</option>
+            {counterparties.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="px-6 py-12 text-center">
+          <p className="text-gray-400 text-sm">Документов не найдено</p>
+          {userRole?.role === 'user' && contracts.length === 0 && (
+            <Link href="/contracts/new"
+              className="mt-3 inline-block text-sm text-gray-900 underline">
+              Создать первый документ
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+<table className="w-full min-w-[900px]">
+          <thead>
+            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+              <th className="px-6 py-3 font-medium">Номер</th>
+              <th className="px-6 py-3 font-medium">Название</th>
+              <th className="px-6 py-3 font-medium">Контрагент</th>
+              <th className="px-6 py-3 font-medium">Сумма</th>
+              <th className="px-6 py-3 font-medium">Срок</th>
+              <th className="px-6 py-3 font-medium">Файлы</th>
+              <th className="px-6 py-3 font-medium">Чат</th>
+              <th className="px-6 py-3 font-medium">Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(contract => (
+              <tr key={contract.id}
+                className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
+                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.number}
+                  </Link>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">{contract.title}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">
+                  {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
+                <td className="px-6 py-4">
+                  {contract.has_files && contract.file_type ? (
+                    <img
+                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
+                      alt={contract.file_type}
+                      className="w-6 h-6"
+                    />
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
+                    const now = new Date().toISOString()
+                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
+                  }}>
+                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
+                  </a>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                    {statusLabel[contract.status] ?? contract.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/ContractTabs.tsx">
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import ApproveButton from '@/app/components/ApproveButton'
+import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
+import DeleteContractButton from '@/app/components/DeleteContractButton'
+import AIAnalysis from '@/app/components/AIAnalysis'
+
+const ATTACHMENT_TYPES = [
+  'Спецификация',
+  'Приложение',
+  'Дополнительное соглашение',
+  'Протокол разногласий',
+  'Акт',
+  'Другое',
+]
+import AIGenerate from '@/app/components/AIGenerate'
+import CancelApprovalButton from '@/app/components/CancelApprovalButton'
+import dynamic from 'next/dynamic'
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+interface Version {
+  id: string
+  version_number: number
+  file_name: string
+  file_url: string
+  comment: string | null
+  created_at: string
+}
+
+interface Log {
+  id: string
+  action: string
+  details: string | null
+  user_name: string
+  created_at: string
+}
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  type: string | null
+  status: string
+  amount: number | null
+  start_date: string | null
+  end_date: string | null
+  author_bitrix_id: number | null
+  allow_others_to_approve: boolean | null
+  document_category?: string | null
+}
+
+interface Participant {
+  id: string
+  user_name: string
+  department: string | null
+  role: string
+  stage: string
+  status: string
+  comment: string | null
+  decided_at: string | null
+  bitrix_user_id: number | null
+}
+
+interface Message {
+  id: string
+  author_name: string
+  message: string
+  is_ai: boolean
+  created_at: string
+  bitrix_user_id: number | null
+  session_id: string
+  file_url?: string | null
+  file_name?: string | null
+  file_type?: string | null
+}
+
+interface Session {
+  id: string
+  status: string
+  deadline: string
+  initiated_by_name: string
+  initiated_by_bitrix_id: number | null
+  created_at: string
+  approval_participants: Participant[]
+  approval_messages: Message[]
+}
+
+interface Props {
+  contract: Contract
+  versions: Version[]
+  logs: Log[]
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  подписан: 'Подписан',
+  отклонён: 'Отклонён',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  подписан: 'bg-green-100 text-green-800',
+  отклонён: 'bg-red-100 text-red-700',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  legal: 'Юридический',
+  finance: 'Финансовый',
+  accounting: 'Бухгалтерия',
+  director: 'Директор',
+  custom: 'Доп.',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'В работе',
+  approved: 'Согласовал',
+  acknowledged: 'Ознакомлен',
+  disabled: 'Отключён',
+  completed_by_initiator: 'Завершён',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-blue-100 text-blue-800',
+  approved: 'bg-green-100 text-green-800',
+  acknowledged: 'bg-purple-100 text-purple-800',
+  disabled: 'bg-gray-100 text-gray-500',
+  completed_by_initiator: 'bg-gray-200 text-gray-600',
+}
+
+export default function ContractTabs({ contract, versions, logs }: Props) {
+  const { user } = useBitrixAuth()
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const initialTab = searchParams?.get('tab') ?? 'details'
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [session, setSession] = useState<Session | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [message, setMessage] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [lastReadTime, setLastReadTime] = useState(() => {
+    if (typeof window === 'undefined') return new Date().toISOString()
+    return localStorage.getItem(`chat_read_time_${contract.id}`) ?? new Date().toISOString()
+  })
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
+  const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
+  const [showAttachmentForm, setShowAttachmentForm] = useState(false)
+  const [attachmentType, setAttachmentType] = useState('Спецификация')
+  const [attachmentTitle, setAttachmentTitle] = useState('')
+  const [attachmentComment, setAttachmentComment] = useState('')
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageText, setEditingMessageText] = useState('')
+  const [newParticipantName, setNewParticipantName] = useState('')
+  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
+  const [addingParticipant, setAddingParticipant] = useState(false)
+  const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [approveComment, setApproveComment] = useState('')
+  const [approving, setApproving] = useState(false)
+  const [acknowledging, setAcknowledging] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  const loadAttachments = async () => {
+    const res = await fetch(`${baseUrl}/api/attachments?contract_id=${contract.id}`)
+    const data = await res.json()
+    setAttachments(data.attachments ?? [])
+  }
+
+  const handleUploadAttachment = async () => {
+    if (!attachmentFile) return
+    setUploadingAttachment(true)
+
+    const formData = new FormData()
+    formData.append('file', attachmentFile)
+    formData.append('contract_id', contract.id)
+    formData.append('attachment_type', attachmentType)
+    formData.append('title', attachmentTitle)
+    formData.append('comment', attachmentComment)
+    formData.append('user_name', user?.name ?? 'Система')
+    formData.append('user_bitrix_id', user?.id ?? '')
+
+    const res = await fetch(`${baseUrl}/api/attachments`, { method: 'POST', body: formData })
+    const data = await res.json()
+
+    if (!res.ok) {
+      alert('Ошибка: ' + data.error)
+    } else {
+      setShowAttachmentForm(false)
+      setAttachmentFile(null)
+      setAttachmentTitle('')
+      setAttachmentComment('')
+      await loadAttachments()
+    }
+    setUploadingAttachment(false)
+  }
+
+  const handleDeleteAttachment = async (id: string, file_url: string) => {
+    if (!confirm('Удалить дополнительный материал?')) return
+    await fetch(`${baseUrl}/api/attachments`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, file_url, contract_id: contract.id, user_name: user?.name }),
+    })
+    await loadAttachments()
+  }
+
+  const loadSession = async () => {
+    const res = await fetch(`${baseUrl}/api/approvals?contract_id=${contract.id}`)
+    const data = await res.json()
+    if (data.session) {
+      data.session.approval_messages = (data.session.approval_messages ?? [])
+        .sort((a: Message, b: Message) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }
+    setSession(data.session)
+    setSessionLoading(false)
+  }
+
+  useEffect(() => {
+    loadSession()
+    loadAttachments()
+  }, [contract.id])
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      const now = new Date().toISOString()
+      setLastReadTime(now)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`chat_read_time_${contract.id}`, now)
+      }
+      setUnreadCount(0)
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      const unread = (session?.approval_messages ?? []).filter(
+        m => new Date(m.created_at) > new Date(lastReadTime)
+      ).length
+      setUnreadCount(unread)
+    }
+  }, [session?.approval_messages, activeTab])
+
+  // Realtime
+  useEffect(() => {
+    if (!session?.id) return
+    const channel = supabaseClient
+      .channel(`tabs-${session.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'approval_messages' },
+        (payload) => {
+          const newMsg = payload.new as Message
+          if (newMsg.session_id !== session.id) return
+          setSession(prev => {
+            if (!prev) return prev
+            if (prev.approval_messages.find(m => m.id === newMsg.id)) return prev
+            return {
+              ...prev,
+              approval_messages: [...prev.approval_messages, newMsg]
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            }
+          })
+        })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_participants' },
+        () => loadSession())
+      .subscribe()
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [session?.id])
+
+  const myParticipant = session?.approval_participants.find(
+    p => p.bitrix_user_id === parseInt(user?.id ?? '0')
+  )
+
+  const handleAddParticipant = async () => {
+    if (!session || !newParticipantName.trim()) return
+    setAddingParticipant(true)
+
+    const found = addParticipantOptions.find(p => p.user_name === newParticipantName)
+
+    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_name: newParticipantName,
+        bitrix_user_id: found?.bitrix_user_id ?? null,
+        department: found?.department ?? null,
+        role: newParticipantRole,
+        stage: 'custom',
+        added_by_name: user?.name ?? 'Система',
+        contract_id: contract.id,
+      }),
+    })
+
+    setShowAddParticipantModal(false)
+    setNewParticipantName('')
+    setNewParticipantRole('required')
+    setAddingParticipant(false)
+    await loadSession()
+  }
+
+  const openAddParticipantModal = async () => {
+    // Определяем компанию из номера договора
+    const companyPrefix = contract.number.split('-')[0]
+    
+    // Загружаем участников всех этапов для этой компании
+    const stages = ['legal', 'finance', 'accounting', 'director', 'custom']
+    const allParticipants: typeof addParticipantOptions = []
+    const seenIds = new Set<number>()
+
+    for (const stage of stages) {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/approval-settings?stage=${stage}&company=${companyPrefix}`)
+      const data = await res.json()
+      for (const p of (data.participants ?? [])) {
+        if (!seenIds.has(p.bitrix_user_id)) {
+          seenIds.add(p.bitrix_user_id)
+          allParticipants.push(p)
+        }
+      }
+    }
+
+    // Исключаем уже добавленных участников
+    const existingIds = new Set(
+      session?.approval_participants.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+    )
+    const filtered = allParticipants.filter(p => !existingIds.has(p.bitrix_user_id))
+
+    setAddParticipantOptions(filtered)
+    setShowAddParticipantModal(true)
+  }
+
+  const handleEditMessage = async (messageId: string) => {
+    if (!editingMessageText.trim() || !session) return
+    await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: messageId,
+        message: editingMessageText.trim(),
+        bitrix_user_id: user?.id ? parseInt(user.id) : null,
+      }),
+    })
+    setEditingMessageId(null)
+    setEditingMessageText('')
+  }
+
+  const handleFileUpload = async (file: File) => {
+    if (!session) return
+    setUploadingFile(true)
+
+    try {
+      const safeFileName = file.name
+        .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+          const map: Record<string, string> = {
+            'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+            'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+            'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+            'э':'e','ю':'yu','я':'ya',' ':'_',
+            'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+            'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+            'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+            'Э':'E','Ю':'Yu','Я':'Ya'
+          }
+          return map[char] ?? '_'
+        })
+      const fileExt = file.name.split('.').pop()
+      const filePath = `chat/${session.id}/${Date.now()}_${safeFileName}`
+
+      const { createClient } = await import('@supabase/supabase-js')
+      const supabaseClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+      )
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from('contracts')
+        .upload(filePath, file, { contentType: file.type, upsert: false })
+
+      if (uploadError) {
+        alert('Ошибка загрузки файла: ' + uploadError.message)
+        return
+      }
+
+      const { data: urlData } = supabaseClient.storage
+        .from('contracts')
+        .getPublicUrl(filePath)
+
+      const isImage = file.type.startsWith('image/')
+
+      await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: isImage ? '' : file.name,
+          author_name: user?.name ?? 'Гость',
+          bitrix_user_id: user?.id ? parseInt(user.id) : null,
+          file_url: urlData.publicUrl,
+          file_name: file.name,
+          file_type: file.type,
+        }),
+      })
+    } catch {
+      alert('Ошибка загрузки файла')
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!message.trim() || !session) return
+    setSendingMessage(true)
+    await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: message.trim(),
+        author_name: user?.name ?? 'Гость',
+        bitrix_user_id: user?.id ? parseInt(user.id) : null,
+      }),
+    })
+    setMessage('')
+    setSendingMessage(false)
+  }
+
+  const handleApprove = async () => {
+    if (!session || !approvingId) return
+    setApproving(true)
+    await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participant_id: approvingId,
+        comment: approveComment,
+        user_name: user?.name ?? 'Система',
+        contract_id: contract.id,
+        is_acknowledge: false,
+      }),
+    })
+    setShowApproveModal(false)
+    setApproveComment('')
+    setApprovingId(null)
+    setApproving(false)
+    await loadSession()
+  }
+
+  const handleAcknowledge = async () => {
+    if (!session || !approvingId) return
+    setAcknowledging(true)
+    await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participant_id: approvingId,
+        comment: 'Ознакомлен',
+        user_name: user?.name ?? 'Система',
+        contract_id: contract.id,
+        is_acknowledge: true,
+      }),
+    })
+    setShowAcknowledgeModal(false)
+    setApprovingId(null)
+    setAcknowledging(false)
+    await loadSession()
+  }
+
+  const hasActiveSession = session && session.status === 'active'
+  const allRequired = session?.approval_participants.filter(p => p.role === 'required') ?? []
+  const allApproved = allRequired.every(p => ['approved', 'disabled', 'completed_by_initiator'].includes(p.status))
+  const daysLeft = session ? Math.ceil((new Date(session.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0
+
+  const TABS = [
+    { id: 'details', label: 'Реквизиты', icon: '📋' },
+    { id: 'documents', label: 'Документы', icon: '📁' },
+    { id: 'approval', label: 'Согласование', icon: '✅' },
+    { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
+    // { id: 'generate', label: 'Генерация', icon: '✨' }, // В разработке
+    { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
+  ]
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+
+        {/* Шапка */}
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
+            <span className="text-gray-300">/</span>
+            <h1 className="text-xl font-semibold text-gray-900">{contract.number}</h1>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+              {statusLabel[contract.status] ?? contract.status}
+            </span>
+          </div>
+          <DeleteContractButton contractId={contract.id} contractNumber={contract.number} />
+        </div>
+
+        {/* Вкладки */}
+        <div className="flex gap-0 mb-0 flex-wrap">
+          {TABS.map((tab, index) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium rounded-t-xl border border-b-0 transition-all ${
+                activeTab === tab.id
+                  ? 'bg-white border-gray-200 text-gray-900 z-10 relative shadow-sm'
+                  : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-50'
+              } ${index > 0 ? '-ml-px' : ''}`}>
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+              {tab.dot && !(tab.badge && tab.badge > 0) && <span className="w-2 h-2 bg-green-500 rounded-full ml-0.5"></span>}
+              {tab.badge && tab.badge > 0 ? (
+                <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+                  {tab.badge}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        {/* Контент */}
+        <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-200 shadow-sm">
+
+          {/* Реквизиты */}
+          {activeTab === 'details' && (
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты документа</h2>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Название', value: contract.title },
+                      { label: 'Контрагент', value: contract.counterparty },
+                      { label: 'Тип', value: contract.type },
+                      { label: 'Сумма', value: contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—' },
+                      { label: 'Дата начала', value: contract.start_date ?? '—' },
+                      { label: 'Дата окончания', value: contract.end_date ?? '—' },
+                    ].map(item => (
+                      <div key={item.label} className="flex gap-4">
+                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">{item.label}</span>
+                        <span className="text-sm text-gray-900">{item.value ?? '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">История действий</h2>
+                    <button onClick={() => window.location.reload()}
+                      className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">
+                      🔄 Обновить
+                    </button>
+                  </div>
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
+                    {logs.length === 0 ? (
+                      <p className="text-sm text-gray-400">История пуста</p>
+                    ) : logs.map(log => (
+                      <div key={log.id} className="border-l-2 border-gray-200 pl-3">
+                        <p className="text-xs font-medium text-gray-900">{log.action}</p>
+                        {log.details && <p className="text-xs text-gray-500 mt-0.5">{log.details}</p>}
+                        <p className="text-xs text-gray-400 mt-1">{log.user_name} · {new Date(log.created_at).toLocaleString('ru-RU')}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Документы */}
+          {activeTab === 'documents' && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Версии документа</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link href={`/contracts/${contract.id}/upload`}
+                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                    + Загрузить версию
+                  </Link>
+                  
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {versions.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400 text-sm">Версий пока нет — загрузите первый документ</div>
+                ) : versions.map(version => (
+                  <div key={version.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono font-semibold text-gray-900 bg-gray-200 px-2 py-1 rounded">v{version.version_number}</span>
+                      <div>
+                        <p className="text-sm text-gray-900">{version.file_name}</p>
+                        {version.comment && <p className="text-xs text-gray-500 mt-0.5">{version.comment}</p>}
+                        <p className="text-xs text-gray-400 mt-0.5">{new Date(version.created_at).toLocaleString('ru-RU')}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={version.file_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
+                        Скачать
+                      </a>
+                      {(version.file_name.endsWith('.docx') || version.file_name.endsWith('.xlsx')) && (
+                        <>
+                          <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
+                            👁️ Просмотр
+                          </a>
+                          <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700">
+                            ✏️ Редактировать
+                          </a>
+                        </>
+                      )}
+                      {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Удалить версию v${version.version_number}?`)) return
+                            const filePath = version.file_url.split('/contracts/')[1]
+                            await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                version_id: version.id,
+                                file_path: filePath,
+                                contract_id: contract.id,
+                                user_name: user?.name ?? 'Система',
+                              }),
+                            })
+                            window.location.reload()
+                          }}
+                          className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">
+                          Удалить
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Дополнительные материалы */}
+              <div className="mt-6 border-t border-gray-100 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Дополнительные материалы</h3>
+                  <button onClick={() => setShowAttachmentForm(p => !p)}
+                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                    + Добавить
+                  </button>
+                </div>
+                {showAttachmentForm && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Тип</label>
+                        <select value={attachmentType} onChange={e => setAttachmentType(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+                          {ATTACHMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Название (необязательно)</label>
+                        <input value={attachmentTitle} onChange={e => setAttachmentTitle(e.target.value)}
+                          placeholder="Например: к договору №..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий</label>
+                      <input value={attachmentComment} onChange={e => setAttachmentComment(e.target.value)}
+                        placeholder="Необязательный комментарий"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Файл <span className="text-red-500">*</span></label>
+                      <div className={`relative border-2 border-dashed rounded-xl p-4 text-center transition-colors ${attachmentFile ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                        {attachmentFile ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{attachmentFile.name}</p>
+                            <button type="button" onClick={() => setAttachmentFile(null)}
+                              className="mt-1 text-xs text-red-500 hover:text-red-700 underline">Удалить</button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Нажмите для выбора файла</p>
+                        )}
+                        {!attachmentFile && (
+                          <input type="file" accept=".pdf,.docx,.xlsx"
+                            onChange={e => setAttachmentFile(e.target.files?.[0] ?? null)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleUploadAttachment} disabled={uploadingAttachment || !attachmentFile}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                        {uploadingAttachment ? 'Загрузка...' : 'Загрузить'}
+                      </button>
+                      <button onClick={() => setShowAttachmentForm(false)}
+                        className="border border-gray-200 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-gray-400">Дополнительных материалов нет</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map(att => (
+                      <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {att.attachment_type} №{att.number}
+                            {att.title && ` — ${att.title}`}
+                          </p>
+                          <p className="text-xs text-gray-500">{att.file_name}</p>
+                          {att.comment && <p className="text-xs text-gray-400">{att.comment}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          
+                          {(att.file_name.endsWith('.docx') || att.file_name.endsWith('.xlsx')) && (
+                            <>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                                👁️ Просмотр
+                              </a>
+                              <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
+                                ✏️ Редактировать
+                              </a>
+                            </>
+                          )}
+                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
+                            Скачать
+                          </a>
+                          {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
+                            <button onClick={() => handleDeleteAttachment(att.id, att.file_url)}
+                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Согласование */}
+          {activeTab === 'approval' && (
+            <div className="p-6">
+              {sessionLoading ? (
+                <p className="text-sm text-gray-400">Загрузка...</p>
+              ) : !hasActiveSession ? (
+                <div>
+                  <p className="text-sm text-gray-600 mb-4">Согласование не запущено.</p>
+                  <ApproveButton
+                    contractId={contract.id}
+                    contractStatus={contract.status}
+                    authorBitrixId={contract.author_bitrix_id ?? null}
+                    allowOthers={contract.allow_others_to_approve ?? false}
+                  />
+                  <div className="mt-3">
+                    <DelegateApproveCheckbox
+                      contractId={contract.id}
+                      contractNumber={contract.number}
+                      authorBitrixId={contract.author_bitrix_id ?? null}
+                      allowOthers={contract.allow_others_to_approve ?? false}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Статус и дедлайн */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-gray-900">Согласование активно</span>
+                        {allApproved && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Все согласовали ✓</span>}
+                      </div>
+                      <p className="text-xs text-gray-500">Инициатор: {session.initiated_by_name}</p>
+                      <p className="text-xs text-gray-500">Запущено: {new Date(session.created_at).toLocaleDateString('ru-RU')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Дедлайн</p>
+                      <p className={`text-sm font-medium ${daysLeft < 2 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {new Date(session.deadline).toLocaleDateString('ru-RU')}
+                      </p>
+                      <p className={`text-xs ${daysLeft < 2 ? 'text-red-500' : 'text-gray-400'}`}>
+                        {daysLeft > 0 ? `осталось ${daysLeft} дн.` : 'просрочено'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Чек-лист */}
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Участники</h3>
+                      <div className="space-y-2">
+                        {session.approval_participants.map(p => (
+                          <div key={p.id} className="flex items-start justify-between p-2 bg-gray-50 rounded-lg">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{p.user_name}</p>
+                              <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ml-2 whitespace-nowrap ${STATUS_COLORS[p.status]}`}>
+                              {STATUS_LABELS[p.status]}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Прогресс + действие */}
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Прогресс</h3>
+                        {(() => {
+                          const required = session.approval_participants.filter(p => p.role === 'required')
+                          const done = required.filter(p => ['approved', 'disabled', 'completed_by_initiator'].includes(p.status))
+                          const pct = required.length > 0 ? Math.round(done.length / required.length * 100) : 0
+                          const optional = session.approval_participants.filter(p => p.role === 'optional')
+                          const ackDone = optional.filter(p => ['acknowledged', 'approved'].includes(p.status))
+                          const ackPct = optional.length > 0 ? Math.round(ackDone.length / optional.length * 100) : 0
+                          return (
+                            <div className="space-y-2">
+                              <div>
+                                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                  <span>{done.length} из {required.length} согласовали</span>
+                                  <span>{pct}%</span>
+                                </div>
+                                <div className="w-full bg-gray-100 rounded-full h-2">
+                                  <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                              {optional.length > 0 && (
+                                <div>
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>{ackDone.length} из {optional.length} ознакомились</span>
+                                    <span>{ackPct}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-100 rounded-full h-2">
+                                    <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${ackPct}%` }} />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+
+                      {/* Моё действие */}
+                      {myParticipant?.status === 'pending' && myParticipant?.role === 'required' && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                          <p className="text-sm font-medium text-blue-900 mb-3">Требуется ваше решение</p>
+                          <button onClick={() => { setApprovingId(myParticipant.id); setShowApproveModal(true) }}
+                            className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">
+                            ✓ Согласовать документ
+                          </button>
+                        </div>
+                      )}
+                      {myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <p className="text-sm font-medium text-gray-700 mb-3">Вы добавлены для ознакомления</p>
+                          <button onClick={() => { setApprovingId(myParticipant.id); setShowAcknowledgeModal(true) }}
+                            className="w-full bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-900">
+                            👁 Ознакомлен
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Добавить участника */}
+                      <button onClick={openAddParticipantModal}
+                        className="w-full text-xs border border-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                        + Добавить участника
+                      </button>
+
+                      {/* Прервать */}
+                      <CancelApprovalButton
+                        sessionId={session.id}
+                        contractId={contract.id}
+                        contractNumber={contract.number}
+                        initiatedByBitrixId={session.initiated_by_bitrix_id}
+                        onCancelled={() => { loadSession() }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* EpotosGPT */}
+          {activeTab === 'ai' && (
+            <div className="p-6">
+              <AIAnalysis
+                contractId={contract.id}
+                versions={versions.map(v => ({
+                  id: v.id,
+                  file_url: v.file_url,
+                  file_name: v.file_name,
+                  version_number: v.version_number,
+                }))}
+                userName={user?.name}
+                userId={user?.id ? parseInt(user.id) : undefined}
+                documentType={contract.type}
+                documentCategory={contract.document_category ?? 'contract'}
+              />
+            </div>
+          )}
+
+          {/* Генерация */}
+          {activeTab === 'generate' && (
+            <div className="p-6">
+              <AIGenerate
+                contractId={contract.id}
+                onGenerated={() => {}}
+              />
+            </div>
+          )}
+
+          {/* Чат */}
+          {activeTab === 'chat' && (
+            <div className="p-6">
+              {!hasActiveSession ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-gray-400">Чат доступен после запуска согласования</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="space-y-3 max-h-96 overflow-y-auto mb-4 pr-1">
+                    {session.approval_messages.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-4">Сообщений пока нет</p>
+                    ) : session.approval_messages.map(msg => (
+                      <div key={msg.id} className={`flex gap-3 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'flex-row-reverse' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${msg.is_ai ? 'bg-purple-100 text-purple-700' : 'bg-gray-200 text-gray-700'}`}>
+                          {msg.is_ai ? 'AI' : msg.author_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className={`flex-1 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'items-end' : ''}`}>
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="text-xs font-medium text-gray-900">{msg.author_name}</span>
+                            <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleString('ru-RU')}</span>
+                          </div>
+                          {editingMessageId === msg.id ? (
+                            <div className="space-y-2">
+                              <textarea value={editingMessageText}
+                                onChange={e => setEditingMessageText(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleEditMessage(msg.id)}
+                                rows={3}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white resize-none"
+                                autoFocus />
+                              <div className="flex gap-2">
+                                <button onClick={() => handleEditMessage(msg.id)}
+                                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                                  Сохранить
+                                </button>
+                                <button onClick={() => setEditingMessageId(null)}
+                                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-600">
+                                  Отмена
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative group/msg inline-block">
+                              <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
+                                msg.bitrix_user_id === parseInt(user?.id ?? '0')
+                                  ? 'bg-blue-500 text-white'
+                                  : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
+                              }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
+                                {msg.message && <p>{msg.message}</p>}
+                                {msg.file_url && msg.file_type?.startsWith('image/') && (
+                                  <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
+                                    className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
+                                    onClick={() => window.open(msg.file_url ?? '', '_blank')} />
+                                )}
+                                {msg.file_url && !msg.file_type?.startsWith('image/') && (
+                                  <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1 mt-1 underline text-xs">
+                                    📎 {msg.file_name}
+                                  </a>
+                                )}
+                              </div>
+                              <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
+                                
+                                {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
+                                  <button
+                                    onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
+                                    title="Редактировать"
+                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 active:bg-opacity-60 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                    style={{fontSize:'10px'}}>
+                                    ✏️
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="relative">
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-14 left-0 z-50">
+                        <EmojiPicker
+                          onEmojiClick={(emojiData) => {
+                            setMessage(prev => prev + emojiData.emoji)
+                            setShowEmojiPicker(false)
+                          }}
+                          width={300}
+                          height={350}
+                        />
+                      </div>
+                    )}
+                    <div className="flex gap-2 border-t border-gray-100 pt-4">
+                      <button onClick={() => setShowEmojiPicker(p => !p)}
+                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors">
+                        😊
+                      </button>
+                      <button onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingFile}
+                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50">
+                        {uploadingFile ? '⏳' : '📎'}
+                      </button>
+                      <input ref={fileInputRef} type="file"
+                        accept="image/*,.pdf,.docx,.xlsx"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file)
+                          e.target.value = ''
+                        }} />
+                      <input value={message} onChange={e => setMessage(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                        placeholder="Написать сообщение..."
+                        className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+                      <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
+                        className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
+                        {sendingMessage ? '...' : '➤'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* Modal согласования */}
+      {showApproveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение согласования</h3>
+            <p className="text-sm text-gray-600 mb-4">Вы подтверждаете согласование документа <strong>{contract.number}</strong>?</p>
+            <textarea value={approveComment} onChange={e => setApproveComment(e.target.value)}
+              placeholder="Комментарий (необязательно)..." rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 mb-4 resize-none" />
+            <div className="flex gap-3">
+              <button onClick={handleApprove} disabled={approving}
+                className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                {approving ? 'Сохранение...' : 'Подтвердить согласование'}
+              </button>
+              <button onClick={() => { setShowApproveModal(false); setApproveComment('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal добавления участника */}
+      {showAddParticipantModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Добавить участника</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Сотрудник</label>
+                {addParticipantOptions.length > 0 ? (
+                  <select value={newParticipantName}
+                    onChange={e => setNewParticipantName(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                    <option value="">— Выберите сотрудника —</option>
+                    {addParticipantOptions.map(p => (
+                      <option key={p.id} value={p.user_name}>
+                        {p.user_name}{p.department ? ` — ${p.department}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input value={newParticipantName}
+                    onChange={e => setNewParticipantName(e.target.value)}
+                    placeholder="ФИО сотрудника"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
+                <select value={newParticipantRole}
+                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional')}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  <option value="required">Обязательный</option>
+                  <option value="optional">Для информирования</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleAddParticipant} disabled={addingParticipant || !newParticipantName.trim()}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                {addingParticipant ? 'Добавление...' : 'Добавить'}
+              </button>
+              <button onClick={() => { setShowAddParticipantModal(false); setNewParticipantName('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ознакомления */}
+      {showAcknowledgeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение ознакомления</h3>
+            <p className="text-sm text-gray-600 mb-6">Вы подтверждаете что ознакомились с документом <strong>{contract.number}</strong>?</p>
+            <div className="flex gap-3">
+              <button onClick={handleAcknowledge} disabled={acknowledging}
+                className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50">
+                {acknowledging ? 'Сохранение...' : '👁 Подтвердить ознакомление'}
+              </button>
+              <button onClick={() => setShowAcknowledgeModal(false)}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+</files>
