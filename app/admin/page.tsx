@@ -110,7 +110,7 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdmin = async () => {
       if (!user?.id) return
-      const adminIds = [30, 1148, 246, 504]
+      const adminIds = [30, 1148]
       if (adminIds.includes(parseInt(user.id))) {
         setIsAdmin(true)
       }

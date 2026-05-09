@@ -8,9 +8,11 @@ const supabase = createClient(
 
 const ADMIN_IDS = [30, 1148]
 
+// Менеджеры ГК — видят все компании, без админ-панели
+const GC_MANAGER_IDS = [1, 246, 504]
+
 // Генеральные директора по компаниям
 const DIRECTORS: Record<number, string[]> = {
-  1: ['ТХ'],
   592: ['НПП'],
   6: ['СПТ', 'ОС'],
   954: ['Э-К'],
@@ -18,8 +20,6 @@ const DIRECTORS: Record<number, string[]> = {
 
 // Юристы по компаниям
 const LEGAL_IDS: Record<number, string[]> = {
-  504: ['ТХ', 'НПП'],
-  246: ['ТХ', 'НПП', 'ОС', 'СПТ'],
   782: ['Э-К'],
 }
 
@@ -36,6 +36,14 @@ export async function GET(request: NextRequest) {
   if (ADMIN_IDS.includes(userId)) {
     return NextResponse.json({
       role: 'admin',
+      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
+    })
+  }
+
+  // Проверяем менеджеров ГК
+  if (GC_MANAGER_IDS.includes(userId)) {
+    return NextResponse.json({
+      role: 'gc_manager',
       companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
     })
   }

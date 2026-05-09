@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (role === 'admin') {
-      // Администратор видит все договоры
+    if (role === 'admin' || role === 'gc_manager') {
+      // Администратор и Менеджер ГК видят все договоры
     } else if (role === 'director' || role === 'legal') {
       // ГД и юристы видят договоры своих компаний
       if (companiesParam) {
