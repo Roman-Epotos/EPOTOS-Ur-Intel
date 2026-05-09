@@ -4,19 +4,42 @@ import { NextRequest, NextResponse } from 'next/server'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
 
+const TYPE_CODES: Record<string, string> = {
+  'Договор поставки': 'ДОГ',
+  'Договор услуг': 'ДОГ',
+  'Договор аренды': 'ДОГ',
+  'Договор подряда': 'ДОГ',
+  'Дилерский договор': 'ДОГ',
+  'Сервисный договор': 'ДОГ',
+  'Дополнительное соглашение': 'ДОП',
+  'NDA / Соглашение о конфиденциальности': 'КОНФ',
+  'Соглашение об ЭДО': 'ЭДО',
+  'Согласие на обработку персональных данных': 'СПД',
+  'Протокол разногласий': 'ПРТ',
+  'Претензия': 'ПРЗ',
+  'Исковое заявление': 'ИСК',
+  'Правовое заключение': 'ПРВ',
+  'Письмо': 'ПСМ',
+  'Акт': 'АКТ',
+}
+
 // Генерация номера договора
 export async function GET(request: NextRequest) {
   const prefix = request.nextUrl.searchParams.get('prefix')
+  const type = request.nextUrl.searchParams.get('type') ?? ''
   if (!prefix) {
     return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
   }
+
+  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
+  const fullPrefix = `${prefix}-${typeCode}`
 
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
 
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(prefix + '-' + year + '/%')}&order=number.desc&limit=1`,
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
     {
       headers: {
         apikey: SUPABASE_KEY,
@@ -35,7 +58,7 @@ export async function GET(request: NextRequest) {
     if (!isNaN(lastSeq)) maxNum = lastSeq
   }
   const nextNum = String(maxNum + 1).padStart(2, '0')
-  const number = `${prefix}-${year}/${month}/${nextNum}`
+  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
 
   return NextResponse.json({ number })
 }

@@ -44,7 +44,7 @@ export default function NewContractPage() {
     const generate = async () => {
       try {
         const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}`)
+      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
         const data = await res.json()
         if (data.number) {
           setAutoNumber(data.number)
@@ -57,7 +57,7 @@ export default function NewContractPage() {
       }
     }
     generate()
-  }, [form.company_prefix])
+  }, [form.company_prefix, form.type])
 
   const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
 
