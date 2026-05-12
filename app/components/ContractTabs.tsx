@@ -60,6 +60,13 @@ interface Contract {
   author_bitrix_id: number | null
   allow_others_to_approve: boolean | null
   document_category?: string | null
+  signed_at?: string | null
+  signed_by_name?: string | null
+  signed_by_bitrix_id?: number | null
+  signed_file_url?: string | null
+  signed_file_name?: string | null
+  signed_file_uploaded_at?: string | null
+  signed_file_uploaded_by?: string | null
 }
 
 interface Participant {
@@ -146,9 +153,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ContractTabs({ contract, versions, logs }: Props) {
   const { user } = useBitrixAuth()
+  const ADMIN_IDS = [30, 1148]
+  const GC_MANAGER_IDS = [1, 246, 504]
+  const userId = parseInt(user?.id ?? '0')
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const initialTab = searchParams?.get('tab') ?? 'details'
   const [activeTab, setActiveTab] = useState(initialTab)
+  const canSign = ADMIN_IDS.includes(userId) ||
+    GC_MANAGER_IDS.includes(userId) ||
+    contract.author_bitrix_id === userId
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -577,6 +590,94 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                     ))}
                   </div>
                 </div>
+              </div>
+            {/* Блок подписания */}
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Подписание</h2>
+                {contract.status === 'подписан' ? (
+                  <div className="space-y-3">
+                    <div className="flex gap-4">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Статус</span>
+                      <span className="text-sm font-medium text-green-700">✅ Подписан</span>
+                    </div>
+                    {contract.signed_at && (
+                      <div className="flex gap-4">
+                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата подписания</span>
+                        <span className="text-sm text-gray-900">{new Date(contract.signed_at).toLocaleString('ru-RU')}</span>
+                      </div>
+                    )}
+                    {contract.signed_by_name && (
+                      <div className="flex gap-4">
+                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">Подписал(а)</span>
+                        <span className="text-sm text-gray-900">{contract.signed_by_name}</span>
+                      </div>
+                    )}
+                    {contract.signed_file_name ? (
+                      <>
+                        <div className="flex gap-4">
+                          <span className="text-sm text-gray-500 w-36 flex-shrink-0">Подписанный файл</span>
+                          <a href={contract.signed_file_url ?? ''} target="_blank" rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:underline">{contract.signed_file_name}</a>
+                        </div>
+                        <div className="flex gap-4">
+                          <span className="text-sm text-gray-500 w-36 flex-shrink-0">Файл загружен</span>
+                          <span className="text-sm text-gray-900">
+                            {contract.signed_file_uploaded_by} · {contract.signed_file_uploaded_at ? new Date(contract.signed_file_uploaded_at).toLocaleString('ru-RU') : ''}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3">
+                        <p className="text-xs text-gray-500 mb-2">Подписанный экземпляр ещё не загружен</p>
+                        {canSign && (
+                          <div className="flex items-center gap-3">
+                            <input type="file" id="signed-file-input" accept=".pdf,.docx,.xlsx"
+                              className="text-xs text-gray-600" />
+                            <button
+                              onClick={async () => {
+                                const input = document.getElementById('signed-file-input') as HTMLInputElement
+                                const file = input?.files?.[0]
+                                if (!file) { alert('Выберите файл'); return }
+                                const fd = new FormData()
+                                fd.append('contract_id', contract.id)
+                                fd.append('user_name', user?.name ?? '')
+                                fd.append('user_bitrix_id', user?.id ?? '')
+                                fd.append('action', 'upload')
+                                fd.append('file', file)
+                                const res = await fetch('https://epotos-ur-intel.vercel.app/api/sign', { method: 'POST', body: fd })
+                                const data = await res.json()
+                                if (data.error) { alert('Ошибка: ' + data.error) } else { window.location.reload() }
+                              }}
+                              className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                              📎 Загрузить подписанный экземпляр
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-3">Документ ещё не подписан</p>
+                    {canSign && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Перевести документ в статус "Подписан"?')) return
+                          const fd = new FormData()
+                          fd.append('contract_id', contract.id)
+                          fd.append('user_name', user?.name ?? '')
+                          fd.append('user_bitrix_id', user?.id ?? '')
+                          fd.append('action', 'sign')
+                          const res = await fetch('https://epotos-ur-intel.vercel.app/api/sign', { method: 'POST', body: fd })
+                          const data = await res.json()
+                          if (data.error) { alert('Ошибка: ' + data.error) } else { window.location.reload() }
+                        }}
+                        className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                        ✅ Отметить как подписанный
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
