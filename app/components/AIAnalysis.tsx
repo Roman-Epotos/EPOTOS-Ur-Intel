@@ -72,9 +72,19 @@ interface Version {
 
 
 
+interface Attachment {
+  id: string
+  attachment_type: string
+  number: number
+  title: string | null
+  file_name: string
+  file_url: string
+}
+
 interface Props {
   contractId: string
   versions: Version[]
+  attachments?: Attachment[]
   userName?: string
   userId?: number
   documentType?: string | null
@@ -99,7 +109,7 @@ const RISK_LABELS = {
   low: 'Низкий риск',
 }
 
-export default function AIAnalysis({ contractId, versions, userName, userId, documentType, documentCategory }: Props) {
+export default function AIAnalysis({ contractId, versions, attachments = [], userName, userId, documentType, documentCategory }: Props) {
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
@@ -426,9 +436,22 @@ export default function AIAnalysis({ contractId, versions, userName, userId, doc
             <label className="block text-xs font-medium text-gray-500 mb-1">Документ для анализа</label>
             <select value={selectedVersion} onChange={e => setSelectedVersion(e.target.value)}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900">
-              {versions.map(v => (
-                <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
-              ))}
+              {versions.length > 0 && (
+                <optgroup label="Версии документа">
+                  {versions.map(v => (
+                    <option key={v.id} value={v.id}>v{v.version_number} — {v.file_name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {attachments.length > 0 && (
+                <optgroup label="Дополнительные материалы">
+                  {attachments.map(a => (
+                    <option key={`att_${a.id}`} value={`att_${a.id}`}>
+                      {a.attachment_type} №{a.number}{a.title ? ` — ${a.title}` : ''} ({a.file_name})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <div className="flex flex-col gap-2 pt-4">

@@ -213,6 +213,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approveComment, setApproveComment] = useState('')
+  const [contractStatus, setContractStatus] = useState(contract.status)
   const [approving, setApproving] = useState(false)
   const [acknowledging, setAcknowledging] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -501,6 +502,10 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     setApprovingId(null)
     setApproving(false)
     await loadSession()
+    // Обновляем статус контракта
+    const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
+    const data = await res.json()
+    if (data.contract?.status) setContractStatus(data.contract.status)
   }
 
   const handleAcknowledge = async () => {
@@ -521,6 +526,10 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     setApprovingId(null)
     setAcknowledging(false)
     await loadSession()
+    // Обновляем статус контракта
+    const res2 = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
+    const data2 = await res2.json()
+    if (data2.contract?.status) setContractStatus(data2.contract.status)
   }
 
   const hasActiveSession = session && session.status === 'active'
@@ -595,7 +604,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         { s: 'на_исполнении', label: 'На исполнении', active: 'bg-emerald-600 text-white', past: 'bg-emerald-100 text-emerald-600' },
                       ].map(({ s, label, active, past }, i, arr) => {
                         const order = ['черновик','на_согласовании','согласован','загружен_частично','подписан','на_исполнении']
-                        const currentIdx = order.indexOf(contract.status)
+                        const currentIdx = order.indexOf(contractStatus)
                         const thisIdx = order.indexOf(s)
                         const isCurrent = s === contract.status
                         const isPast = thisIdx < currentIdx
@@ -836,13 +845,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Подписанные экземпляры</h2>
                   {canUploadSigned && (
                     <label className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer
-                      ${['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status)
+                      ${['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)
                         ? `bg-gray-900 text-white hover:bg-gray-700 ${uploadingSignedFile ? 'opacity-50' : ''}`
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                      title={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status) ? 'Доступно после согласования документа' : ''}>
+                      title={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) ? 'Доступно после согласования документа' : ''}>
                       {uploadingSignedFile ? 'Загрузка...' : '+ Загрузить подписанный файл'}
                       <input type="file" className="hidden" accept=".pdf,.docx,.xlsx"
-                        disabled={uploadingSignedFile || !['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status)}
+                        disabled={uploadingSignedFile || !['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)}
                         onChange={async (e) => {
                           const file = e.target.files?.[0]
                           if (!file) return
@@ -905,7 +914,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                         </div>
                       </div>
                     ))}
-                    {canUploadSigned && contract.status !== 'подписан' && contract.status !== 'на_исполнении' && (
+                    {canUploadSigned && contractStatus !== 'подписан' && contractStatus !== 'на_исполнении' && (
                       <button
                         onClick={() => setShowConfirmAllModal(true)}
                         className="mt-2 text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
@@ -1008,9 +1017,33 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                               <p className="text-sm font-medium text-gray-900 truncate">{p.user_name}</p>
                               <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>
                             </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ml-2 whitespace-nowrap ${STATUS_COLORS[p.status]}`}>
-                              {STATUS_LABELS[p.status]}
-                            </span>
+                            <div className="flex items-center gap-2 ml-2">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_COLORS[p.status]}`}>
+                                {STATUS_LABELS[p.status]}
+                              </span>
+                              {ADMIN_IDS.includes(userId) && p.status === 'pending' && (
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`Удалить участника ${p.user_name} из согласования?`)) return
+                                    const res = await fetch(`${baseUrl}/api/approvals/${session.id}/participants`, {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        participant_id: p.id,
+                                        admin_name: user?.name,
+                                        admin_bitrix_id: user?.id,
+                                        contract_id: contract.id,
+                                      })
+                                    })
+                                    const data = await res.json()
+                                    if (data.error) { alert('Ошибка: ' + data.error); return }
+                                    await loadSession()
+                                  }}
+                                  className="text-red-400 hover:text-red-600 text-xs border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50 whitespace-nowrap">
+                                  ✕
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1106,6 +1139,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   file_name: v.file_name,
                   version_number: v.version_number,
                 }))}
+                attachments={attachments}
                 userName={user?.name}
                 userId={user?.id ? parseInt(user.id) : undefined}
                 documentType={contract.type}

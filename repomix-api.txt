@@ -670,6 +670,174 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/versions/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+  const contractId = request.nextUrl.searchParams.get('contract_id')
+  if (!contractId) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+  const { data: versions, error } = await supabase
+    .from('versions')
+    .select('*')
+    .eq('contract_id', contractId)
+    .order('version_number', { ascending: false })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+  return NextResponse.json({ versions: versions ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  console.log('=== versions API called ===')
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  try {
+    const formData = await request.formData()
+    console.log('formData parsed')
+
+    const file = formData.get('file') as File
+    const contractId = formData.get('contract_id') as string
+    const comment = formData.get('comment') as string
+
+    console.log('file:', file?.name, 'contractId:', contractId)
+
+    if (!file || !contractId) {
+      return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
+    }
+
+    // Получаем текущий номер версии
+    console.log('getting version count...')
+    const { count, error: countError } = await supabase
+      .from('versions')
+      .select('*', { count: 'exact', head: true })
+      .eq('contract_id', contractId)
+
+    console.log('count:', count, 'countError:', countError)
+
+    const versionNumber = (count ?? 0) + 1
+
+    // Загружаем файл
+    const fileExt = file.name.split('.').pop()
+    const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
+
+    console.log('uploading to path:', filePath)
+
+    const arrayBuffer = await file.arrayBuffer()
+    const fileBuffer = new Uint8Array(arrayBuffer)
+
+    const { error: uploadError } = await supabase.storage
+      .from('contracts')
+      .upload(filePath, fileBuffer, {
+        contentType: file.type,
+        upsert: false,
+      })
+
+    console.log('upload result:', uploadError ? uploadError.message : 'success')
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('contracts')
+      .getPublicUrl(filePath)
+
+    const { error: versionError } = await supabase
+      .from('versions')
+      .insert({
+        contract_id: contractId,
+        version_number: versionNumber,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        comment: comment || null,
+      })
+
+    console.log('version insert:', versionError ? versionError.message : 'success')
+
+    if (versionError) {
+      return NextResponse.json({ error: versionError.message }, { status: 400 })
+    }
+
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contractId,
+        action: `Загружена версия документа v${versionNumber}`,
+        details: `Файл: ${file.name}${comment ? '. Комментарий: ' + comment : ''}`,
+        user_name: 'Система',
+      })
+
+    console.log('=== versions API success ===')
+    return NextResponse.json({ success: true, version: versionNumber })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    console.error('versions API error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  try {
+    const body = await request.json()
+    const { version_id, file_path, contract_id, user_name } = body
+
+    if (!version_id) {
+      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_path) {
+      await supabase.storage
+        .from('contracts')
+        .remove([file_path])
+    }
+
+    // Удаляем запись из базы
+    const { error } = await supabase
+      .from('versions')
+      .delete()
+      .eq('id', version_id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Версия документа удалена',
+        details: `Удалена версия документа`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/ai-chat/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -810,155 +978,6 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ messages: data ?? [] })
-}
-</file>
-
-<file path="app/api/approvals/[sessionId]/approve/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { participant_id, comment, user_name, contract_id } = body
-    const isAcknowledge = body.is_acknowledge === true
-
-    // Обновляем статус участника
-    const { error: updateError } = await supabase
-      .from('approval_participants')
-      .update({
-        status: isAcknowledge ? 'acknowledged' : 'approved',
-        comment: comment || null,
-        decided_at: new Date().toISOString(),
-      })
-      .eq('id', participant_id)
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: isAcknowledge ? 'Ознакомлен' : 'Согласовано',
-        details: isAcknowledge
-          ? 'Участник ознакомился(ась) с документом'
-          : comment ? `Комментарий: ${comment}` : 'Без комментария',
-        user_name: user_name ?? 'Система',
-      })
-
-    // Записываем сообщение в чат
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: isAcknowledge
-          ? `👁 ${user_name} ознакомлен с документом`
-          : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    // Проверяем все ли обязательные согласовали
-    const { data: participants } = await supabase
-      .from('approval_participants')
-      .select('status, role')
-      .eq('session_id', sessionId)
-
-    const required = participants?.filter(p => p.role === 'required') ?? []
-    const allDone = required.every(p =>
-      p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator'
-    )
-
-    if (allDone && required.length > 0) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'подписан' })
-        .eq('id', contract_id)
-
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'completed' })
-        .eq('id', sessionId)
-
-      await supabase
-        .from('contract_logs')
-        .insert({
-          contract_id,
-          action: 'Согласование завершено',
-          details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
-          user_name: 'Система',
-        })
-    }
-
-    return NextResponse.json({ success: true, all_approved: allDone })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { reason, user_name, contract_id } = body
-
-    if (!reason?.trim()) {
-      return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
-    }
-
-    const { error: sessionError } = await supabase
-      .from('approval_sessions')
-      .update({ status: 'cancelled', cancel_reason: reason })
-      .eq('id', sessionId)
-
-    if (sessionError) {
-      return NextResponse.json({ error: sessionError.message }, { status: 400 })
-    }
-
-    await supabase
-      .from('contracts')
-      .update({ status: 'архив' })
-      .eq('id', contract_id)
-
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: `🚫 Согласование прервано инициатором. Причина: «${reason}»`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Согласование прервано',
-        details: `Причина: ${reason}`,
-        user_name: user_name ?? 'Система',
-      })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
 }
 </file>
 
@@ -1208,811 +1227,6 @@ export async function GET(request: NextRequest) {
     role: 'user',
     companies: [],
   })
-}
-</file>
-
-<file path="app/api/versions/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-export async function GET(request: NextRequest) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-  const contractId = request.nextUrl.searchParams.get('contract_id')
-  if (!contractId) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-  const { data: versions, error } = await supabase
-    .from('versions')
-    .select('*')
-    .eq('contract_id', contractId)
-    .order('version_number', { ascending: false })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-  return NextResponse.json({ versions: versions ?? [] })
-}
-
-export async function POST(request: NextRequest) {
-  console.log('=== versions API called ===')
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-
-  try {
-    const formData = await request.formData()
-    console.log('formData parsed')
-
-    const file = formData.get('file') as File
-    const contractId = formData.get('contract_id') as string
-    const comment = formData.get('comment') as string
-
-    console.log('file:', file?.name, 'contractId:', contractId)
-
-    if (!file || !contractId) {
-      return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
-    }
-
-    // Получаем текущий номер версии
-    console.log('getting version count...')
-    const { count, error: countError } = await supabase
-      .from('versions')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contractId)
-
-    console.log('count:', count, 'countError:', countError)
-
-    const versionNumber = (count ?? 0) + 1
-
-    // Загружаем файл
-    const fileExt = file.name.split('.').pop()
-    const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
-
-    console.log('uploading to path:', filePath)
-
-    const arrayBuffer = await file.arrayBuffer()
-    const fileBuffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, fileBuffer, {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    console.log('upload result:', uploadError ? uploadError.message : 'success')
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
-
-    const { error: versionError } = await supabase
-      .from('versions')
-      .insert({
-        contract_id: contractId,
-        version_number: versionNumber,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        comment: comment || null,
-      })
-
-    console.log('version insert:', versionError ? versionError.message : 'success')
-
-    if (versionError) {
-      return NextResponse.json({ error: versionError.message }, { status: 400 })
-    }
-
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contractId,
-        action: `Загружена версия документа v${versionNumber}`,
-        details: `Файл: ${file.name}${comment ? '. Комментарий: ' + comment : ''}`,
-        user_name: 'Система',
-      })
-
-    console.log('=== versions API success ===')
-    return NextResponse.json({ success: true, version: versionNumber })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    console.error('versions API error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-
-  try {
-    const body = await request.json()
-    const { version_id, file_path, contract_id, user_name } = body
-
-    if (!version_id) {
-      return NextResponse.json({ error: 'version_id обязателен' }, { status: 400 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_path) {
-      await supabase.storage
-        .from('contracts')
-        .remove([file_path])
-    }
-
-    // Удаляем запись из базы
-    const { error } = await supabase
-      .from('versions')
-      .delete()
-      .eq('id', version_id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Версия документа удалена',
-        details: `Удалена версия документа`,
-        user_name: user_name ?? 'Система',
-      })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/attachments/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const contract_id = request.nextUrl.searchParams.get('contract_id')
-  if (!contract_id) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from('document_attachments')
-    .select('*')
-    .eq('contract_id', contract_id)
-    .order('attachment_type')
-    .order('number')
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ attachments: data ?? [] })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const contract_id = formData.get('contract_id') as string
-    const attachment_type = formData.get('attachment_type') as string
-    const title = formData.get('title') as string
-    const comment = formData.get('comment') as string
-    const user_name = formData.get('user_name') as string
-    const user_bitrix_id = formData.get('user_bitrix_id') as string
-
-    if (!file || !contract_id || !attachment_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    // Получаем следующий номер для данного типа
-    const { count } = await supabase
-      .from('document_attachments')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contract_id)
-      .eq('attachment_type', attachment_type)
-
-    const nextNumber = (count ?? 0) + 1
-
-    // Транслитерация имени файла
-    const safeFileName = file.name.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
-      const map: Record<string, string> = {
-        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-        'э':'e','ю':'yu','я':'ya',' ':'_',
-        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
-        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
-        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
-        'Э':'E','Ю':'Yu','Я':'Ya'
-      }
-      return map[char] ?? '_'
-    })
-
-    const safeType = attachment_type.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
-      const map: Record<string, string> = {
-        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-        'э':'e','ю':'yu','я':'ya',' ':'_',
-        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
-        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
-        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
-        'Э':'E','Ю':'Yu','Я':'Ya'
-      }
-      return map[char] ?? '_'
-    })
-    const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${safeFileName}`
-    const arrayBuffer = await file.arrayBuffer()
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
-
-    const { error: dbError } = await supabase
-      .from('document_attachments')
-      .insert({
-        contract_id,
-        attachment_type,
-        number: nextNumber,
-        title: title || null,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        comment: comment || null,
-        uploaded_by_name: user_name || null,
-        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
-      })
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: `Загружено: ${attachment_type} №${nextNumber}`,
-      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, file_url, contract_id, user_name } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_url) {
-      const filePath = file_url.split('/contracts/')[1]
-      if (filePath) {
-        await supabase.storage.from('contracts').remove([filePath])
-      }
-    }
-
-    const { error } = await supabase
-      .from('document_attachments')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: 'Дополнительный материал удалён',
-      details: `Файл удалён`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/onlyoffice/file/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const version_id = request.nextUrl.searchParams.get('version_id')
-    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
-
-    if (!version_id && !attachment_id) {
-      return NextResponse.json({ error: 'version_id или attachment_id обязателен' }, { status: 400 })
-    }
-
-    let fileUrl: string
-    let fileName: string
-
-    if (version_id) {
-      const { data: version } = await supabase
-        .from('versions')
-        .select('*')
-        .eq('id', version_id)
-        .single()
-
-      if (!version) {
-        return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
-      }
-
-      fileUrl = version.file_url
-      fileName = version.file_name
-    } else {
-      const { data: attachment } = await supabase
-        .from('document_attachments')
-        .select('*')
-        .eq('id', attachment_id)
-        .single()
-
-      if (!attachment) {
-        return NextResponse.json({ error: 'Вложение не найдено' }, { status: 404 })
-      }
-
-      fileUrl = attachment.file_url
-      fileName = attachment.file_name
-    }
-
-    // Скачиваем файл из Supabase и проксируем
-    const fileResponse = await fetch(fileUrl)
-    const arrayBuffer = await fileResponse.arrayBuffer()
-
-    const contentType = fileName.endsWith('.xlsx')
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
-    return new NextResponse(arrayBuffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/approvals/[sessionId]/messages/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { message, author_name, bitrix_user_id, file_url, file_name, file_type } = body
-
-    if (!message?.trim() && !file_url) {
-      return NextResponse.json({ error: 'Сообщение не может быть пустым' }, { status: 400 })
-    }
-
-    const { error } = await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: message?.trim() ?? '',
-        author_name: author_name ?? 'Система',
-        bitrix_user_id: bitrix_user_id ?? null,
-        is_ai: false,
-        file_url: file_url ?? null,
-        file_name: file_name ?? null,
-        file_type: file_type ?? null,
-      })
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    await params
-    const body = await request.json()
-    const { message_id, message, bitrix_user_id } = body
-
-    if (!message?.trim() || !message_id) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    // Проверяем что сообщение принадлежит пользователю
-    const { data: existing } = await supabase
-      .from('approval_messages')
-      .select('bitrix_user_id')
-      .eq('id', message_id)
-      .single()
-
-    if (!existing || existing.bitrix_user_id !== bitrix_user_id) {
-      return NextResponse.json({ error: 'Нет прав на редактирование' }, { status: 403 })
-    }
-
-    const { error } = await supabase
-      .from('approval_messages')
-      .update({ message: message.trim() + ' (изм.)' })
-      .eq('id', message_id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/contracts/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
-
-const TYPE_CODES: Record<string, string> = {
-  'поставка': 'ДОГ',
-  'услуги': 'ДОГ',
-  'аренда': 'ДОГ',
-  'подряд': 'ДОГ',
-  'купля-продажа': 'ДОГ',
-  'агентский': 'ДОГ',
-  'дилерский': 'ДОГ',
-  'лицензионный': 'ДОГ',
-  'сервисный': 'ДОГ',
-  'доп-соглашение': 'ДОП',
-  'nda': 'КОНФ',
-  'эдо': 'ЭДО',
-  'протокол-разногласий': 'ПРТ',
-  'претензия': 'ПРЗ',
-  'исковое': 'ИСК',
-  'ответ-претензию': 'ПРЗ',
-  'положение': 'ОРД',
-  'инструкция': 'ОРД',
-  'служебная-записка': 'ОРД',
-  'доверенность': 'ДОВ',
-  'персданные': 'СПД',
-  'акт': 'АКТ',
-  'заключение': 'ПРВ',
-  'справка': 'СПР',
-  'устав': 'УСТ',
-  'учредительный': 'ДОГ',
-  'письмо': 'ПСМ',
-  'счет': 'СЧТ',
-  'другое': 'ДОК',
-}
-
-// Генерация номера договора
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-  const type = request.nextUrl.searchParams.get('type') ?? ''
-  if (!prefix) {
-    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
-  }
-
-  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
-  const fullPrefix = `${prefix}-${typeCode}`
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const data = await res.json()
-  let maxNum = 0
-  if (data && data.length > 0) {
-    const lastNumber = data[0].number as string
-    const parts = lastNumber.split('/')
-    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
-    if (!isNaN(lastSeq)) maxNum = lastSeq
-  }
-  const nextNum = String(maxNum + 1).padStart(2, '0')
-  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
-
-  return NextResponse.json({ number })
-}
-
-// Сохранение договора
-export async function POST(request: NextRequest) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-  try {
-    const body = await request.json()
-    const userName = body.user_name ?? 'Система'
-
-    // Сохраняем договор
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .insert({
-        number: body.number,
-        title: body.title,
-        counterparty: body.counterparty,
-        type: body.type,
-        amount: body.amount ? parseFloat(body.amount) : null,
-        start_date: body.start_date || null,
-        end_date: body.end_date || null,
-        status: 'черновик',
-        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
-        document_category: body.document_category ?? 'contract',
-      })
-      .select('id')
-      .single()
-
-    if (contractError) {
-      return NextResponse.json({ error: contractError.message }, { status: 400 })
-    }
-
-    // Записываем в лог с именем пользователя
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contract.id,
-        action: 'Документ создан',
-        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
-        user_name: userName,
-      })
-
-    return NextResponse.json({ success: true, id: contract.id })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/templates/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const ADMIN_IDS = [30, 1148]
-
-// Получить список шаблонов
-export async function GET(request: NextRequest) {
-  const type = request.nextUrl.searchParams.get('type')
-  const company = request.nextUrl.searchParams.get('company')
-
-  let query = supabase
-    .from('document_templates')
-    .select('*')
-    .eq('is_active', true)
-    .order('name')
-
-  if (type) query = query.eq('type', type)
-  if (company) query = query.or(`company_prefix.eq.${company},company_prefix.is.null`)
-
-  const { data, error } = await query
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ templates: data ?? [] })
-}
-
-// Добавить шаблон (только админы)
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const name = formData.get('name') as string
-    const type = formData.get('type') as string
-    const company_prefix = formData.get('company_prefix') as string | null
-    const description = formData.get('description') as string | null
-    const admin_bitrix_id = parseInt(formData.get('admin_bitrix_id') as string)
-
-    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
-      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
-    }
-
-    if (!file || !name || !type) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
-    }
-
-    // Загружаем файл в Storage
-    const fileExt = file.name.split('.').pop()
-    const safeFileName = file.name
-      .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
-        const map: Record<string, string> = {
-          'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-          'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-          'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-          'э':'e','ю':'yu','я':'ya',' ':'_',
-          'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
-          'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
-          'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
-          'Э':'E','Ю':'Yu','Я':'Ya'
-        }
-        return map[char] ?? char
-      })
-    const safePrefix = (company_prefix ?? 'general')
-      .replace(/[а-яёА-ЯЁ]/g, (char) => {
-        const map: Record<string, string> = {
-          'ТХ':'TX','НПП':'NPP','СПТ':'SPT','ОС':'OS','Э-К':'EK',
-          'т':'t','х':'h','н':'n','п':'p','с':'s','о':'o','э':'e','к':'k'
-        }
-        return map[char] ?? char
-      })
-      .replace(/[^a-zA-Z0-9_-]/g, '_')
-    const filePath = `${safePrefix}/${Date.now()}_${safeFileName}`
-    const arrayBuffer = await file.arrayBuffer()
-
-    const { error: uploadError } = await supabase.storage
-      .from('templates')
-      .upload(filePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('templates')
-      .getPublicUrl(filePath)
-
-    // Сохраняем метаданные
-    const { error: dbError } = await supabase
-      .from('document_templates')
-      .insert({
-        name,
-        type,
-        company_prefix: company_prefix || null,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        description: description || null,
-      })
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// Удалить шаблон (только админы)
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, file_url, admin_bitrix_id } = body
-
-    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
-      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_url) {
-      const filePath = file_url.split('/templates/')[1]
-      if (filePath) {
-        await supabase.storage.from('templates').remove([filePath])
-      }
-    }
-
-    const { error } = await supabase
-      .from('document_templates')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// Обновить метаданные шаблона (только админы)
-export async function PATCH(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, name, type, company_prefix, description, is_active, admin_bitrix_id } = body
-
-    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
-      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
-    }
-
-    const { error } = await supabase
-      .from('document_templates')
-      .update({ name, type, company_prefix, description, is_active })
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
 }
 </file>
 
@@ -2303,6 +1517,792 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ analyses: data ?? [] })
+}
+</file>
+
+<file path="app/api/approvals/[sessionId]/approve/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { participant_id, comment, user_name, contract_id } = body
+    const isAcknowledge = body.is_acknowledge === true
+
+    // Обновляем статус участника
+    const { error: updateError } = await supabase
+      .from('approval_participants')
+      .update({
+        status: isAcknowledge ? 'acknowledged' : 'approved',
+        comment: comment || null,
+        decided_at: new Date().toISOString(),
+      })
+      .eq('id', participant_id)
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: isAcknowledge ? 'Ознакомлен' : 'Согласовано',
+        details: isAcknowledge
+          ? 'Участник ознакомился(ась) с документом'
+          : comment ? `Комментарий: ${comment}` : 'Без комментария',
+        user_name: user_name ?? 'Система',
+      })
+
+    // Записываем сообщение в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: isAcknowledge
+          ? `👁 ${user_name} ознакомлен с документом`
+          : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Проверяем все ли обязательные согласовали
+    const { data: participants } = await supabase
+      .from('approval_participants')
+      .select('status, role')
+      .eq('session_id', sessionId)
+
+    const required = participants?.filter(p => p.role === 'required') ?? []
+    const allDone = required.every(p =>
+      p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator'
+    )
+
+    if (allDone && required.length > 0) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
+
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
+
+      await supabase
+        .from('contract_logs')
+        .insert({
+          contract_id,
+          action: 'Согласование завершено',
+          details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
+          user_name: 'Система',
+        })
+    }
+
+    return NextResponse.json({ success: true, all_approved: allDone })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { reason, user_name, contract_id } = body
+
+    if (!reason?.trim()) {
+      return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
+    }
+
+    const { error: sessionError } = await supabase
+      .from('approval_sessions')
+      .update({ status: 'cancelled', cancel_reason: reason })
+      .eq('id', sessionId)
+
+    if (sessionError) {
+      return NextResponse.json({ error: sessionError.message }, { status: 400 })
+    }
+
+    await supabase
+      .from('contracts')
+      .update({ status: 'архив' })
+      .eq('id', contract_id)
+
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `🚫 Согласование прервано инициатором. Причина: «${reason}»`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Согласование прервано',
+        details: `Причина: ${reason}`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/attachments/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const contract_id = request.nextUrl.searchParams.get('contract_id')
+  if (!contract_id) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('document_attachments')
+    .select('*')
+    .eq('contract_id', contract_id)
+    .order('attachment_type')
+    .order('number')
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ attachments: data ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+    const contract_id = formData.get('contract_id') as string
+    const attachment_type = formData.get('attachment_type') as string
+    const title = formData.get('title') as string
+    const comment = formData.get('comment') as string
+    const user_name = formData.get('user_name') as string
+    const user_bitrix_id = formData.get('user_bitrix_id') as string
+
+    if (!file || !contract_id || !attachment_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    // Получаем следующий номер для данного типа
+    const { count } = await supabase
+      .from('document_attachments')
+      .select('*', { count: 'exact', head: true })
+      .eq('contract_id', contract_id)
+      .eq('attachment_type', attachment_type)
+
+    const nextNumber = (count ?? 0) + 1
+
+    // Транслитерация имени файла
+    const safeFileName = file.name.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+      const map: Record<string, string> = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+        'э':'e','ю':'yu','я':'ya',' ':'_',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+        'Э':'E','Ю':'Yu','Я':'Ya'
+      }
+      return map[char] ?? '_'
+    })
+
+    const safeType = attachment_type.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+      const map: Record<string, string> = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+        'э':'e','ю':'yu','я':'ya',' ':'_',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+        'Э':'E','Ю':'Yu','Я':'Ya'
+      }
+      return map[char] ?? '_'
+    })
+    const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${safeFileName}`
+    const arrayBuffer = await file.arrayBuffer()
+
+    const { error: uploadError } = await supabase.storage
+      .from('contracts')
+      .upload(filePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('contracts')
+      .getPublicUrl(filePath)
+
+    const { error: dbError } = await supabase
+      .from('document_attachments')
+      .insert({
+        contract_id,
+        attachment_type,
+        number: nextNumber,
+        title: title || null,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        comment: comment || null,
+        uploaded_by_name: user_name || null,
+        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
+      })
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: `Загружено: ${attachment_type} №${nextNumber}`,
+      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, file_url, contract_id, user_name } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_url) {
+      const filePath = file_url.split('/contracts/')[1]
+      if (filePath) {
+        await supabase.storage.from('contracts').remove([filePath])
+      }
+    }
+
+    const { error } = await supabase
+      .from('document_attachments')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Дополнительный материал удалён',
+      details: `Файл удалён`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/contracts/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
+
+const TYPE_CODES: Record<string, string> = {
+  'поставка': 'ДОГ',
+  'услуги': 'ДОГ',
+  'аренда': 'ДОГ',
+  'подряд': 'ДОГ',
+  'купля-продажа': 'ДОГ',
+  'агентский': 'ДОГ',
+  'дилерский': 'ДОГ',
+  'лицензионный': 'ДОГ',
+  'сервисный': 'ДОГ',
+  'доп-соглашение': 'ДОП',
+  'nda': 'КОНФ',
+  'эдо': 'ЭДО',
+  'протокол-разногласий': 'ПРТ',
+  'претензия': 'ПРЗ',
+  'исковое': 'ИСК',
+  'ответ-претензию': 'ПРЗ',
+  'положение': 'ОРД',
+  'инструкция': 'ОРД',
+  'служебная-записка': 'ОРД',
+  'доверенность': 'ДОВ',
+  'персданные': 'СПД',
+  'акт': 'АКТ',
+  'заключение': 'ПРВ',
+  'справка': 'СПР',
+  'устав': 'УСТ',
+  'учредительный': 'ДОГ',
+  'письмо': 'ПСМ',
+  'счет': 'СЧТ',
+  'другое': 'ДОК',
+}
+
+// Генерация номера договора
+export async function GET(request: NextRequest) {
+  const prefix = request.nextUrl.searchParams.get('prefix')
+  const type = request.nextUrl.searchParams.get('type') ?? ''
+  if (!prefix) {
+    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
+  }
+
+  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
+  const fullPrefix = `${prefix}-${typeCode}`
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
+    {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
+
+  const data = await res.json()
+  let maxNum = 0
+  if (data && data.length > 0) {
+    const lastNumber = data[0].number as string
+    const parts = lastNumber.split('/')
+    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
+    if (!isNaN(lastSeq)) maxNum = lastSeq
+  }
+  const nextNum = String(maxNum + 1).padStart(2, '0')
+  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
+
+  return NextResponse.json({ number })
+}
+
+// Сохранение договора
+export async function POST(request: NextRequest) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  try {
+    const body = await request.json()
+    const userName = body.user_name ?? 'Система'
+
+    // Сохраняем договор
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .insert({
+        number: body.number,
+        title: body.title,
+        counterparty: body.counterparty,
+        type: body.type,
+        amount: body.amount ? parseFloat(body.amount) : null,
+        start_date: body.start_date || null,
+        end_date: body.end_date || null,
+        status: 'черновик',
+        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
+        document_category: body.document_category ?? 'contract',
+      })
+      .select('id')
+      .single()
+
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
+    }
+
+    // Записываем в лог с именем пользователя
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contract.id,
+        action: 'Документ создан',
+        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
+        user_name: userName,
+      })
+
+    return NextResponse.json({ success: true, id: contract.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/onlyoffice/file/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const version_id = request.nextUrl.searchParams.get('version_id')
+    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
+
+    if (!version_id && !attachment_id) {
+      return NextResponse.json({ error: 'version_id или attachment_id обязателен' }, { status: 400 })
+    }
+
+    let fileUrl: string
+    let fileName: string
+
+    if (version_id) {
+      const { data: version } = await supabase
+        .from('versions')
+        .select('*')
+        .eq('id', version_id)
+        .single()
+
+      if (!version) {
+        return NextResponse.json({ error: 'Версия не найдена' }, { status: 404 })
+      }
+
+      fileUrl = version.file_url
+      fileName = version.file_name
+    } else {
+      const { data: attachment } = await supabase
+        .from('document_attachments')
+        .select('*')
+        .eq('id', attachment_id)
+        .single()
+
+      if (!attachment) {
+        return NextResponse.json({ error: 'Вложение не найдено' }, { status: 404 })
+      }
+
+      fileUrl = attachment.file_url
+      fileName = attachment.file_name
+    }
+
+    // Скачиваем файл из Supabase и проксируем
+    const fileResponse = await fetch(fileUrl)
+    const arrayBuffer = await fileResponse.arrayBuffer()
+
+    const contentType = fileName.endsWith('.xlsx')
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    return new NextResponse(arrayBuffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
+        'Access-Control-Allow-Origin': '*',
+      },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/approvals/[sessionId]/messages/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { message, author_name, bitrix_user_id, file_url, file_name, file_type } = body
+
+    if (!message?.trim() && !file_url) {
+      return NextResponse.json({ error: 'Сообщение не может быть пустым' }, { status: 400 })
+    }
+
+    const { error } = await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: message?.trim() ?? '',
+        author_name: author_name ?? 'Система',
+        bitrix_user_id: bitrix_user_id ?? null,
+        is_ai: false,
+        file_url: file_url ?? null,
+        file_name: file_name ?? null,
+        file_type: file_type ?? null,
+      })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    await params
+    const body = await request.json()
+    const { message_id, message, bitrix_user_id } = body
+
+    if (!message?.trim() || !message_id) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    // Проверяем что сообщение принадлежит пользователю
+    const { data: existing } = await supabase
+      .from('approval_messages')
+      .select('bitrix_user_id')
+      .eq('id', message_id)
+      .single()
+
+    if (!existing || existing.bitrix_user_id !== bitrix_user_id) {
+      return NextResponse.json({ error: 'Нет прав на редактирование' }, { status: 403 })
+    }
+
+    const { error } = await supabase
+      .from('approval_messages')
+      .update({ message: message.trim() + ' (изм.)' })
+      .eq('id', message_id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/templates/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const ADMIN_IDS = [30, 1148]
+
+// Получить список шаблонов
+export async function GET(request: NextRequest) {
+  const type = request.nextUrl.searchParams.get('type')
+  const company = request.nextUrl.searchParams.get('company')
+
+  let query = supabase
+    .from('document_templates')
+    .select('*')
+    .eq('is_active', true)
+    .order('name')
+
+  if (type) query = query.eq('type', type)
+  if (company) query = query.or(`company_prefix.eq.${company},company_prefix.is.null`)
+
+  const { data, error } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ templates: data ?? [] })
+}
+
+// Добавить шаблон (только админы)
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+    const name = formData.get('name') as string
+    const type = formData.get('type') as string
+    const company_prefix = formData.get('company_prefix') as string | null
+    const description = formData.get('description') as string | null
+    const admin_bitrix_id = parseInt(formData.get('admin_bitrix_id') as string)
+
+    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
+      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
+    }
+
+    if (!file || !name || !type) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    }
+
+    // Загружаем файл в Storage
+    const fileExt = file.name.split('.').pop()
+    const safeFileName = file.name
+      .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+        const map: Record<string, string> = {
+          'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+          'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+          'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+          'э':'e','ю':'yu','я':'ya',' ':'_',
+          'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+          'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+          'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+          'Э':'E','Ю':'Yu','Я':'Ya'
+        }
+        return map[char] ?? char
+      })
+    const safePrefix = (company_prefix ?? 'general')
+      .replace(/[а-яёА-ЯЁ]/g, (char) => {
+        const map: Record<string, string> = {
+          'ТХ':'TX','НПП':'NPP','СПТ':'SPT','ОС':'OS','Э-К':'EK',
+          'т':'t','х':'h','н':'n','п':'p','с':'s','о':'o','э':'e','к':'k'
+        }
+        return map[char] ?? char
+      })
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+    const filePath = `${safePrefix}/${Date.now()}_${safeFileName}`
+    const arrayBuffer = await file.arrayBuffer()
+
+    const { error: uploadError } = await supabase.storage
+      .from('templates')
+      .upload(filePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('templates')
+      .getPublicUrl(filePath)
+
+    // Сохраняем метаданные
+    const { error: dbError } = await supabase
+      .from('document_templates')
+      .insert({
+        name,
+        type,
+        company_prefix: company_prefix || null,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        description: description || null,
+      })
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// Удалить шаблон (только админы)
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, file_url, admin_bitrix_id } = body
+
+    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
+      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_url) {
+      const filePath = file_url.split('/templates/')[1]
+      if (filePath) {
+        await supabase.storage.from('templates').remove([filePath])
+      }
+    }
+
+    const { error } = await supabase
+      .from('document_templates')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// Обновить метаданные шаблона (только админы)
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, name, type, company_prefix, description, is_active, admin_bitrix_id } = body
+
+    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
+      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
+    }
+
+    const { error } = await supabase
+      .from('document_templates')
+      .update({ name, type, company_prefix, description, is_active })
+      .eq('id', id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
