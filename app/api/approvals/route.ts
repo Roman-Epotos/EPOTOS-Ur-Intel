@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
     `)
     .eq('contract_id', contractId)
-    .eq('status', 'active')
+    .in('status', ['active', 'completed'])
     .order('created_at', { ascending: false })
     .limit(1)
     .single()
