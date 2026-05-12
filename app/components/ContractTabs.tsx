@@ -502,10 +502,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     setApprovingId(null)
     setApproving(false)
     await loadSession()
-    // Обновляем статус контракта
-    const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
-    const data = await res.json()
-    if (data.contract?.status) setContractStatus(data.contract.status)
+    // Обновляем статус контракта с небольшой задержкой
+    setTimeout(async () => {
+      const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
+      const data = await res.json()
+      if (data.contract?.status) setContractStatus(data.contract.status)
+    }, 1000)
   }
 
   const handleAcknowledge = async () => {
@@ -526,13 +528,15 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     setApprovingId(null)
     setAcknowledging(false)
     await loadSession()
-    // Обновляем статус контракта
-    const res2 = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
-    const data2 = await res2.json()
-    if (data2.contract?.status) setContractStatus(data2.contract.status)
+    // Обновляем статус контракта с небольшой задержкой
+    setTimeout(async () => {
+      const res2 = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
+      const data2 = await res2.json()
+      if (data2.contract?.status) setContractStatus(data2.contract.status)
+    }, 1000)
   }
 
-  const hasActiveSession = session && session.status === 'active'
+  const hasActiveSession = session && (session.status === 'active' || session.status === 'completed')
   const allRequired = session?.approval_participants.filter(p => p.role === 'required') ?? []
   const allApproved = allRequired.every(p => ['approved', 'disabled', 'completed_by_initiator'].includes(p.status))
   const daysLeft = session ? Math.ceil((new Date(session.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0
