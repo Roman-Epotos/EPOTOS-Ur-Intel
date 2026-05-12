@@ -97,7 +97,7 @@ export default function ContractsList() {
     const channel = supabase
       .channel('contracts-changes')
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'contracts',
       }, () => {
