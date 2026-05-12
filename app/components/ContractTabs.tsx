@@ -721,8 +721,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 ))}
               </div>
 
-              {/* Подписанные экземпляры */}
-              <div className="mt-8">
+              {/* Дополнительные материалы */}
+              <div className="mt-6 border-t border-gray-100 pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Подписанные экземпляры</h2>
                   {canUploadSigned && (
@@ -835,8 +835,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 </div>
               )}
 
-              {/* Дополнительные материалы */}
-              <div className="mt-6 border-t border-gray-100 pt-6">
+              {/* Подписанные экземпляры */}
+              <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Дополнительные материалы</h3>
                   <button onClick={() => setShowAttachmentForm(p => !p)}

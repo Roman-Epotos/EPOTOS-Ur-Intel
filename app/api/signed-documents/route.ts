@@ -75,13 +75,16 @@ export async function POST(request: NextRequest) {
     // Получаем контракт
     const { data: contract, error: contractError } = await supabase
       .from('contracts')
-      .select('id, status, author_bitrix_id, company_prefix')
+      .select('id, status, author_bitrix_id, number')
       .eq('id', contract_id)
       .single()
 
     if (contractError || !contract) {
       return NextResponse.json({ error: `Документ не найден: ${contractError?.message ?? 'нет данных'}` }, { status: 404 })
     }
+
+    // Извлекаем префикс компании из номера документа (ТХ-ДОГ-2026/... → ТХ)
+    const companyPrefix = contract.number?.split('-')[0] ?? ''
 
     // Получаем инициатора согласования
     const { data: session } = await supabase
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
     const initiatorId = session?.initiated_by_bitrix_id ?? null
 
     // Проверяем права
-    if (!canUploadSigned(userId, contract.author_bitrix_id, initiatorId, contract.company_prefix)) {
+    if (!canUploadSigned(userId, contract.author_bitrix_id, initiatorId, companyPrefix)) {
       return NextResponse.json({ error: 'Нет прав для загрузки подписанного документа' }, { status: 403 })
     }
 

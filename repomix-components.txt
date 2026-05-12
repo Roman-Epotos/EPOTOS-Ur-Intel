@@ -440,6 +440,76 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
 }
 </file>
 
+<file path="app/components/Header.tsx">
+'use client'
+
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
+        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Link
+          href="/contracts/new"
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+        >
+          + Новый документ
+        </Link>
+
+        {/* Профиль пользователя */}
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/components/MyDocuments.tsx">
 'use client'
 
@@ -813,76 +883,6 @@ export default function PersonalStats() {
           <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
         </div>
       ))}
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/Header.tsx">
-'use client'
-
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import Link from 'next/link'
-
-export default function Header() {
-  const { user, loading } = useBitrixAuth()
-
-  return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
-        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-        >
-          + Новый документ
-        </Link>
-
-        {/* Профиль пользователя */}
-        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
-          <Link href="/admin"
-            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            Настройки
-          </Link>
-        )}
-        {!loading && (
-          <div className="flex items-center gap-3">
-            {user ? (
-              <div className="flex items-center gap-2">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                  ?
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Гость</p>
-                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -2640,97 +2640,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   </div>
                 </div>
               </div>
-            {/* Блок подписания */}
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Подписание</h2>
-                {contract.status === 'подписан' ? (
-                  <div className="space-y-3">
-                    <div className="flex gap-4">
-                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Статус</span>
-                      <span className="text-sm font-medium text-green-700">✅ Подписан</span>
-                    </div>
-                    {contract.signed_at && (
-                      <div className="flex gap-4">
-                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата подписания</span>
-                        <span className="text-sm text-gray-900">{new Date(contract.signed_at).toLocaleString('ru-RU')}</span>
-                      </div>
-                    )}
-                    {contract.signed_by_name && (
-                      <div className="flex gap-4">
-                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">Подписал(а)</span>
-                        <span className="text-sm text-gray-900">{contract.signed_by_name}</span>
-                      </div>
-                    )}
-                    {contract.signed_file_name ? (
-                      <>
-                        <div className="flex gap-4">
-                          <span className="text-sm text-gray-500 w-36 flex-shrink-0">Подписанный файл</span>
-                          <a href={contract.signed_file_url ?? ''} target="_blank" rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:underline">{contract.signed_file_name}</a>
-                        </div>
-                        <div className="flex gap-4">
-                          <span className="text-sm text-gray-500 w-36 flex-shrink-0">Файл загружен</span>
-                          <span className="text-sm text-gray-900">
-                            {contract.signed_file_uploaded_by} · {contract.signed_file_uploaded_at ? new Date(contract.signed_file_uploaded_at).toLocaleString('ru-RU') : ''}
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-3">
-                        <p className="text-xs text-gray-500 mb-2">Подписанный экземпляр ещё не загружен</p>
-                        {canSign && (
-                          <div className="flex items-center gap-3">
-                            <input type="file" id="signed-file-input" accept=".pdf,.docx,.xlsx"
-                              className="text-xs text-gray-600" />
-                            <button
-                              onClick={async () => {
-                                const input = document.getElementById('signed-file-input') as HTMLInputElement
-                                const file = input?.files?.[0]
-                                if (!file) { alert('Выберите файл'); return }
-                                const fd = new FormData()
-                                fd.append('contract_id', contract.id)
-                                fd.append('user_name', user?.name ?? '')
-                                fd.append('user_bitrix_id', user?.id ?? '')
-                                fd.append('action', 'upload')
-                                fd.append('file', file)
-                                const res = await fetch('https://epotos-ur-intel.vercel.app/api/sign', { method: 'POST', body: fd })
-                                const data = await res.json()
-                                if (data.error) { alert('Ошибка: ' + data.error) } else { window.location.reload() }
-                              }}
-                              className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
-                              📎 Загрузить подписанный экземпляр
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-3">Документ ещё не подписан</p>
-                    {canSign && (
-                      <button
-                        onClick={async () => {
-                          if (!confirm('Перевести документ в статус "Подписан"?')) return
-                          const fd = new FormData()
-                          fd.append('contract_id', contract.id)
-                          fd.append('user_name', user?.name ?? '')
-                          fd.append('user_bitrix_id', user?.id ?? '')
-                          fd.append('action', 'sign')
-                          const res = await fetch('https://epotos-ur-intel.vercel.app/api/sign', { method: 'POST', body: fd })
-                          const data = await res.json()
-                          if (data.error) { alert('Ошибка: ' + data.error) } else { window.location.reload() }
-                        }}
-                        className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                        ✅ Отметить как подписанный
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           )}
-
           {/* Документы */}
           {activeTab === 'documents' && (
             <div className="p-6">
