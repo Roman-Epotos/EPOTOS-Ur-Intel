@@ -103,7 +103,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Транслитерация имени файла
-    const safeFileName = file.name.replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+    const safeFileName = file.name
+      .replace(/№/g, 'N')
+      .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
       const map: Record<string, string> = {
         'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
         'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
