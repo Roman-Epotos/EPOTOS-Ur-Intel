@@ -55,16 +55,22 @@ interface UserRole {
 const statusLabel: Record<string, string> = {
   черновик: 'Черновик',
   на_согласовании: 'На согласовании',
-  подписан: 'Подписан',
+  согласован: 'Согласован',
   отклонён: 'Отклонён',
+  загружен_частично: 'Документы загружены частично',
+  подписан: 'Подписанные документы загружены',
+  на_исполнении: 'На контроле исполнения',
   архив: 'Архив',
 }
 
 const statusColor: Record<string, string> = {
   черновик: 'bg-gray-100 text-gray-700',
   на_согласовании: 'bg-yellow-100 text-yellow-800',
-  подписан: 'bg-green-100 text-green-800',
+  согласован: 'bg-blue-100 text-blue-800',
   отклонён: 'bg-red-100 text-red-700',
+  загружен_частично: 'bg-orange-100 text-orange-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-emerald-100 text-emerald-800',
   архив: 'bg-gray-200 text-gray-500',
 }
 
@@ -232,7 +238,10 @@ export default function ContractsList() {
             <option value="all">Все статусы</option>
             <option value="черновик">Черновики</option>
             <option value="на_согласовании">На согласовании</option>
-            <option value="подписан">Подписанные</option>
+            <option value="согласован">Согласованные</option>
+            <option value="загружен_частично">Документы загружены частично</option>
+            <option value="подписан">Подписанные документы загружены</option>
+            <option value="на_исполнении">На контроле исполнения</option>
             <option value="архив">Архив</option>
           </select>
           <select

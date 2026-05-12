@@ -60,6 +60,7 @@ interface Contract {
   author_bitrix_id: number | null
   allow_others_to_approve: boolean | null
   document_category?: string | null
+  company_prefix?: string | null
   signed_at?: string | null
   signed_by_name?: string | null
   signed_by_bitrix_id?: number | null
@@ -114,16 +115,22 @@ interface Props {
 const statusLabel: Record<string, string> = {
   черновик: 'Черновик',
   на_согласовании: 'На согласовании',
-  подписан: 'Подписан',
+  согласован: 'Согласован',
   отклонён: 'Отклонён',
+  загружен_частично: 'Документы загружены частично',
+  подписан: 'Подписанные документы загружены',
+  на_исполнении: 'На контроле исполнения',
   архив: 'Архив',
 }
 
 const statusColor: Record<string, string> = {
   черновик: 'bg-gray-100 text-gray-700',
   на_согласовании: 'bg-yellow-100 text-yellow-800',
-  подписан: 'bg-green-100 text-green-800',
+  согласован: 'bg-blue-100 text-blue-800',
   отклонён: 'bg-red-100 text-red-700',
+  загружен_частично: 'bg-orange-100 text-orange-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-emerald-100 text-emerald-800',
   архив: 'bg-gray-200 text-gray-500',
 }
 
@@ -162,6 +169,17 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const canSign = ADMIN_IDS.includes(userId) ||
     GC_MANAGER_IDS.includes(userId) ||
     contract.author_bitrix_id === userId
+
+  const SPECIAL_SIGNERS: Record<number, string[]> = {
+    782: ['Э-К'],
+    152: ['СПТ', 'ОС', 'НПП'],
+  }
+  const canUploadSigned = ADMIN_IDS.includes(userId) ||
+    GC_MANAGER_IDS.includes(userId) ||
+    contract.author_bitrix_id === userId ||
+    Object.entries(SPECIAL_SIGNERS).some(([id, prefixes]) =>
+      parseInt(id) === userId && prefixes.includes(contract.company_prefix ?? '')
+    )
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -175,6 +193,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
+  const [signedDocs, setSignedDocs] = useState<{id: string; file_url: string; file_name: string; uploaded_by_name: string; created_at: string}[]>([])
+  const [showConfirmAllModal, setShowConfirmAllModal] = useState(false)
+  const [uploadingSignedFile, setUploadingSignedFile] = useState(false)
   const [showAttachmentForm, setShowAttachmentForm] = useState(false)
   const [attachmentType, setAttachmentType] = useState('Спецификация')
   const [attachmentTitle, setAttachmentTitle] = useState('')
@@ -254,6 +275,15 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   useEffect(() => {
     loadSession()
     loadAttachments()
+  }, [contract.id])
+
+  useEffect(() => {
+    const loadSignedDocs = async () => {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/signed-documents?contract_id=${contract.id}`)
+      const data = await res.json()
+      if (data.documents) setSignedDocs(data.documents)
+    }
+    loadSignedDocs()
   }, [contract.id])
 
   useEffect(() => {
@@ -553,6 +583,33 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
             <div className="p-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
+                  {/* Индикатор статуса */}
+                  <div className="mb-5">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {[
+                        { s: 'черновик', label: 'Черновик', active: 'bg-gray-500 text-white', past: 'bg-gray-200 text-gray-500' },
+                        { s: 'на_согласовании', label: 'На согласовании', active: 'bg-yellow-500 text-white', past: 'bg-yellow-100 text-yellow-600' },
+                        { s: 'согласован', label: 'Согласован', active: 'bg-blue-500 text-white', past: 'bg-blue-100 text-blue-600' },
+                        { s: 'загружен_частично', label: 'Загружены частично', active: 'bg-orange-500 text-white', past: 'bg-orange-100 text-orange-600' },
+                        { s: 'подписан', label: 'Документы загружены', active: 'bg-green-500 text-white', past: 'bg-green-100 text-green-600' },
+                        { s: 'на_исполнении', label: 'На исполнении', active: 'bg-emerald-600 text-white', past: 'bg-emerald-100 text-emerald-600' },
+                      ].map(({ s, label, active, past }, i, arr) => {
+                        const order = ['черновик','на_согласовании','согласован','загружен_частично','подписан','на_исполнении']
+                        const currentIdx = order.indexOf(contract.status)
+                        const thisIdx = order.indexOf(s)
+                        const isCurrent = s === contract.status
+                        const isPast = thisIdx < currentIdx
+                        return (
+                          <div key={s} className="flex items-center gap-1">
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${isCurrent ? active : isPast ? past : 'bg-gray-100 text-gray-300'}`}>
+                              {label}
+                            </span>
+                            {i < arr.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты документа</h2>
                   <div className="space-y-3">
                     {[
@@ -752,6 +809,120 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                   </div>
                 ))}
               </div>
+
+              {/* Подписанные экземпляры */}
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Подписанные экземпляры</h2>
+                  {canUploadSigned && (
+                    <label className={`text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 cursor-pointer ${uploadingSignedFile ? 'opacity-50' : ''}`}>
+                      {uploadingSignedFile ? 'Загрузка...' : '+ Загрузить подписанный файл'}
+                      <input type="file" className="hidden" accept=".pdf,.docx,.xlsx"
+                        disabled={uploadingSignedFile}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          setUploadingSignedFile(true)
+                          const fd = new FormData()
+                          fd.append('file', file)
+                          fd.append('contract_id', contract.id)
+                          fd.append('user_name', user?.name ?? '')
+                          fd.append('user_bitrix_id', user?.id ?? '')
+                          fd.append('confirm_all', 'false')
+                          const res = await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', { method: 'POST', body: fd })
+                          const data = await res.json()
+                          setUploadingSignedFile(false)
+                          if (data.error) { alert('Ошибка: ' + data.error); return }
+                          const docsRes = await fetch(`https://epotos-ur-intel.vercel.app/api/signed-documents?contract_id=${contract.id}`)
+                          const docsData = await docsRes.json()
+                          if (docsData.documents) setSignedDocs(docsData.documents)
+                          setShowConfirmAllModal(true)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+                {signedDocs.length === 0 ? (
+                  <p className="text-sm text-gray-400">Подписанные экземпляры ещё не загружены</p>
+                ) : (
+                  <div className="space-y-2">
+                    {signedDocs.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+                        <div className="flex items-center gap-3">
+                          <span className="text-green-600">✅</span>
+                          <div>
+                            <p className="text-sm text-gray-900">{doc.file_name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{doc.uploaded_by_name} · {new Date(doc.created_at).toLocaleString('ru-RU')}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
+                            Скачать
+                          </a>
+                          {(ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId)) && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Удалить этот файл?')) return
+                                const res = await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', {
+                                  method: 'DELETE',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ id: doc.id, file_url: doc.file_url, contract_id: contract.id, user_name: user?.name, user_bitrix_id: user?.id })
+                                })
+                                const data = await res.json()
+                                if (data.error) { alert('Ошибка: ' + data.error); return }
+                                setSignedDocs(prev => prev.filter(d => d.id !== doc.id))
+                              }}
+                              className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {canUploadSigned && contract.status !== 'подписан' && contract.status !== 'на_исполнении' && (
+                      <button
+                        onClick={() => setShowConfirmAllModal(true)}
+                        className="mt-2 text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                        ✅ Подтвердить — все документы загружены
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Модальное окно подтверждения */}
+              {showConfirmAllModal && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Все подписанные документы загружены?</h3>
+                    <p className="text-sm text-gray-600 mb-6">Если все подписанные экземпляры загружены — подтвердите. Статус изменится на «Подписанные документы загружены».<br/><br/>Если загружены не все — нажмите «Ещё не все», система продолжит напоминать.</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={async () => {
+                          const fd = new FormData()
+                          fd.append('contract_id', contract.id)
+                          fd.append('user_name', user?.name ?? '')
+                          fd.append('user_bitrix_id', user?.id ?? '')
+                          fd.append('confirm_all', 'true')
+                          fd.append('status_only', 'true')
+                          await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', { method: 'POST', body: fd })
+                          setShowConfirmAllModal(false)
+                          window.location.reload()
+                        }}
+                        className="flex-1 bg-green-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-green-700">
+                        ✅ Все загружены
+                      </button>
+                      <button
+                        onClick={() => setShowConfirmAllModal(false)}
+                        className="flex-1 border border-gray-200 text-gray-700 py-2 rounded-xl text-sm hover:bg-gray-50">
+                        Ещё не все
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Дополнительные материалы */}
               <div className="mt-6 border-t border-gray-100 pt-6">
