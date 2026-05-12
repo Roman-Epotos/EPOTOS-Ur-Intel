@@ -66,10 +66,23 @@ export async function POST(
     )
 
     if (allDone && required.length > 0) {
-      await supabase
+      // Получаем contract_id из сессии напрямую для надёжности
+      const { data: sessionData } = await supabase
+        .from('approval_sessions')
+        .select('contract_id')
+        .eq('id', sessionId)
+        .single()
+
+      const actualContractId = sessionData?.contract_id ?? contract_id
+
+      const { error: contractUpdateError } = await supabase
         .from('contracts')
         .update({ status: 'согласован' })
-        .eq('id', contract_id)
+        .eq('id', actualContractId)
+
+      if (contractUpdateError) {
+        console.error('Contract status update error:', contractUpdateError)
+      }
 
       await supabase
         .from('approval_sessions')
@@ -79,7 +92,7 @@ export async function POST(
       await supabase
         .from('contract_logs')
         .insert({
-          contract_id,
+          contract_id: actualContractId,
           action: 'Согласование завершено',
           details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
           user_name: 'Система',
