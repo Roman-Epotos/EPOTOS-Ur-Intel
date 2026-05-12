@@ -486,7 +486,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const handleApprove = async () => {
     if (!session || !approvingId) return
     setApproving(true)
-    await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
+    const approveRes = await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -497,23 +497,21 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
         is_acknowledge: false,
       }),
     })
+    const approveData = await approveRes.json()
     setShowApproveModal(false)
     setApproveComment('')
     setApprovingId(null)
     setApproving(false)
     await loadSession()
-    // Обновляем статус контракта с небольшой задержкой
-    setTimeout(async () => {
-      const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
-      const data = await res.json()
-      if (data.contract?.status) setContractStatus(data.contract.status)
-    }, 1000)
+    if (approveData.all_approved) {
+      setContractStatus('согласован')
+    }
   }
 
   const handleAcknowledge = async () => {
     if (!session || !approvingId) return
     setAcknowledging(true)
-    await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
+    const ackRes = await fetch(`${baseUrl}/api/approvals/${session.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -524,16 +522,14 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
         is_acknowledge: true,
       }),
     })
+    const ackData = await ackRes.json()
     setShowAcknowledgeModal(false)
     setApprovingId(null)
     setAcknowledging(false)
     await loadSession()
-    // Обновляем статус контракта с небольшой задержкой
-    setTimeout(async () => {
-      const res2 = await fetch(`${baseUrl}/api/contracts/${contract.id}`)
-      const data2 = await res2.json()
-      if (data2.contract?.status) setContractStatus(data2.contract.status)
-    }, 1000)
+    if (ackData.all_approved) {
+      setContractStatus('согласован')
+    }
   }
 
   const hasActiveSession = session && (session.status === 'active' || session.status === 'completed')
