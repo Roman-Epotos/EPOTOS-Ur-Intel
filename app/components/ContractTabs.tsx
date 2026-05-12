@@ -287,6 +287,24 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     loadSignedDocs()
   }, [contract.id])
 
+  // Realtime подписка на изменения статуса контракта
+  useEffect(() => {
+    const channel = supabaseClient
+      .channel(`contract-status-${contract.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'contracts',
+        filter: `id=eq.${contract.id}`,
+      }, (payload: { new: { status?: string } }) => {
+        if (payload.new && payload.new.status) {
+          setContractStatus(payload.new.status)
+        }
+      })
+      .subscribe()
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [contract.id])
+
   useEffect(() => {
     if (activeTab === 'chat') {
       const now = new Date().toISOString()
