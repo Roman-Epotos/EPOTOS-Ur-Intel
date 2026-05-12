@@ -835,10 +835,14 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Подписанные экземпляры</h2>
                   {canUploadSigned && (
-                    <label className={`text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 cursor-pointer ${uploadingSignedFile ? 'opacity-50' : ''}`}>
+                    <label className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer
+                      ${['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status)
+                        ? `bg-gray-900 text-white hover:bg-gray-700 ${uploadingSignedFile ? 'opacity-50' : ''}`
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      title={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status) ? 'Доступно после согласования документа' : ''}>
                       {uploadingSignedFile ? 'Загрузка...' : '+ Загрузить подписанный файл'}
                       <input type="file" className="hidden" accept=".pdf,.docx,.xlsx"
-                        disabled={uploadingSignedFile}
+                        disabled={uploadingSignedFile || !['согласован','загружен_частично','подписан','на_исполнении'].includes(contract.status)}
                         onChange={async (e) => {
                           const file = e.target.files?.[0]
                           if (!file) return
