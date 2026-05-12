@@ -68,7 +68,7 @@ export async function POST(
     if (allDone && required.length > 0) {
       await supabase
         .from('contracts')
-        .update({ status: 'подписан' })
+        .update({ status: 'согласован' })
         .eq('id', contract_id)
 
       await supabase
