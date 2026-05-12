@@ -67,28 +67,6 @@ export async function POST(
         user_name: added_by_name ?? 'Система',
       })
 
-    // Если сессия завершена — возвращаем статусы на активные
-    if (session.status === 'completed') {
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'active' })
-        .eq('id', sessionId)
-
-      await supabase
-        .from('contracts')
-        .update({ status: 'на_согласовании' })
-        .eq('id', contract_id)
-
-      await supabase
-        .from('contract_logs')
-        .insert({
-          contract_id,
-          action: 'Согласование возобновлено',
-          details: `Добавлен новый участник: ${user_name}. Документ возвращён на согласование.`,
-          user_name: added_by_name ?? 'Система',
-        })
-    }
-
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'

@@ -132,9 +132,6 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
 
   useEffect(() => {
     setActiveTab('legal_review')
-    // Сбрасываем чат при смене документа
-    setChatMessages([])
-    setChatQuestion('')
   }, [selectedVersion])
 
   useEffect(() => {
@@ -238,7 +235,9 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
   }
 
   const latestReview = analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed')
   const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
+    ?? analyses.find(a => a.type === 'passport' && a.status === 'completed')
 
   const renderLegalReview = (result: LegalReview) => (
     <div className="space-y-4">
