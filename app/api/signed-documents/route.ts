@@ -60,21 +60,27 @@ export async function POST(request: NextRequest) {
     const user_bitrix_id = formData.get('user_bitrix_id') as string
     const confirm_all = formData.get('confirm_all') === 'true'
 
-    if (!file || !contract_id || !user_bitrix_id) {
+    if (!contract_id || !user_bitrix_id) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
     }
 
     const userId = parseInt(user_bitrix_id)
+    const status_only = formData.get('status_only') === 'true'
+
+    // Если только обновление статуса — файл не нужен
+    if (!status_only && !file) {
+      return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
+    }
 
     // Получаем контракт
-    const { data: contract } = await supabase
+    const { data: contract, error: contractError } = await supabase
       .from('contracts')
       .select('id, status, author_bitrix_id, company_prefix')
       .eq('id', contract_id)
       .single()
 
-    if (!contract) {
-      return NextResponse.json({ error: 'Документ не найден' }, { status: 404 })
+    if (contractError || !contract) {
+      return NextResponse.json({ error: `Документ не найден: ${contractError?.message ?? 'нет данных'}` }, { status: 404 })
     }
 
     // Получаем инициатора согласования
@@ -140,6 +146,28 @@ export async function POST(request: NextRequest) {
 
     if (dbError) {
       return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    // Если только обновление статуса без загрузки файла
+    if (status_only && confirm_all) {
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'подписан',
+          signed_at: new Date().toISOString(),
+          signed_by_name: user_name,
+          signed_by_bitrix_id: userId,
+        })
+        .eq('id', contract_id)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Все подписанные документы загружены',
+        details: 'Статус изменён на "Подписанные документы загружены"',
+        user_name: user_name || 'Система',
+      })
+
+      return NextResponse.json({ success: true, status: 'подписан' })
     }
 
     // Определяем новый статус
