@@ -1060,6 +1060,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                                     const data = await res.json()
                                     if (data.error) { alert('Ошибка: ' + data.error); return }
                                     await loadSession()
+                                    if (data.all_approved) {
+                                      setContractStatus('согласован')
+                                    }
                                   }}
                                   className="text-red-400 hover:text-red-600 text-xs border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50 whitespace-nowrap">
                                   ✕

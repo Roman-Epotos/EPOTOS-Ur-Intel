@@ -89,7 +89,39 @@ export async function POST(
         })
     }
 
-    return NextResponse.json({ success: true })
+    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
+    const { data: remainingParticipants } = await supabase
+      .from('approval_participants')
+      .select('role, status')
+      .eq('session_id', sessionId)
+
+    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
+    const allDone = required.length > 0 && required.every(p =>
+      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
+    )
+
+    if (allDone) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
+
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Согласование завершено',
+        details: 'Все обязательные участники согласовали документ после удаления участника.',
+        user_name: 'Система',
+      })
+
+      return NextResponse.json({ success: true, all_approved: true })
+    }
+
+    return NextResponse.json({ success: true, all_approved: false })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -155,7 +187,39 @@ export async function DELETE(
         user_name: admin_name ?? 'Система',
       })
 
-    return NextResponse.json({ success: true })
+    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
+    const { data: remainingParticipants } = await supabase
+      .from('approval_participants')
+      .select('role, status')
+      .eq('session_id', sessionId)
+
+    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
+    const allDone = required.length > 0 && required.every(p =>
+      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
+    )
+
+    if (allDone) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
+
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Согласование завершено',
+        details: 'Все обязательные участники согласовали документ после удаления участника.',
+        user_name: 'Система',
+      })
+
+      return NextResponse.json({ success: true, all_approved: true })
+    }
+
+    return NextResponse.json({ success: true, all_approved: false })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
