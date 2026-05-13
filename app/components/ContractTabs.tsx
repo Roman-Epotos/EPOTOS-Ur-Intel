@@ -7,6 +7,7 @@ import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import AIAnalysis from '@/app/components/AIAnalysis'
+import ExecutionControl from '@/app/components/ExecutionControl'
 
 const ATTACHMENT_TYPES = [
   'Спецификация',
@@ -564,6 +565,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
+    { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
     // { id: 'generate', label: 'Генерация', icon: '✨' }, // В разработке
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
@@ -1191,6 +1193,34 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
           )}
 
           {/* Чат */}
+          {activeTab === 'execution' && (
+            <ExecutionControl
+              contractId={contract.id}
+              contractStatus={contractStatus}
+              versions={versions.map(v => ({
+                id: v.id,
+                file_url: v.file_url,
+                file_name: v.file_name,
+                version_number: v.version_number,
+              }))}
+              attachments={attachments.map(a => ({
+                id: a.id,
+                file_url: a.file_url,
+                file_name: a.file_name,
+                title: a.title ?? '',
+                attachment_type: a.attachment_type ?? '',
+              }))}
+              userName={user?.name}
+              userId={user?.id ? parseInt(user.id) : undefined}
+              sessionParticipantBitrixIds={
+                session?.approval_participants
+                  .map(p => p.bitrix_user_id)
+                  .filter((id): id is number => id != null) ?? []
+              }
+              onStatusChange={(newStatus) => setContractStatus(newStatus)}
+            />
+          )}
+
           {activeTab === 'chat' && (
             <div className="p-6">
               {!hasActiveSession ? (

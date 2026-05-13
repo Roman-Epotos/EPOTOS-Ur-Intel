@@ -58,14 +58,23 @@ interface ChecklistItemInput {
   description?: string
   due_date?: string | null
   responsible?: string | null
+  source_document?: string | null
 }
 
-async function generateChecklistWithAI(text: string): Promise<ChecklistItemInput[]> {
-  const prompt = `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС).
-Analyze the following contract and extract all obligations, deadlines, payment terms, deliverables, and important milestones that need to be tracked during contract execution.
+async function generateChecklistWithAI(text: string, datesHint = '', sources: string[] = []): Promise<ChecklistItemInput[]> {
+  const datesSection = datesHint
+    ? `\nКлючевые даты для расчёта относительных сроков:\n${datesHint}\n`
+    : '\nКлючевые даты не указаны — для относительных сроков (например "в течение 5 дней") оставляй due_date null и указывай срок в description.\n'
 
+  const sourcesSection = sources.length > 0
+    ? `\nДокументы для анализа: ${sources.join(', ')}\n`
+    : ''
+
+  const prompt = `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС).
+Analyze the following contract documents and extract all obligations, deadlines, payment terms, deliverables, and important milestones that need to be tracked during contract execution.
+${sourcesSection}${datesSection}
 Contract text:
-${text.slice(0, 10000)}
+${text.slice(0, 12000)}
 
 Return ONLY valid JSON array without markdown, no preamble:
 [
@@ -74,18 +83,21 @@ Return ONLY valid JSON array without markdown, no preamble:
     "category": "payment|delivery|deadline|document|obligation|other",
     "title": "Краткое название пункта на русском (до 80 символов)",
     "description": "Подробное описание обязательства на русском",
-    "due_date": "YYYY-MM-DD или null если срок не указан",
-    "responsible": "наша сторона|контрагент|обе стороны|null"
+    "due_date": "YYYY-MM-DD или null",
+    "responsible": "наша сторона|контрагент|обе стороны|null",
+    "source_document": "название источника из которого извлечён пункт"
   }
 ]
 
 Rules:
-- Extract 5-15 most important items
+- Extract 5-20 most important items across ALL documents
 - All text must be in Russian
 - Focus on: payments, deliveries, document submissions, deadlines, reporting obligations
-- due_date must be ISO date string or null
-- responsible must be one of: "наша сторона", "контрагент", "обе стороны", or null
-- category must be one of: payment, delivery, deadline, document, obligation, other`
+- If key dates are provided above — calculate absolute due_date for relative terms (e.g. "5 days after signing")
+- If key dates are NOT provided — leave due_date null and describe the relative term in description
+- responsible must be: "наша сторона", "контрагент", "обе стороны", or null
+- category must be: payment, delivery, deadline, document, obligation, other
+- source_document must match one of the document names provided`
 
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -118,10 +130,27 @@ Rules:
 
 export async function GET(request: NextRequest) {
   const contractId = request.nextUrl.searchParams.get('contract_id')
+  const history = request.nextUrl.searchParams.get('history')
+
   if (!contractId) {
     return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
   }
 
+  // История изменений чек-листа из contract_logs
+  if (history === 'true') {
+    const { data, error } = await supabase
+      .from('contract_logs')
+      .select('id, action, details, user_name, created_at')
+      .eq('contract_id', contractId)
+      .or('action.ilike.%чек-лист%,action.ilike.%Чек-лист%,action.ilike.%чек_лист%')
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ logs: data ?? [] })
+  }
+
+  // Список пунктов чек-листа
   const { data, error } = await supabase
     .from('contract_checklist')
     .select('*')
@@ -237,23 +266,68 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
     }
 
-    // Удаляем старый чек-лист
-    await supabase.from('contract_checklist').delete().eq('contract_id', contract_id)
+    // Удаляем старый чек-лист (предварительно сохраняем в архив)
+    const { data: existingItems } = await supabase
+      .from('contract_checklist')
+      .select('*')
+      .eq('contract_id', contract_id)
 
-    // Извлекаем текст из файла
-    const fn = file_name.toLowerCase()
-    let text = ''
-    if (fn.endsWith('.pdf')) text = await extractTextFromPdf(file_url)
-    else if (fn.endsWith('.docx')) text = await extractTextFromDocx(file_url)
-    else if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) text = await extractTextFromXlsx(file_url)
-    else return NextResponse.json({ error: 'Неподдерживаемый формат файла' }, { status: 400 })
-
-    if (!text || text.length < 50) {
-      return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
+    if (existingItems && existingItems.length > 0) {
+      // Сохраняем в архив (удаляем старый архив, пишем новый)
+      await supabase.from('contract_checklist_archive').delete().eq('contract_id', contract_id)
+      const archiveRows = existingItems.map(item => ({ ...item, id: undefined, original_id: item.id }))
+      await supabase.from('contract_checklist_archive').insert(archiveRows)
     }
 
+    await supabase.from('contract_checklist').delete().eq('contract_id', contract_id)
+
+    // Извлекаем текст из всех файлов
+    const files: Array<{ file_url: string; file_name: string; source: string }> = body.files ?? []
+
+    // Обратная совместимость — если передан один файл
+    if (files.length === 0 && file_url && file_name) {
+      files.push({ file_url, file_name, source: 'Основной документ' })
+    }
+
+    if (files.length === 0) {
+      return NextResponse.json({ error: 'Не переданы файлы для анализа' }, { status: 400 })
+    }
+
+    // Собираем текст из всех файлов с указанием источника
+    const textParts: string[] = []
+    for (const f of files) {
+      const fn = f.file_name.toLowerCase()
+      let text = ''
+      if (fn.endsWith('.pdf')) text = await extractTextFromPdf(f.file_url)
+      else if (fn.endsWith('.docx')) text = await extractTextFromDocx(f.file_url)
+      else if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) text = await extractTextFromXlsx(f.file_url)
+
+      if (text && text.length > 50) {
+        textParts.push(`=== ДОКУМЕНТ: ${f.source} ===\n${text}`)
+      }
+    }
+
+    if (textParts.length === 0) {
+      return NextResponse.json({ error: 'Не удалось извлечь текст ни из одного документа' }, { status: 400 })
+    }
+
+    const combinedText = textParts.join('\n\n')
+
+    // Даты для расчёта относительных сроков
+    const signedDate: string | null = body.signed_date ?? null
+    const effectiveDate: string | null = body.effective_date ?? null
+    const customDateLabel: string | null = body.custom_date_label ?? null
+    const customDateValue: string | null = body.custom_date_value ?? null
+
+    // Формируем подсказку по датам
+    const datesHint = [
+      signedDate ? `Дата подписания: ${signedDate}` : null,
+      effectiveDate ? `Дата вступления в силу: ${effectiveDate}` : null,
+      customDateLabel && customDateValue ? `${customDateLabel}: ${customDateValue}` : null,
+    ].filter(Boolean).join('\n')
+
     // Генерируем пункты через AI
-    const items = await generateChecklistWithAI(text)
+    const items = await generateChecklistWithAI(combinedText, datesHint, files.map(f => f.source))
 
     if (items.length === 0) {
       return NextResponse.json({ error: 'AI не смог извлечь пункты чек-листа' }, { status: 400 })
@@ -268,6 +342,7 @@ export async function POST(request: NextRequest) {
       description: item.description ?? null,
       due_date: item.due_date && item.due_date !== 'null' ? item.due_date : null,
       responsible: item.responsible && item.responsible !== 'null' ? item.responsible : null,
+      source_document: item.source_document ?? null,
     }))
 
     const { error: insertError } = await supabase
