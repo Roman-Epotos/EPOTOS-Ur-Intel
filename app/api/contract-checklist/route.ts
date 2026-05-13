@@ -262,7 +262,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Генерация чек-листа через AI ──────────────────────────────────────
-    if (!contract_id || !file_url || !file_name) {
+    const hasFiles = (body.files && body.files.length > 0) || (file_url && file_name)
+    if (!contract_id || !hasFiles) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
     }
 
