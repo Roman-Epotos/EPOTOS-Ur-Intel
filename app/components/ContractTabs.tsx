@@ -1169,6 +1169,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 userId={user?.id ? parseInt(user.id) : undefined}
                 documentType={contract.type}
                 documentCategory={contract.document_category ?? 'contract'}
+                contractStatus={contractStatus}
+                sessionParticipantBitrixIds={
+                  session?.approval_participants
+                    .map(p => p.bitrix_user_id)
+                    .filter((id): id is number => id != null) ?? []
+                }
+                onStatusChange={(newStatus) => setContractStatus(newStatus)}
               />
             </div>
           )}
