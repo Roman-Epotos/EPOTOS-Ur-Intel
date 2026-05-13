@@ -26,7 +26,7 @@ export async function POST(
       .eq('id', sessionId)
       .single()
 
-    if (!session || session.status !== 'active') {
+    if (!session || (session.status !== 'active' && session.status !== 'completed')) {
       return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
     }
 

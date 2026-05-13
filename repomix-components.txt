@@ -1218,12 +1218,28 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
 
   const runAnalysis = async (type: 'legal_review' | 'passport' | 'document_review') => {
     if (!selectedVersion) {
-      alert('Выберите версию документа для анализа')
+      alert('Выберите документ для анализа')
       return
     }
 
-    const version = versions.find(v => v.id === selectedVersion)
-    if (!version) return
+    let fileUrl = ''
+    let fileName = ''
+    let versionId = selectedVersion
+
+    if (selectedVersion.startsWith('att_')) {
+      const attId = selectedVersion.replace('att_', '')
+      const att = attachments.find(a => a.id === attId)
+      if (!att) return
+      fileUrl = att.file_url
+      fileName = att.file_name
+      versionId = attId
+    } else {
+      const version = versions.find(v => v.id === selectedVersion)
+      if (!version) return
+      fileUrl = version.file_url
+      fileName = version.file_name
+      versionId = version.id
+    }
 
     setAnalyzing(type)
 
@@ -1233,9 +1249,9 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contract_id: contractId,
-          version_id: version.id,
-          file_url: version.file_url,
-          file_name: version.file_name,
+          version_id: versionId,
+          file_url: fileUrl,
+          file_name: fileName,
           analysis_type: type,
           user_name: userName ?? 'Система',
         }),
@@ -1498,7 +1514,10 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-40">
             <label className="block text-xs font-medium text-gray-500 mb-1">Документ для анализа</label>
-            <select value={selectedVersion} onChange={e => setSelectedVersion(e.target.value)}
+            <select value={selectedVersion} 
+              onChange={e => setSelectedVersion(e.target.value)}
+              onBlur={e => setSelectedVersion(e.target.value)}
+              size={1}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-900">
               {versions.length > 0 && (
                 <optgroup label="Версии документа">
@@ -1766,7 +1785,7 @@ export default function ContractsList() {
     const channel = supabase
       .channel('contracts-changes')
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'contracts',
       }, () => {
