@@ -357,7 +357,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
     const found = addParticipantOptions.find(p => p.user_name === newParticipantName)
 
-    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
+    const addRes = await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -370,12 +370,16 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
         contract_id: contract.id,
       }),
     })
+    const addData = await addRes.json()
 
     setShowAddParticipantModal(false)
     setNewParticipantName('')
     setNewParticipantRole('required')
     setAddingParticipant(false)
     await loadSession()
+    if (addData.success) {
+      setContractStatus('на_согласовании')
+    }
   }
 
   const openAddParticipantModal = async () => {
