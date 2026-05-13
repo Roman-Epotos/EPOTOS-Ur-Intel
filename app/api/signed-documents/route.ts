@@ -102,6 +102,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Нет прав для загрузки подписанного документа' }, { status: 403 })
     }
 
+    // Если только обновление статуса без загрузки файла — делаем это сразу
+    if (status_only && confirm_all) {
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'подписан',
+          signed_at: new Date().toISOString(),
+          signed_by_name: user_name,
+          signed_by_bitrix_id: userId,
+        })
+        .eq('id', contract_id)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Все подписанные документы загружены',
+        details: 'Статус изменён на "Подписанные документы загружены"',
+        user_name: user_name || 'Система',
+      })
+
+      return NextResponse.json({ success: true, status: 'подписан' })
+    }
+
     // Транслитерация имени файла
     const safeFileName = file.name
       .replace(/№/g, 'N')

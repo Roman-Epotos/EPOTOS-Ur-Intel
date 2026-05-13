@@ -1107,6 +1107,7 @@ interface Analysis {
   created_at: string
   model_used: string
   version_id: string | null
+  attachment_id: string | null
 }
 
 interface DocumentReview {
@@ -1144,6 +1145,21 @@ interface Attachment {
   file_url: string
 }
 
+interface ChecklistItem {
+  id: string
+  item_order: number
+  category: string
+  title: string
+  description: string | null
+  due_date: string | null
+  responsible: string | null
+  is_done: boolean
+  done_at: string | null
+  done_by_name: string | null
+  done_by_bitrix_id: number | null
+  created_at: string
+}
+
 interface Props {
   contractId: string
   versions: Version[]
@@ -1152,6 +1168,9 @@ interface Props {
   userId?: number
   documentType?: string | null
   documentCategory?: string | null
+  contractStatus?: string
+  sessionParticipantBitrixIds?: number[]
+  onStatusChange?: (newStatus: string) => void
 }
 
 const RISK_COLORS = {
@@ -1172,16 +1191,34 @@ const RISK_LABELS = {
   low: 'Низкий риск',
 }
 
-export default function AIAnalysis({ contractId, versions, attachments = [], userName, userId, documentType, documentCategory }: Props) {
+export default function AIAnalysis({ contractId, versions, attachments = [], userName, userId, documentType, documentCategory, contractStatus, sessionParticipantBitrixIds = [], onStatusChange }: Props) {
   const [analyses, setAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat' | 'document_review'>('legal_review')
+  const [activeTab, setActiveTab] = useState<'legal_review' | 'passport' | 'chat' | 'document_review' | 'checklist'>('legal_review')
   const [selectedVersion, setSelectedVersion] = useState<string>('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatQuestion, setChatQuestion] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // Чек-лист
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
+  const [checklistLoading, setChecklistLoading] = useState(false)
+  const [generatingChecklist, setGeneratingChecklist] = useState(false)
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [newItemTitle, setNewItemTitle] = useState('')
+  const [newItemDescription, setNewItemDescription] = useState('')
+  const [newItemCategory, setNewItemCategory] = useState('other')
+  const [newItemDueDate, setNewItemDueDate] = useState('')
+  const [newItemResponsible, setNewItemResponsible] = useState('')
+
+  // Права на чек-лист
+  const adminIds = [30, 1148]
+  const gcManagerIds = [1, 246, 504]
+  const canManageChecklist = userId
+    ? adminIds.includes(userId) || gcManagerIds.includes(userId) || sessionParticipantBitrixIds.includes(userId)
+    : false
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -1191,6 +1228,7 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     }
     loadAnalyses()
     loadChat()
+    loadChecklist()
   }, [contractId])
 
   useEffect(() => {
@@ -1216,6 +1254,123 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     setChatMessages(data.messages ?? [])
   }
 
+  const loadChecklist = async () => {
+    const res = await fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}`)
+    const data = await res.json()
+    setChecklistItems(data.items ?? [])
+  }
+
+  const generateChecklist = async () => {
+    if (!selectedVersion || selectedVersion.startsWith('att_')) {
+      alert('Выберите основной документ (версию договора) для генерации чек-листа')
+      return
+    }
+    const version = versions.find(v => v.id === selectedVersion)
+    if (!version) return
+
+    if (!confirm('Сгенерировать AI чек-лист исполнения?\n\nВнимание: если чек-лист уже существует — он будет пересоздан.\nСтатус документа изменится на «на_исполнении».')) return
+
+    setGeneratingChecklist(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          file_url: version.file_url,
+          file_name: version.file_name,
+          user_name: userName ?? 'Система',
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadChecklist()
+        setActiveTab('checklist')
+        onStatusChange?.('на_исполнении')
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setGeneratingChecklist(false)
+    }
+  }
+
+  const toggleChecklistItem = async (item: ChecklistItem) => {
+    const newDone = !item.is_done
+    setChecklistItems(prev => prev.map(i =>
+      i.id === item.id
+        ? { ...i, is_done: newDone, done_by_name: newDone ? (userName ?? null) : null }
+        : i
+    ))
+    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle',
+        item_id: item.id,
+        contract_id: contractId,
+        is_done: newDone,
+        title: item.title,
+        user_name: userName ?? 'Система',
+        bitrix_user_id: userId ?? null,
+      }),
+    })
+    if (!res.ok) {
+      setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, is_done: item.is_done } : i))
+      alert('Ошибка при обновлении')
+    }
+  }
+
+  const deleteChecklistItem = async (item: ChecklistItem) => {
+    if (!confirm(`Удалить пункт «${item.title}»?`)) return
+    setChecklistItems(prev => prev.filter(i => i.id !== item.id))
+    await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete_item',
+        item_id: item.id,
+        contract_id: contractId,
+        title: item.title,
+        user_name: userName ?? 'Система',
+      }),
+    })
+  }
+
+  const addChecklistItem = async () => {
+    if (!newItemTitle.trim()) { alert('Введите название пункта'); return }
+    setChecklistLoading(true)
+    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add_item',
+        contract_id: contractId,
+        title: newItemTitle.trim(),
+        description: newItemDescription.trim() || null,
+        category: newItemCategory,
+        due_date: newItemDueDate || null,
+        responsible: newItemResponsible || null,
+        user_name: userName ?? 'Система',
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      await loadChecklist()
+      setShowAddItem(false)
+      setNewItemTitle('')
+      setNewItemDescription('')
+      setNewItemCategory('other')
+      setNewItemDueDate('')
+      setNewItemResponsible('')
+    } else {
+      alert('Ошибка: ' + data.error)
+    }
+    setChecklistLoading(false)
+  }
+
   const runAnalysis = async (type: 'legal_review' | 'passport' | 'document_review') => {
     if (!selectedVersion) {
       alert('Выберите документ для анализа')
@@ -1226,13 +1381,16 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     let fileName = ''
     let versionId = selectedVersion
 
+    let attachmentId: string | null = null
+
     if (selectedVersion.startsWith('att_')) {
       const attId = selectedVersion.replace('att_', '')
       const att = attachments.find(a => a.id === attId)
       if (!att) return
       fileUrl = att.file_url
       fileName = att.file_name
-      versionId = attId
+      versionId = ''       // не используется для вложений
+      attachmentId = attId // сохраняем отдельно
     } else {
       const version = versions.find(v => v.id === selectedVersion)
       if (!version) return
@@ -1249,7 +1407,8 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contract_id: contractId,
-          version_id: versionId,
+          version_id: attachmentId ? null : versionId,
+          attachment_id: attachmentId ?? null,
           file_url: fileUrl,
           file_name: fileName,
           analysis_type: type,
@@ -1316,8 +1475,19 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     setChatLoading(false)
   }
 
-  const latestReview = analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed' && a.version_id === selectedVersion)
-  const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
+  const isAttachment = selectedVersion.startsWith('att_')
+  const currentAttId = isAttachment ? selectedVersion.replace('att_', '') : null
+
+  const latestReview = analyses.find(a =>
+    (a.type === 'legal_review' || a.type === 'document_review') &&
+    a.status === 'completed' &&
+    (isAttachment ? a.attachment_id === currentAttId : a.version_id === selectedVersion)
+  )
+  const latestPassport = analyses.find(a =>
+    a.type === 'passport' &&
+    a.status === 'completed' &&
+    (isAttachment ? a.attachment_id === currentAttId : a.version_id === selectedVersion)
+  )
 
   const renderLegalReview = (result: LegalReview) => (
     <div className="space-y-4">
@@ -1538,6 +1708,12 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
             </select>
           </div>
           <div className="flex flex-col gap-2 pt-4">
+            {canManageChecklist && contractStatus === 'подписан' && !selectedVersion.startsWith('att_') && (
+              <button onClick={generateChecklist} disabled={generatingChecklist}
+                className="text-xs font-medium bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5">
+                📋 {generatingChecklist ? 'AI генерирует чек-лист...' : checklistItems.length > 0 ? 'Перегенерировать чек-лист' : 'Создать чек-лист исполнения'}
+              </button>
+            )}
             {(documentCategory === 'contract' || CONTRACT_DOCUMENT_TYPES.includes(documentType ?? '')) ? (
               <>
                 <button onClick={() => runAnalysis('legal_review')} disabled={!!analyzing}
@@ -1580,6 +1756,12 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
               className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               💬 Чат с AI
             </button>
+            {checklistItems.length > 0 && (
+              <button onClick={() => setActiveTab('checklist')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'checklist' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                📋 Чек-лист ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1591,6 +1773,12 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
               className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'chat' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               💬 Чат с AI
             </button>
+            {checklistItems.length > 0 && (
+              <button onClick={() => setActiveTab('checklist')}
+                className={`text-sm px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === 'checklist' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                📋 Чек-лист ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1634,6 +1822,173 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
         <div className="text-center py-8">
           <p className="text-sm text-gray-400">Нажмите кнопку для запуска анализа</p>
           <p className="text-xs text-gray-300 mt-1">Legal Review найдёт риски · Паспорт создаст резюме</p>
+        </div>
+      )}
+
+      {/* Чек-лист исполнения */}
+      {activeTab === 'checklist' && (
+        <div className="mt-2">
+          {/* Прогресс-бар */}
+          {checklistItems.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-600">
+                  Выполнено: {checklistItems.filter(i => i.is_done).length} из {checklistItems.length}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {Math.round(checklistItems.filter(i => i.is_done).length / checklistItems.length * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.round(checklistItems.filter(i => i.is_done).length / checklistItems.length * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Список пунктов */}
+          <div className="space-y-2 mb-4">
+            {checklistItems.map(item => {
+              const catColors: Record<string, string> = {
+                payment: 'bg-blue-50 border-blue-200 text-blue-700',
+                delivery: 'bg-orange-50 border-orange-200 text-orange-700',
+                deadline: 'bg-red-50 border-red-200 text-red-700',
+                document: 'bg-purple-50 border-purple-200 text-purple-700',
+                obligation: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+                other: 'bg-gray-50 border-gray-200 text-gray-600',
+              }
+              const catLabels: Record<string, string> = {
+                payment: '💰 Оплата',
+                delivery: '📦 Поставка',
+                deadline: '⏰ Срок',
+                document: '📄 Документы',
+                obligation: '📌 Обязательство',
+                other: '📋 Прочее',
+              }
+              return (
+                <div key={item.id}
+                  className={`rounded-lg border border-gray-200 bg-white p-3 transition-opacity ${item.is_done ? 'opacity-60' : ''}`}>
+                  <div className="flex items-start gap-3">
+                    {/* Чекбокс */}
+                    <button
+                      onClick={() => canManageChecklist && toggleChecklistItem(item)}
+                      disabled={!canManageChecklist}
+                      className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                        item.is_done
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : canManageChecklist
+                            ? 'border-gray-300 hover:border-emerald-400'
+                            : 'border-gray-200 cursor-not-allowed'
+                      }`}>
+                      {item.is_done && (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+                        </svg>
+                      )}
+                    </button>
+
+                    {/* Контент */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`text-sm font-medium ${item.is_done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${catColors[item.category] ?? catColors.other}`}>
+                            {catLabels[item.category] ?? item.category}
+                          </span>
+                          {canManageChecklist && (
+                            <button onClick={() => deleteChecklistItem(item)}
+                              className="text-gray-300 hover:text-red-500 transition-colors p-0.5" title="Удалить пункт">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {item.description && (
+                        <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-3 mt-1">
+                        {item.due_date && (
+                          <span className="text-xs text-gray-400">
+                            📅 {new Date(item.due_date).toLocaleDateString('ru-RU')}
+                          </span>
+                        )}
+                        {item.responsible && (
+                          <span className="text-xs text-gray-400">👤 {item.responsible}</span>
+                        )}
+                        {item.is_done && item.done_by_name && (
+                          <span className="text-xs text-emerald-600">✓ {item.done_by_name}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Добавить пункт вручную */}
+          {canManageChecklist && (
+            <div>
+              {!showAddItem ? (
+                <button onClick={() => setShowAddItem(true)}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1">
+                  + Добавить пункт вручную
+                </button>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-medium text-emerald-800">Новый пункт чек-листа</p>
+                  <input value={newItemTitle} onChange={e => setNewItemTitle(e.target.value)}
+                    placeholder="Название *" maxLength={200}
+                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                  <textarea value={newItemDescription} onChange={e => setNewItemDescription(e.target.value)}
+                    placeholder="Описание (необязательно)" rows={2}
+                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white text-gray-900">
+                      <option value="payment">💰 Оплата</option>
+                      <option value="delivery">📦 Поставка</option>
+                      <option value="deadline">⏰ Срок</option>
+                      <option value="document">📄 Документы</option>
+                      <option value="obligation">📌 Обязательство</option>
+                      <option value="other">📋 Прочее</option>
+                    </select>
+                    <input type="date" value={newItemDueDate} onChange={e => setNewItemDueDate(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white text-gray-700" />
+                    <select value={newItemResponsible} onChange={e => setNewItemResponsible(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white text-gray-900">
+                      <option value="">Ответственный...</option>
+                      <option value="наша сторона">Наша сторона</option>
+                      <option value="контрагент">Контрагент</option>
+                      <option value="обе стороны">Обе стороны</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={addChecklistItem} disabled={checklistLoading}
+                      className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                      {checklistLoading ? 'Сохранение...' : 'Добавить'}
+                    </button>
+                    <button onClick={() => setShowAddItem(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {checklistItems.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-400">Чек-лист пуст</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -3204,6 +3559,13 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 userId={user?.id ? parseInt(user.id) : undefined}
                 documentType={contract.type}
                 documentCategory={contract.document_category ?? 'contract'}
+                contractStatus={contractStatus}
+                sessionParticipantBitrixIds={
+                  session?.approval_participants
+                    .map(p => p.bitrix_user_id)
+                    .filter((id): id is number => id != null) ?? []
+                }
+                onStatusChange={(newStatus) => setContractStatus(newStatus)}
               />
             </div>
           )}
