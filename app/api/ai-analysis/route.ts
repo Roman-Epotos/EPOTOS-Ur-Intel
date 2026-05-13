@@ -179,7 +179,7 @@ Return ONLY valid JSON without markdown:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { contract_id, version_id, file_url, file_name, analysis_type, user_name } = body
+    const { contract_id, version_id, attachment_id, file_url, file_name, analysis_type, user_name } = body
 
     if (!contract_id || !file_url || !analysis_type) {
       return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
@@ -190,6 +190,7 @@ export async function POST(request: NextRequest) {
       .insert({
         contract_id,
         version_id: version_id ?? null,
+        attachment_id: attachment_id ?? null,
         type: analysis_type,
         status: 'processing',
         model_used: 'google/gemini-2.0-flash-001',

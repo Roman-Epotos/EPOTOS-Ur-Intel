@@ -44,6 +44,7 @@ interface Analysis {
   created_at: string
   model_used: string
   version_id: string | null
+  attachment_id: string | null
 }
 
 interface DocumentReview {
@@ -163,13 +164,16 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     let fileName = ''
     let versionId = selectedVersion
 
+    let attachmentId: string | null = null
+
     if (selectedVersion.startsWith('att_')) {
       const attId = selectedVersion.replace('att_', '')
       const att = attachments.find(a => a.id === attId)
       if (!att) return
       fileUrl = att.file_url
       fileName = att.file_name
-      versionId = attId
+      versionId = ''       // не используется для вложений
+      attachmentId = attId // сохраняем отдельно
     } else {
       const version = versions.find(v => v.id === selectedVersion)
       if (!version) return
@@ -186,7 +190,8 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contract_id: contractId,
-          version_id: versionId,
+          version_id: attachmentId ? null : versionId,
+          attachment_id: attachmentId ?? null,
           file_url: fileUrl,
           file_name: fileName,
           analysis_type: type,
@@ -253,8 +258,19 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
     setChatLoading(false)
   }
 
-  const latestReview = analyses.find(a => (a.type === 'legal_review' || a.type === 'document_review') && a.status === 'completed' && a.version_id === selectedVersion)
-  const latestPassport = analyses.find(a => a.type === 'passport' && a.status === 'completed' && a.version_id === selectedVersion)
+  const isAttachment = selectedVersion.startsWith('att_')
+  const currentAttId = isAttachment ? selectedVersion.replace('att_', '') : null
+
+  const latestReview = analyses.find(a =>
+    (a.type === 'legal_review' || a.type === 'document_review') &&
+    a.status === 'completed' &&
+    (isAttachment ? a.attachment_id === currentAttId : a.version_id === selectedVersion)
+  )
+  const latestPassport = analyses.find(a =>
+    a.type === 'passport' &&
+    a.status === 'completed' &&
+    (isAttachment ? a.attachment_id === currentAttId : a.version_id === selectedVersion)
+  )
 
   const renderLegalReview = (result: LegalReview) => (
     <div className="space-y-4">

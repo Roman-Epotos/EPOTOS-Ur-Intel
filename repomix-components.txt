@@ -2392,7 +2392,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
     const found = addParticipantOptions.find(p => p.user_name === newParticipantName)
 
-    await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
+    const addRes = await fetch(`https://epotos-ur-intel.vercel.app/api/approvals/${session.id}/participants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2405,12 +2405,16 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
         contract_id: contract.id,
       }),
     })
+    const addData = await addRes.json()
 
     setShowAddParticipantModal(false)
     setNewParticipantName('')
     setNewParticipantRole('required')
     setAddingParticipant(false)
     await loadSession()
+    if (addData.success) {
+      setContractStatus('на_согласовании')
+    }
   }
 
   const openAddParticipantModal = async () => {
@@ -3091,6 +3095,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                                     const data = await res.json()
                                     if (data.error) { alert('Ошибка: ' + data.error); return }
                                     await loadSession()
+                                    if (data.all_approved) {
+                                      setContractStatus('согласован')
+                                    }
                                   }}
                                   className="text-red-400 hover:text-red-600 text-xs border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50 whitespace-nowrap">
                                   ✕

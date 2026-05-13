@@ -1396,97 +1396,6 @@ export default function RootLayout({
 }
 </file>
 
-<file path="app/page.tsx">
-import Link from 'next/link'
-import Header from '@/app/components/Header'
-import MyDocuments from '@/app/components/MyDocuments'
-import ContractsList from '@/app/components/ContractsList'
-import PersonalStats from '@/app/components/PersonalStats'
-import { createClient } from '@/utils/supabase/server'
-
-const statusLabel: Record<string, string> = {
-  черновик: 'Черновик',
-  на_согласовании: 'На согласовании',
-  подписан: 'Подписан',
-  отклонён: 'Отклонён',
-  архив: 'Архив',
-}
-
-const statusColor: Record<string, string> = {
-  черновик: 'bg-gray-100 text-gray-700',
-  на_согласовании: 'bg-yellow-100 text-yellow-800',
-  подписан: 'bg-green-100 text-green-800',
-  отклонён: 'bg-red-100 text-red-700',
-  архив: 'bg-gray-200 text-gray-500',
-}
-
-export default async function HomePage() {
-  const supabase = await createClient()
-
-  const { data: contracts } = await supabase
-    .from('contracts')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  const all = contracts ?? []
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-
-        <Header />
-
-        <MyDocuments />
-
-        <PersonalStats />
-
-        <ContractsList />
-
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="utils/supabase/client.ts">
-import { createBrowserClient } from '@supabase/ssr'
-
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-}
-</file>
-
-<file path="utils/supabase/server.ts">
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
-}
-</file>
-
 <file path="app/lib/documentTypes.ts">
 export const DOCUMENT_TYPES = [
   {
@@ -1591,6 +1500,97 @@ export function renderDocumentTypeOptions() {
     group: group.group,
     options: group.types,
   }))
+}
+</file>
+
+<file path="app/page.tsx">
+import Link from 'next/link'
+import Header from '@/app/components/Header'
+import MyDocuments from '@/app/components/MyDocuments'
+import ContractsList from '@/app/components/ContractsList'
+import PersonalStats from '@/app/components/PersonalStats'
+import { createClient } from '@/utils/supabase/server'
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  подписан: 'Подписан',
+  отклонён: 'Отклонён',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  подписан: 'bg-green-100 text-green-800',
+  отклонён: 'bg-red-100 text-red-700',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+export default async function HomePage() {
+  const supabase = await createClient()
+
+  const { data: contracts } = await supabase
+    .from('contracts')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  const all = contracts ?? []
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+
+        <Header />
+
+        <MyDocuments />
+
+        <PersonalStats />
+
+        <ContractsList />
+
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="utils/supabase/client.ts">
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  )
+}
+</file>
+
+<file path="utils/supabase/server.ts">
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
 }
 </file>
 
