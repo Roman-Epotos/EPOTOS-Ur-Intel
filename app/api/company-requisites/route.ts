@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { admin_bitrix_id, ...requisites } = body
+    const { admin_bitrix_id, id, ...requisites } = body
 
     if (!ADMIN_IDS.includes(admin_bitrix_id)) {
       return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
