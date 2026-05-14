@@ -1147,6 +1147,8 @@ export default function ExecutionControl({
   const [newDueDate, setNewDueDate] = useState('')
   const [newResponsible, setNewResponsible] = useState('')
 
+  const [hasArchive, setHasArchive] = useState(false)
+
   // Модальное окно редактирования пункта
   const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -1179,9 +1181,14 @@ export default function ExecutionControl({
   const loadItems = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}`)
-      const data = await res.json()
-      setItems(data.items ?? [])
+      const [itemsRes, archiveRes] = await Promise.all([
+        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}`),
+        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}&check_archive=true`),
+      ])
+      const itemsData = await itemsRes.json()
+      const archiveData = await archiveRes.json()
+      setItems(itemsData.items ?? [])
+      setHasArchive(archiveData.has_archive ?? false)
     } finally {
       setLoading(false)
     }
@@ -1244,6 +1251,32 @@ export default function ExecutionControl({
       if (data.success) {
         await loadItems()
         onStatusChange?.('на_исполнении')
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const restoreArchive = async () => {
+    if (!confirm('Восстановить предыдущую версию чек-листа?\n\nТекущая версия будет сохранена как предыдущая.')) return
+    setGenerating(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restore_archive',
+          contract_id: contractId,
+          user_name: userName ?? 'Система',
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
       } else {
         alert('Ошибка: ' + data.error)
       }
@@ -1388,12 +1421,20 @@ export default function ExecutionControl({
             </p>
           )}
         </div>
-        {canGenerate && (
-          <button onClick={handleGenerateClick} disabled={generating}
-            className="text-xs font-medium bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
-            📋 {generating ? 'AI анализирует...' : items.length > 0 ? 'Перегенерировать' : 'Сгенерировать чек-лист'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canGenerate && hasArchive && items.length > 0 && (
+            <button onClick={restoreArchive} disabled={generating}
+              className="text-xs font-medium border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+              ↩️ Предыдущая версия
+            </button>
+          )}
+          {canGenerate && (
+            <button onClick={handleGenerateClick} disabled={generating}
+              className="text-xs font-medium bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
+              📋 {generating ? 'AI анализирует...' : items.length > 0 ? 'Перегенерировать' : 'Сгенерировать чек-лист'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Прогресс-бар */}

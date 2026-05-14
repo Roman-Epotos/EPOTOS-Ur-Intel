@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
     if (existingItems && existingItems.length > 0) {
       // Сохраняем в архив (удаляем старый архив, пишем новый)
       await supabase.from('contract_checklist_archive').delete().eq('contract_id', contract_id)
-      const archiveRows = existingItems.map(item => ({ ...item, id: undefined, original_id: item.id }))
+      const archiveRows = existingItems.map(({ id, ...item }) => ({ ...item, original_id: id }))
       await supabase.from('contract_checklist_archive').insert(archiveRows)
     }
 
