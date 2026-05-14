@@ -239,6 +239,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, item: newItem })
     }
 
+    // ── Редактировать пункт ────────────────────────────────────────────────
+    if (action === 'edit_item') {
+      if (!item_id) return NextResponse.json({ error: 'item_id обязателен' }, { status: 400 })
+
+      const { error } = await supabase
+        .from('contract_checklist')
+        .update({
+          title,
+          description: description ?? null,
+          category: category ?? 'other',
+          due_date: due_date ?? null,
+          responsible: responsible ?? null,
+        })
+        .eq('id', item_id)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      if (contract_id) {
+        await supabase.from('contract_logs').insert({
+          contract_id,
+          action: 'Пункт чек-листа отредактирован',
+          details: title,
+          user_name: user_name ?? 'Система',
+        })
+      }
+      return NextResponse.json({ success: true })
+    }
+
     // ── Удалить пункт ──────────────────────────────────────────────────────
     if (action === 'delete_item') {
       if (!item_id) return NextResponse.json({ error: 'item_id обязателен' }, { status: 400 })

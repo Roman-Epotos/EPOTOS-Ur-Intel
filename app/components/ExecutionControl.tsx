@@ -83,6 +83,15 @@ export default function ExecutionControl({
   const [newDueDate, setNewDueDate] = useState('')
   const [newResponsible, setNewResponsible] = useState('')
 
+  // Модальное окно редактирования пункта
+  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState('other')
+  const [editDueDate, setEditDueDate] = useState('')
+  const [editResponsible, setEditResponsible] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+
   // Модальное окно дат для относительных сроков
   const [showDatesModal, setShowDatesModal] = useState(false)
   const [signedDate, setSignedDate] = useState('')
@@ -179,6 +188,48 @@ export default function ExecutionControl({
     } finally {
       setGenerating(false)
     }
+  }
+
+  const openEdit = (item: ChecklistItem) => {
+    setEditingItem(item)
+    setEditTitle(item.title)
+    setEditDescription(item.description ?? '')
+    setEditCategory(item.category)
+    setEditDueDate(item.due_date ?? '')
+    setEditResponsible(item.responsible ?? '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingItem) return
+    if (!editTitle.trim()) { alert('Введите название пункта'); return }
+    setEditLoading(true)
+    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'edit_item',
+        item_id: editingItem.id,
+        contract_id: contractId,
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        category: editCategory,
+        due_date: editDueDate || null,
+        responsible: editResponsible || null,
+        user_name: userName ?? 'Система',
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setItems(prev => prev.map(i => i.id === editingItem.id
+        ? { ...i, title: editTitle.trim(), description: editDescription.trim() || null,
+            category: editCategory, due_date: editDueDate || null, responsible: editResponsible || null }
+        : i
+      ))
+      setEditingItem(null)
+    } else {
+      alert('Ошибка: ' + data.error)
+    }
+    setEditLoading(false)
   }
 
   const toggleItem = async (item: ChecklistItem) => {
@@ -362,12 +413,20 @@ export default function ExecutionControl({
                               {CAT_LABELS[item.category] ?? item.category}
                             </span>
                             {canManage && (
-                              <button onClick={() => deleteItem(item)}
-                                className="text-gray-300 hover:text-red-500 transition-colors p-0.5">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-                                </svg>
-                              </button>
+                              <>
+                                <button onClick={() => openEdit(item)}
+                                  className="text-gray-300 hover:text-blue-500 transition-colors p-0.5" title="Редактировать">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                  </svg>
+                                </button>
+                                <button onClick={() => deleteItem(item)}
+                                  className="text-gray-300 hover:text-red-500 transition-colors p-0.5" title="Удалить">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                                  </svg>
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -448,6 +507,71 @@ export default function ExecutionControl({
       {/* История изменений */}
       {activeSection === 'history' && (
         <HistorySection contractId={contractId} />
+      )}
+
+      {/* Модальное окно редактирования пункта */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Редактировать пункт</h3>
+              <button onClick={() => setEditingItem(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Название *</label>
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  maxLength={200}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Описание</label>
+                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)}
+                  rows={3} placeholder="Необязательно"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Категория</label>
+                  <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                    <option value="payment">💰 Оплата</option>
+                    <option value="delivery">📦 Поставка</option>
+                    <option value="deadline">⏰ Срок</option>
+                    <option value="document">📄 Документы</option>
+                    <option value="obligation">📌 Обязательство</option>
+                    <option value="other">📋 Прочее</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Срок исполнения</label>
+                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ответственный</label>
+                <select value={editResponsible} onChange={e => setEditResponsible(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                  <option value="">Не указан</option>
+                  <option value="наша сторона">Наша сторона</option>
+                  <option value="контрагент">Контрагент</option>
+                  <option value="обе стороны">Обе стороны</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={saveEdit} disabled={editLoading}
+                className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                {editLoading ? 'Сохранение...' : 'Сохранить'}
+              </button>
+              <button onClick={() => setEditingItem(null)}
+                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Модальное окно дат */}
