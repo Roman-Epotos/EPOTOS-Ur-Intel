@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -79,6 +80,27 @@ export async function POST(request: NextRequest) {
         details: `Запущено согласование. Участников: ${participants.length}. Дедлайн: ${deadline}.`,
         user_name: initiated_by_name ?? 'Система',
       })
+
+    // Уведомляем участников о необходимости согласования
+    const { data: contractInfo } = await supabase
+      .from('contracts')
+      .select('title, number')
+      .eq('id', contract_id)
+      .single()
+
+    const participantIds = participants
+      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+      .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
+
+    if (participantIds.length > 0 && contractInfo) {
+      await sendBitrixNotify({
+        recipients: participantIds,
+        type: 'approval_required',
+        document_id: contract_id,
+        document_title: contractInfo.title ?? '',
+        document_number: contractInfo.number ?? '',
+      })
+    }
 
     return NextResponse.json({ success: true, session_id: session.id })
   } catch (err) {

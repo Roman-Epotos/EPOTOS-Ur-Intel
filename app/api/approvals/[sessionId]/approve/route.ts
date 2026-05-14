@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -97,6 +98,23 @@ export async function POST(
           details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
           user_name: 'Система',
         })
+
+      // Уведомляем автора о полном согласовании
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', actualContractId)
+        .single()
+
+      if (contractData?.author_bitrix_id) {
+        await sendBitrixNotify({
+          recipients: [contractData.author_bitrix_id],
+          type: 'document_approved',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+      }
     }
 
     return NextResponse.json({ success: true, all_approved: allDone })
