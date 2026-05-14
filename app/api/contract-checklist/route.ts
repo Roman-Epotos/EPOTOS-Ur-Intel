@@ -73,6 +73,23 @@ async function generateChecklistWithAI(text: string, datesHint = '', sources: st
   const prompt = `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС).
 Analyze the following contract documents and extract all obligations, deadlines, payment terms, deliverables, and important milestones that need to be tracked during contract execution.
 ${sourcesSection}${datesSection}
+CRITICAL INSTRUCTIONS FOR DATE CALCULATION:
+You MUST calculate absolute dates for ALL relative time expressions found in the contract.
+Use the key dates provided above as reference points.
+
+Examples of how to calculate dates:
+- Contract says "within 5 days after signing" + signing date is 2026-05-14 → due_date = "2026-05-19"
+- Contract says "within 10 calendar days from contract date" + contract date is 2026-05-14 → due_date = "2026-05-24"
+- Contract says "30 days after delivery" + delivery date is 2026-06-01 → due_date = "2026-07-01"
+- Contract says "until the 15th of each month" → due_date = nearest upcoming 15th from signing date
+- Contract says "within 3 business days" → calculate adding ~3-4 calendar days
+- Contract says "quarterly" → due_date = 3 months from signing date
+- Contract says "annually" → due_date = 1 year from signing date
+- If NO reference date available for calculation → due_date = null, describe relative term in description
+
+ALWAYS prefer to calculate a concrete date rather than leaving null.
+Only use null if it is truly impossible to calculate any reasonable date.
+
 Contract text:
 ${text.slice(0, 12000)}
 
@@ -82,8 +99,8 @@ Return ONLY valid JSON array without markdown, no preamble:
     "item_order": 1,
     "category": "payment|delivery|deadline|document|obligation|other",
     "title": "Краткое название пункта на русском (до 80 символов)",
-    "description": "Подробное описание обязательства на русском",
-    "due_date": "YYYY-MM-DD или null",
+    "description": "Подробное описание обязательства на русском, включая исходную формулировку срока из договора",
+    "due_date": "YYYY-MM-DD или null только если расчёт невозможен",
     "responsible": "наша сторона|контрагент|обе стороны|null",
     "source_document": "название источника из которого извлечён пункт"
   }
@@ -93,8 +110,8 @@ Rules:
 - Extract 5-20 most important items across ALL documents
 - All text must be in Russian
 - Focus on: payments, deliveries, document submissions, deadlines, reporting obligations
-- If key dates are provided above — calculate absolute due_date for relative terms (e.g. "5 days after signing")
-- If key dates are NOT provided — leave due_date null and describe the relative term in description
+- ALWAYS calculate absolute due_date using the key dates provided — this is mandatory
+- In description field always include the original deadline wording from the contract
 - responsible must be: "наша сторона", "контрагент", "обе стороны", or null
 - category must be: payment, delivery, deadline, document, obligation, other
 - source_document must match one of the document names provided`
