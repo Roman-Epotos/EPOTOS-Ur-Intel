@@ -167,6 +167,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ logs: data ?? [] })
   }
 
+  // Проверка наличия архива
+  const checkArchive = request.nextUrl.searchParams.get('check_archive')
+  if (checkArchive === 'true') {
+    const { data: archiveData } = await supabase
+      .from('contract_checklist_archive')
+      .select('id')
+      .eq('contract_id', contractId)
+      .limit(1)
+    return NextResponse.json({ has_archive: (archiveData?.length ?? 0) > 0 })
+  }
+
   // Список пунктов чек-листа
   const { data, error } = await supabase
     .from('contract_checklist')
@@ -254,6 +265,48 @@ export async function POST(request: NextRequest) {
       })
 
       return NextResponse.json({ success: true, item: newItem })
+    }
+
+    // ── Восстановить предыдущую версию из архива ───────────────────────────
+    if (action === 'restore_archive') {
+      if (!contract_id) return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+
+      // Получаем архивные пункты
+      const { data: archiveItems } = await supabase
+        .from('contract_checklist_archive')
+        .select('*')
+        .eq('contract_id', contract_id)
+
+      if (!archiveItems || archiveItems.length === 0) {
+        return NextResponse.json({ error: 'Архивная версия не найдена' }, { status: 404 })
+      }
+
+      // Текущие пункты → в архив (меняем местами)
+      const { data: currentItems } = await supabase
+        .from('contract_checklist')
+        .select('*')
+        .eq('contract_id', contract_id)
+
+      // Удаляем текущий архив и записываем туда текущие пункты
+      await supabase.from('contract_checklist_archive').delete().eq('contract_id', contract_id)
+      if (currentItems && currentItems.length > 0) {
+        const newArchive = currentItems.map(({ id, ...item }) => ({ ...item, original_id: id }))
+        await supabase.from('contract_checklist_archive').insert(newArchive)
+      }
+
+      // Удаляем текущие пункты и восстанавливаем из архива
+      await supabase.from('contract_checklist').delete().eq('contract_id', contract_id)
+      const restoredRows = archiveItems.map(({ id, original_id, ...item }) => item)
+      await supabase.from('contract_checklist').insert(restoredRows)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Чек-лист восстановлен из архива',
+        details: `Восстановлено ${archiveItems.length} пунктов`,
+        user_name: user_name ?? 'Система',
+      })
+
+      return NextResponse.json({ success: true, items_count: archiveItems.length })
     }
 
     // ── Редактировать пункт ────────────────────────────────────────────────
