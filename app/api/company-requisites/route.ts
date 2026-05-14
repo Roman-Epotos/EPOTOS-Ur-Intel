@@ -36,12 +36,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
     }
 
-    const { error } = await supabase
+    // Проверяем есть ли уже запись для этой компании
+    const { data: existing } = await supabase
       .from('company_requisites')
-      .upsert(requisites, { onConflict: 'company_prefix' })
+      .select('id')
+      .eq('company_prefix', requisites.company_prefix)
+      .single()
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+    let dbError
+    if (existing) {
+      const { error: updateError } = await supabase
+        .from('company_requisites')
+        .update(requisites)
+        .eq('company_prefix', requisites.company_prefix)
+      dbError = updateError
+    } else {
+      const { error: insertError } = await supabase
+        .from('company_requisites')
+        .insert(requisites)
+      dbError = insertError
+    }
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
     }
 
     return NextResponse.json({ success: true })

@@ -92,10 +92,12 @@ export default function AdminPage() {
     phone: '',
     email: '',
     website: '',
+    short_name: '',
   })
   const [savingRequisites, setSavingRequisites] = useState(false)
   const [requisitesSuccess, setRequisitesSuccess] = useState('')
   const [requisitesError, setRequisitesError] = useState('')
+  const [showRequisitesPreview, setShowRequisitesPreview] = useState(false)
 
   // Шаблоны
   const [templates, setTemplates] = useState<Template[]>([])
@@ -145,16 +147,16 @@ export default function AdminPage() {
       if (data.requisites?.length > 0) {
         setRequisitesForm(data.requisites[0])
       } else {
-        setRequisitesForm(prev => ({
-          ...prev,
+        setRequisitesForm({
           company_prefix: selectedCompany,
           company_name: '',
+          short_name: '',
           inn: '', kpp: '', ogrn: '',
           legal_address: '', actual_address: '',
           bank_name: '', bank_account: '', bank_bik: '', bank_corr_account: '',
           director_name: '', director_title: 'Генеральный директор',
           phone: '', email: '', website: '',
-        }))
+        })
       }
     }
     if (adminTab === 'requisites') loadRequisites()
@@ -435,6 +437,184 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Модальное окно предпросмотра реквизитов */}
+        {showRequisitesPreview && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-gray-900">
+                  Реквизиты — {requisitesForm.short_name || requisitesForm.company_name}
+                </h3>
+                <button onClick={() => setShowRequisitesPreview(false)}
+                  className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+
+              {/* Блок предпросмотра */}
+              <div id="requisites-preview" className="text-sm text-gray-800 space-y-1 border border-gray-100 rounded-lg p-4 bg-gray-50">
+                {requisitesForm.company_name && (
+                  <p className="font-semibold">{requisitesForm.company_name}</p>
+                )}
+                {requisitesForm.short_name && (
+                  <p className="text-gray-500">{requisitesForm.short_name}</p>
+                )}
+                <div className="border-t border-gray-200 my-2" />
+                {requisitesForm.inn && (
+                  <p>ИНН: <span className="font-medium">{requisitesForm.inn}</span>
+                    {requisitesForm.kpp && <> / КПП: <span className="font-medium">{requisitesForm.kpp}</span></>}
+                    {requisitesForm.ogrn && <> / ОГРН: <span className="font-medium">{requisitesForm.ogrn}</span></>}
+                  </p>
+                )}
+                {requisitesForm.legal_address && (
+                  <p>Юр. адрес: <span className="font-medium">{requisitesForm.legal_address}</span></p>
+                )}
+                {requisitesForm.actual_address && (
+                  <p>Факт. адрес: <span className="font-medium">{requisitesForm.actual_address}</span></p>
+                )}
+                {requisitesForm.bank_name && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    <p>Банк: <span className="font-medium">{requisitesForm.bank_name}</span></p>
+                    {requisitesForm.bank_account && (
+                      <p>р/с: <span className="font-medium">{requisitesForm.bank_account}</span></p>
+                    )}
+                    {requisitesForm.bank_corr_account && (
+                      <p>к/с: <span className="font-medium">{requisitesForm.bank_corr_account}</span></p>
+                    )}
+                    {requisitesForm.bank_bik && (
+                      <p>БИК: <span className="font-medium">{requisitesForm.bank_bik}</span></p>
+                    )}
+                  </>
+                )}
+                {(requisitesForm.director_name || requisitesForm.director_title) && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    <p>{requisitesForm.director_title}: <span className="font-medium">{requisitesForm.director_name}</span></p>
+                  </>
+                )}
+                {(requisitesForm.phone || requisitesForm.email || requisitesForm.website) && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    {requisitesForm.phone && <p>Тел: <span className="font-medium">{requisitesForm.phone}</span></p>}
+                    {requisitesForm.email && <p>Email: <span className="font-medium">{requisitesForm.email}</span></p>}
+                    {requisitesForm.website && <p>Сайт: <span className="font-medium">{requisitesForm.website}</span></p>}
+                  </>
+                )}
+              </div>
+
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => {
+                  const content = document.getElementById('requisites-preview')?.innerHTML ?? ''
+                  const win = window.open('', '_blank')
+                  if (win) {
+                    win.document.write(`
+                      <html><head><title>Реквизиты</title>
+                      <style>body{font-family:Arial,sans-serif;font-size:14px;padding:20px;max-width:600px;margin:0 auto}
+                      p{margin:4px 0}.divider{border-top:1px solid #eee;margin:8px 0}
+                      @media print{button{display:none}}</style></head>
+                      <body>${content}<br/><button onclick="window.print()">Печать</button></body></html>
+                    `)
+                    win.document.close()
+                    win.print()
+                  }
+                }}
+                  className="flex-1 bg-gray-900 text-white py-2 rounded-xl text-sm font-medium hover:bg-gray-700">
+                  🖨️ Печать
+                </button>
+                <button onClick={() => setShowRequisitesPreview(false)}
+                  className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Модальное окно предпросмотра реквизитов */}
+        {showRequisitesPreview && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-gray-900">
+                  Реквизиты — {requisitesForm.short_name || requisitesForm.company_name}
+                </h3>
+                <button onClick={() => setShowRequisitesPreview(false)}
+                  className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <div id="requisites-preview" className="text-sm text-gray-800 space-y-1 border border-gray-100 rounded-lg p-4 bg-gray-50">
+                {requisitesForm.company_name && (
+                  <p className="font-semibold">{requisitesForm.company_name}</p>
+                )}
+                {requisitesForm.short_name && (
+                  <p className="text-gray-500">{requisitesForm.short_name}</p>
+                )}
+                <div className="border-t border-gray-200 my-2" />
+                {requisitesForm.inn && (
+                  <p>ИНН: <span className="font-medium">{requisitesForm.inn}</span>
+                    {requisitesForm.kpp && <> / КПП: <span className="font-medium">{requisitesForm.kpp}</span></>}
+                    {requisitesForm.ogrn && <> / ОГРН: <span className="font-medium">{requisitesForm.ogrn}</span></>}
+                  </p>
+                )}
+                {requisitesForm.legal_address && (
+                  <p>Юр. адрес: <span className="font-medium">{requisitesForm.legal_address}</span></p>
+                )}
+                {requisitesForm.actual_address && (
+                  <p>Факт. адрес: <span className="font-medium">{requisitesForm.actual_address}</span></p>
+                )}
+                {requisitesForm.bank_name && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    <p>Банк: <span className="font-medium">{requisitesForm.bank_name}</span></p>
+                    {requisitesForm.bank_account && (
+                      <p>р/с: <span className="font-medium">{requisitesForm.bank_account}</span></p>
+                    )}
+                    {requisitesForm.bank_corr_account && (
+                      <p>к/с: <span className="font-medium">{requisitesForm.bank_corr_account}</span></p>
+                    )}
+                    {requisitesForm.bank_bik && (
+                      <p>БИК: <span className="font-medium">{requisitesForm.bank_bik}</span></p>
+                    )}
+                  </>
+                )}
+                {(requisitesForm.director_name || requisitesForm.director_title) && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    <p>{requisitesForm.director_title}: <span className="font-medium">{requisitesForm.director_name}</span></p>
+                  </>
+                )}
+                {(requisitesForm.phone || requisitesForm.email || requisitesForm.website) && (
+                  <>
+                    <div className="border-t border-gray-200 my-2" />
+                    {requisitesForm.phone && <p>Тел: <span className="font-medium">{requisitesForm.phone}</span></p>}
+                    {requisitesForm.email && <p>Email: <span className="font-medium">{requisitesForm.email}</span></p>}
+                    {requisitesForm.website && <p>Сайт: <span className="font-medium">{requisitesForm.website}</span></p>}
+                  </>
+                )}
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => {
+                  const content = document.getElementById('requisites-preview')?.innerHTML ?? ''
+                  const win = window.open('', '_blank')
+                  if (win) {
+                    win.document.write(`<html><head><title>Реквизиты</title>
+                      <style>body{font-family:Arial,sans-serif;font-size:14px;padding:20px;max-width:600px;margin:0 auto}
+                      p{margin:4px 0}@media print{button{display:none}}</style></head>
+                      <body>${content}<br/><button onclick="window.print()">Печать</button></body></html>`)
+                    win.document.close()
+                    win.print()
+                  }
+                }}
+                  className="flex-1 bg-gray-900 text-white py-2 rounded-xl text-sm font-medium hover:bg-gray-700">
+                  🖨️ Печать
+                </button>
+                <button onClick={() => setShowRequisitesPreview(false)}
+                  className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Вкладка — Реквизиты */}
         {adminTab === 'requisites' && (
           <div className="space-y-6">
@@ -455,11 +635,25 @@ export default function AdminPage() {
               <h2 className="text-sm font-medium text-gray-700 mb-4">
                 Реквизиты — {COMPANIES.find(c => c.id === selectedCompany)?.name}
               </h2>
+              {/* Кнопка предпросмотра */}
+              <div className="flex justify-end mb-2">
+                <button type="button" onClick={() => setShowRequisitesPreview(true)}
+                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  🖨️ Предпросмотр и печать
+                </button>
+              </div>
+
               <form onSubmit={handleSaveRequisites} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-500 mb-1">Полное наименование</label>
                     <input value={requisitesForm.company_name} onChange={e => setRequisitesForm(p => ({...p, company_name: e.target.value}))}
+                      placeholder='Общество с ограниченной ответственностью "Техно"'
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Сокращённое наименование</label>
+                    <input value={requisitesForm.short_name ?? ''} onChange={e => setRequisitesForm(p => ({...p, short_name: e.target.value}))}
                       placeholder='ООО "Техно"'
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
