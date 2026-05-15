@@ -46,8 +46,13 @@ export function useBitrixAuth() {
             setUser(data.user)
             // Сохраняем в sessionStorage
             sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
-            // Убираем параметры из URL
-            window.history.replaceState({}, '', '/')
+            // Если есть contract_id — редиректим на документ, иначе на главную
+            const contractId = params.get('contract_id')
+            if (contractId) {
+              window.history.replaceState({}, '', `/contracts/${contractId}`)
+            } else {
+              window.history.replaceState({}, '', '/')
+            }
           }
         } else {
           // Проверяем sessionStorage
