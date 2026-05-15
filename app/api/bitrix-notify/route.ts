@@ -48,14 +48,13 @@ async function sendNotify(toId: number, message: string): Promise<boolean> {
   }
 
   try {
-    const url = `${WEBHOOK_URL}im.notify.send.json`
+    const url = `${WEBHOOK_URL}im.notify.system.add.json`
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: toId,
-        message,
-        type: 'SYSTEM',
+        USER_ID: toId,
+        MESSAGE: message,
       }),
     })
     const data = await res.json()
