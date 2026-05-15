@@ -23,8 +23,10 @@ interface NotifyOptions {
 }
 
 function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
-  const link = `https://epotos-ur-intel.vercel.app/contracts/${documentId}`
-  const doc = `${documentNumber} — ${documentTitle} (${link})`
+  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+  const bitrixClientId = process.env.BITRIX_CLIENT_ID ?? ''
+  const link = `https://${bitrixPortal}/apps/?app=${bitrixClientId}&contract_id=${documentId}`
+  const doc = `${documentNumber} — ${documentTitle} [${link}]`
 
   const messages: Record<NotifyType, string> = {
     document_created:    `📄 Создан новый документ: ${doc}`,
