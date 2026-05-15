@@ -74,6 +74,149 @@ app/api/versions/route.ts
 <files>
 This section contains the contents of the repository's files.
 
+<file path="app/api/ai-chat/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, version_id, file_url, file_name, question, user_name, bitrix_user_id } = body
+
+    if (!contract_id || !question) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    // Сохраняем вопрос пользователя
+    await supabase.from('ai_chats').insert({
+      contract_id,
+      version_id: version_id ?? null,
+      role: 'user',
+      message: question,
+      user_name: user_name ?? 'Пользователь',
+      bitrix_user_id: bitrix_user_id ?? null,
+    })
+
+    // Получаем историю чата
+    const { data: history } = await supabase
+      .from('ai_chats')
+      .select('role, message')
+      .eq('contract_id', contract_id)
+      .order('created_at', { ascending: true })
+      .limit(20)
+
+    // Извлекаем текст документа если есть файл
+    let documentContext = ''
+    if (file_url && file_name) {
+      try {
+        const fileName = file_name.toLowerCase()
+        if (fileName.endsWith('.pdf')) {
+          const { extractText } = await import('unpdf')
+          const response = await fetch(file_url)
+          const arrayBuffer = await response.arrayBuffer()
+          const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
+          documentContext = text.slice(0, 6000)
+        } else if (fileName.endsWith('.docx')) {
+          const response = await fetch(file_url)
+          const arrayBuffer = await response.arrayBuffer()
+          const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+          const mammoth = await import('mammoth')
+          const result = await mammoth.extractRawText({ buffer })
+          documentContext = result.value.slice(0, 6000)
+        } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const XLSX = require('xlsx')
+          const response = await fetch(file_url)
+          const arrayBuffer = await response.arrayBuffer()
+          const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+          const workbook = XLSX.read(buffer, { type: 'buffer' })
+          const texts: string[] = []
+          workbook.SheetNames.forEach((sheetName: string) => {
+            const sheet = workbook.Sheets[sheetName]
+            texts.push(XLSX.utils.sheet_to_csv(sheet))
+          })
+          documentContext = texts.join('\n').slice(0, 6000)
+        }
+      } catch (err) {
+        console.error('Document extraction error:', err)
+      }
+    }
+
+    // Формируем сообщения для AI
+    const systemPrompt = `You are EpotosGPT, a legal assistant for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Answer questions about the document in Russian language. Be concise and helpful.${documentContext ? `\n\nDocument content:\n${documentContext}` : ''}`
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...(history ?? []).slice(0, -1).map((h: { role: string; message: string }) => ({
+        role: h.role,
+        content: h.message,
+      })),
+      { role: 'user', content: question },
+    ]
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        messages,
+        max_tokens: 1000,
+        temperature: 0.3,
+      }),
+    })
+
+    const data = await response.json()
+    const answer = data.choices?.[0]?.message?.content ?? 'Не удалось получить ответ'
+
+    // Сохраняем ответ AI
+    await supabase.from('ai_chats').insert({
+      contract_id,
+      version_id: version_id ?? null,
+      role: 'assistant',
+      message: answer,
+      user_name: 'EpotosGPT',
+    })
+
+    return NextResponse.json({ success: true, answer })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const contractId = request.nextUrl.searchParams.get('contract_id')
+
+  if (!contractId) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('ai_chats')
+    .select('*')
+    .eq('contract_id', contractId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ messages: data ?? [] })
+}
+</file>
+
 <file path="app/api/approval-settings/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -942,335 +1085,6 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/ai-chat/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { contract_id, version_id, file_url, file_name, question, user_name, bitrix_user_id } = body
-
-    if (!contract_id || !question) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    // Сохраняем вопрос пользователя
-    await supabase.from('ai_chats').insert({
-      contract_id,
-      version_id: version_id ?? null,
-      role: 'user',
-      message: question,
-      user_name: user_name ?? 'Пользователь',
-      bitrix_user_id: bitrix_user_id ?? null,
-    })
-
-    // Получаем историю чата
-    const { data: history } = await supabase
-      .from('ai_chats')
-      .select('role, message')
-      .eq('contract_id', contract_id)
-      .order('created_at', { ascending: true })
-      .limit(20)
-
-    // Извлекаем текст документа если есть файл
-    let documentContext = ''
-    if (file_url && file_name) {
-      try {
-        const fileName = file_name.toLowerCase()
-        if (fileName.endsWith('.pdf')) {
-          const { extractText } = await import('unpdf')
-          const response = await fetch(file_url)
-          const arrayBuffer = await response.arrayBuffer()
-          const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
-          documentContext = text.slice(0, 6000)
-        } else if (fileName.endsWith('.docx')) {
-          const response = await fetch(file_url)
-          const arrayBuffer = await response.arrayBuffer()
-          const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-          const mammoth = await import('mammoth')
-          const result = await mammoth.extractRawText({ buffer })
-          documentContext = result.value.slice(0, 6000)
-        } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const XLSX = require('xlsx')
-          const response = await fetch(file_url)
-          const arrayBuffer = await response.arrayBuffer()
-          const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-          const workbook = XLSX.read(buffer, { type: 'buffer' })
-          const texts: string[] = []
-          workbook.SheetNames.forEach((sheetName: string) => {
-            const sheet = workbook.Sheets[sheetName]
-            texts.push(XLSX.utils.sheet_to_csv(sheet))
-          })
-          documentContext = texts.join('\n').slice(0, 6000)
-        }
-      } catch (err) {
-        console.error('Document extraction error:', err)
-      }
-    }
-
-    // Формируем сообщения для AI
-    const systemPrompt = `You are EpotosGPT, a legal assistant for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Answer questions about the document in Russian language. Be concise and helpful.${documentContext ? `\n\nDocument content:\n${documentContext}` : ''}`
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...(history ?? []).slice(0, -1).map((h: { role: string; message: string }) => ({
-        role: h.role,
-        content: h.message,
-      })),
-      { role: 'user', content: question },
-    ]
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'Epotos-YurIntel',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        messages,
-        max_tokens: 1000,
-        temperature: 0.3,
-      }),
-    })
-
-    const data = await response.json()
-    const answer = data.choices?.[0]?.message?.content ?? 'Не удалось получить ответ'
-
-    // Сохраняем ответ AI
-    await supabase.from('ai_chats').insert({
-      contract_id,
-      version_id: version_id ?? null,
-      role: 'assistant',
-      message: answer,
-      user_name: 'EpotosGPT',
-    })
-
-    return NextResponse.json({ success: true, answer })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const contractId = request.nextUrl.searchParams.get('contract_id')
-
-  if (!contractId) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from('ai_chats')
-    .select('*')
-    .eq('contract_id', contractId)
-    .order('created_at', { ascending: true })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ messages: data ?? [] })
-}
-</file>
-
-<file path="app/api/bitrix-notify/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
-
-// Типы уведомлений
-export type NotifyType =
-  | 'document_created'      // Создан документ
-  | 'sent_for_approval'     // Отправлен на согласование
-  | 'approval_required'     // Требуется согласование
-  | 'document_approved'     // Документ согласован
-  | 'document_rejected'     // Документ отклонён
-  | 'documents_uploaded'    // Загружены подписанные документы
-  | 'checklist_generated'   // Сгенерирован чек-лист
-  | 'checklist_deadline'    // Дедлайн пункта чек-листа
-
-interface NotifyParams {
-  to_bitrix_id: number      // ID получателя в Битрикс24
-  type: NotifyType
-  document_title: string
-  document_number: string
-  document_id: string
-  extra?: string            // Дополнительная информация
-}
-
-function buildMessage(params: NotifyParams): string {
-  const link = `https://epotos-ur-intel.vercel.app/contracts/${params.document_id}`
-  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
-
-  const messages: Record<NotifyType, string> = {
-    document_created:     `📄 Создан новый документ: ${doc}`,
-    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
-    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
-    document_approved:    `✅ Документ согласован: ${doc}`,
-    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
-    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
-    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
-  }
-
-  return messages[params.type] ?? `Уведомление по документу: ${doc}`
-}
-
-// Отправка одного уведомления
-async function sendNotify(toId: number, message: string): Promise<boolean> {
-  if (!WEBHOOK_URL) {
-    console.error('BITRIX_WEBHOOK_URL не задан')
-    return false
-  }
-
-  try {
-    const url = `${WEBHOOK_URL}im.notify.send.json`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: toId,
-        message,
-        type: 'SYSTEM',
-      }),
-    })
-    const data = await res.json()
-    return data.result !== undefined
-  } catch (err) {
-    console.error('Ошибка отправки уведомления Битрикс24:', err)
-    return false
-  }
-}
-
-// POST — отправить уведомление
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { recipients, type, document_title, document_number, document_id, extra } = body
-
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
-    }
-
-    if (!type || !document_id) {
-      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
-    }
-
-    const results = await Promise.all(
-      recipients.map(async (bitrixId: number) => {
-        const message = buildMessage({
-          to_bitrix_id: bitrixId,
-          type,
-          document_title: document_title ?? 'Документ',
-          document_number: document_number ?? '',
-          document_id,
-          extra,
-        })
-        const success = await sendNotify(bitrixId, message)
-        return { bitrixId, success }
-      })
-    )
-
-    const failed = results.filter(r => !r.success)
-    return NextResponse.json({
-      success: true,
-      sent: results.length - failed.length,
-      failed: failed.length,
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/user-role/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const ADMIN_IDS = [30, 1148]
-
-// Менеджеры ГК — видят все компании, без админ-панели
-const GC_MANAGER_IDS = [1, 246, 504]
-
-// Генеральные директора по компаниям
-const DIRECTORS: Record<number, string[]> = {
-  592: ['НПП'],
-  6: ['СПТ', 'ОС'],
-  954: ['Э-К'],
-}
-
-// Юристы по компаниям
-const LEGAL_IDS: Record<number, string[]> = {
-  782: ['Э-К'],
-}
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  // Проверяем администратора
-  if (ADMIN_IDS.includes(userId)) {
-    return NextResponse.json({
-      role: 'admin',
-      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
-    })
-  }
-
-  // Проверяем менеджеров ГК
-  if (GC_MANAGER_IDS.includes(userId)) {
-    return NextResponse.json({
-      role: 'gc_manager',
-      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
-    })
-  }
-
-  // Проверяем ГД
-  if (DIRECTORS[userId]) {
-    return NextResponse.json({
-      role: 'director',
-      companies: DIRECTORS[userId],
-    })
-  }
-
-  // Проверяем юристов
-  if (LEGAL_IDS[userId]) {
-    return NextResponse.json({
-      role: 'legal',
-      companies: LEGAL_IDS[userId],
-    })
-  }
-
-  // Обычный сотрудник
-  return NextResponse.json({
-    role: 'user',
-    companies: [],
-  })
-}
-</file>
-
 <file path="app/api/ai-analysis/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -1562,6 +1376,313 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/ai-generate/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
+async function getTemplateText(fileUrl: string, fileName: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const uint8 = new Uint8Array(arrayBuffer)
+    const buffer = Buffer.from(uint8)
+
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      const { extractText } = await import('unpdf')
+      const { text } = await extractText(uint8, { mergePages: true })
+      // Encode to ASCII-safe string
+      return text.slice(0, 12000)
+    } else if (fileName.toLowerCase().endsWith('.docx')) {
+      const mammoth = await import('mammoth')
+      const result = await mammoth.extractRawText({ buffer })
+      return result.value.slice(0, 12000)
+    }
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      prompt,
+      document_type,
+      company_prefix,
+      region,
+      counterparty,
+      user_name,
+      contract_id,
+    } = body
+
+    if (!prompt || !document_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    console.log('ai-generate started', { document_type, company_prefix, region })
+
+    // Ищем подходящий шаблон
+    let templateContext = ''
+    let templateUsed = false
+
+    const { data: templates } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('type', document_type)
+      .eq('is_active', true)
+      .or(`company_prefix.eq.${company_prefix},company_prefix.is.null`)
+      .order('company_prefix', { ascending: false })
+      .limit(1)
+
+    if (templates && templates.length > 0) {
+      const template = templates[0]
+      const text = await getTemplateText(template.file_url, template.file_name)
+      if (text) {
+        templateContext = text
+        templateUsed = true
+      }
+    }
+
+    // Генерируем документ
+    // Загружаем реквизиты компании из базы
+    let companyName = 'ГК ЭПОТОС'
+    let companyRequisites = 'ГК ЭПОТОС, реквизиты не заполнены — обратитесь к администратору'
+
+    if (company_prefix) {
+      const { data: reqData } = await supabase
+        .from('company_requisites')
+        .select('*')
+        .eq('company_prefix', company_prefix)
+        .single()
+
+      if (reqData) {
+        companyName = reqData.company_name || company_prefix
+        companyRequisites = [
+          reqData.company_name,
+          reqData.inn ? `ИНН: ${reqData.inn}` : '',
+          reqData.kpp ? `КПП: ${reqData.kpp}` : '',
+          reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
+          reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
+          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
+          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
+          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
+          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
+          reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
+        ].filter(Boolean).join(', ')
+      }
+    }
+
+    const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
+
+    const templateInstruction = templateContext
+      ? `КРИТИЧЕСКИ ВАЖНО: Ниже приведён корпоративный шаблон документа. Ты ОБЯЗАН:
+1. Сохранить ВСЕ разделы и пункты шаблона без исключения
+2. Сохранить нумерацию и структуру разделов точно как в шаблоне
+3. Сохранить ВСЕ условия, формулировки и специальные оговорки из шаблона
+4. Только заменить: наименования сторон, реквизиты, предмет договора и конкретные параметры сделки
+5. НЕ упрощать, НЕ сокращать, НЕ удалять разделы шаблона
+
+ШАБЛОН ДОКУМЕНТА:
+---
+${templateContext}
+---
+Конец шаблона. Создай документ строго по этой структуре с учётом параметров задачи.`
+      : `Создай полный профессиональный документ по стандартной структуре для данного типа по законодательству РФ. Включи все стандартные разделы без сокращений.`
+
+    const userPrompt = `Составь ${document_type} со следующими параметрами:
+
+СТОРОНЫ:
+- Сторона 1 (наша компания): ${companyRequisites}
+- Сторона 2 (контрагент): ${counterparty ?? 'указать наименование'} (реквизиты указать в квадратных скобках)
+- Регион применения: ${region ?? 'Российская Федерация'}
+
+ЗАДАЧА:
+${prompt}
+
+${templateInstruction}
+
+ТРЕБОВАНИЯ К ДОКУМЕНТУ:
+1. Используй реквизиты компании ЭПОТОС ТОЧНО как указано выше — не заменяй банк и не выдумывай реквизиты
+2. Сохраняй сквозную нумерацию пунктов без пропусков (1.1, 1.2, 1.3... 2.1, 2.2...)
+3. Включи ВСЕ разделы — не обрывай документ, доведи до подписей
+4. Реквизиты контрагента указывай в квадратных скобках [заполнить]
+5. Документ должен быть полным и готовым к подписанию
+
+Выводи только текст документа без пояснений и комментариев.`
+
+    console.log('calling OpenRouter...')
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'EpotosYurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        route: 'fallback',
+        models: ['google/gemini-2.0-flash-001', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 8000,
+        temperature: 0.1,
+      }),
+    })
+
+    console.log('OpenRouter response status:', response.status)
+    const data = await response.json()
+    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
+    const generatedText = data.choices?.[0]?.message?.content ?? ''
+
+    if (!generatedText) {
+      return NextResponse.json({ error: 'AI не вернул результат' }, { status: 400 })
+    }
+
+    // Создаём DOCX файл
+    const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
+
+    const paragraphs = generatedText.split('\n').map((line: string) => {
+      if (line.startsWith('# ')) {
+        return new Paragraph({
+          text: line.replace('# ', ''),
+          heading: HeadingLevel.HEADING_1,
+        })
+      } else if (line.startsWith('## ')) {
+        return new Paragraph({
+          text: line.replace('## ', ''),
+          heading: HeadingLevel.HEADING_2,
+        })
+      } else if (line.trim() === '') {
+        return new Paragraph({ text: '' })
+      } else {
+        return new Paragraph({
+          children: [new TextRun({ text: line, size: 24, font: 'Times New Roman' })],
+          spacing: { after: 120 },
+        })
+      }
+    })
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: paragraphs,
+      }],
+    })
+
+    const buffer = await Packer.toBuffer(doc)
+
+    // Сохраняем в лог если есть contract_id
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'AI генерация документа',
+        details: `Тип: ${document_type}. Шаблон: ${templateUsed ? 'использован' : 'не найден'}`,
+        user_name: user_name ?? 'Система',
+      })
+    }
+
+    const uint8 = new Uint8Array(buffer)
+
+    return new NextResponse(uint8, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="generated.docx"`,
+        'X-Template-Used': templateUsed ? 'true' : 'false',
+      },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/user-role/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const ADMIN_IDS = [30, 1148]
+
+// Менеджеры ГК — видят все компании, без админ-панели
+const GC_MANAGER_IDS = [1, 246, 504]
+
+// Генеральные директора по компаниям
+const DIRECTORS: Record<number, string[]> = {
+  592: ['НПП'],
+  6: ['СПТ', 'ОС'],
+  954: ['Э-К'],
+}
+
+// Юристы по компаниям
+const LEGAL_IDS: Record<number, string[]> = {
+  782: ['Э-К'],
+}
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  // Проверяем администратора
+  if (ADMIN_IDS.includes(userId)) {
+    return NextResponse.json({
+      role: 'admin',
+      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
+    })
+  }
+
+  // Проверяем менеджеров ГК
+  if (GC_MANAGER_IDS.includes(userId)) {
+    return NextResponse.json({
+      role: 'gc_manager',
+      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
+    })
+  }
+
+  // Проверяем ГД
+  if (DIRECTORS[userId]) {
+    return NextResponse.json({
+      role: 'director',
+      companies: DIRECTORS[userId],
+    })
+  }
+
+  // Проверяем юристов
+  if (LEGAL_IDS[userId]) {
+    return NextResponse.json({
+      role: 'legal',
+      companies: LEGAL_IDS[userId],
+    })
+  }
+
+  // Обычный сотрудник
+  return NextResponse.json({
+    role: 'user',
+    companies: [],
+  })
+}
+</file>
+
 <file path="app/api/attachments/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -1728,6 +1849,116 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/bitrix-notify/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
+
+// Типы уведомлений
+export type NotifyType =
+  | 'document_created'      // Создан документ
+  | 'sent_for_approval'     // Отправлен на согласование
+  | 'approval_required'     // Требуется согласование
+  | 'document_approved'     // Документ согласован
+  | 'document_rejected'     // Документ отклонён
+  | 'documents_uploaded'    // Загружены подписанные документы
+  | 'checklist_generated'   // Сгенерирован чек-лист
+  | 'checklist_deadline'    // Дедлайн пункта чек-листа
+
+interface NotifyParams {
+  to_bitrix_id: number      // ID получателя в Битрикс24
+  type: NotifyType
+  document_title: string
+  document_number: string
+  document_id: string
+  extra?: string            // Дополнительная информация
+}
+
+function buildMessage(params: NotifyParams): string {
+  const link = `https://epotos-ur-intel.vercel.app/contracts/${params.document_id}`
+  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
+
+  const messages: Record<NotifyType, string> = {
+    document_created:     `📄 Создан новый документ: ${doc}`,
+    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
+    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
+    document_approved:    `✅ Документ согласован: ${doc}`,
+    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
+    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
+    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
+    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
+  }
+
+  return messages[params.type] ?? `Уведомление по документу: ${doc}`
+}
+
+// Отправка одного уведомления
+async function sendNotify(toId: number, message: string): Promise<boolean> {
+  if (!WEBHOOK_URL) {
+    console.error('BITRIX_WEBHOOK_URL не задан')
+    return false
+  }
+
+  try {
+    const url = `${WEBHOOK_URL}im.notify.system.add.json`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        USER_ID: toId,
+        MESSAGE: message,
+      }),
+    })
+    const data = await res.json()
+    return data.result !== undefined
+  } catch (err) {
+    console.error('Ошибка отправки уведомления Битрикс24:', err)
+    return false
+  }
+}
+
+// POST — отправить уведомление
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { recipients, type, document_title, document_number, document_id, extra } = body
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
+    }
+
+    if (!type || !document_id) {
+      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
+    }
+
+    const results = await Promise.all(
+      recipients.map(async (bitrixId: number) => {
+        const message = buildMessage({
+          to_bitrix_id: bitrixId,
+          type,
+          document_title: document_title ?? 'Документ',
+          document_number: document_number ?? '',
+          document_id,
+          extra,
+        })
+        const success = await sendNotify(bitrixId, message)
+        return { bitrixId, success }
+      })
+    )
+
+    const failed = results.filter(r => !r.success)
+    return NextResponse.json({
+      success: true,
+      sent: results.length - failed.length,
+      failed: failed.length,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -3121,238 +3352,6 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/ai-generate/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
-
-async function getTemplateText(fileUrl: string, fileName: string): Promise<string> {
-  try {
-    const response = await fetch(fileUrl)
-    const arrayBuffer = await response.arrayBuffer()
-    const uint8 = new Uint8Array(arrayBuffer)
-    const buffer = Buffer.from(uint8)
-
-    if (fileName.toLowerCase().endsWith('.pdf')) {
-      const { extractText } = await import('unpdf')
-      const { text } = await extractText(uint8, { mergePages: true })
-      // Encode to ASCII-safe string
-      return text.slice(0, 12000)
-    } else if (fileName.toLowerCase().endsWith('.docx')) {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, 12000)
-    }
-    return ''
-  } catch {
-    return ''
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const {
-      prompt,
-      document_type,
-      company_prefix,
-      region,
-      counterparty,
-      user_name,
-      contract_id,
-    } = body
-
-    if (!prompt || !document_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    console.log('ai-generate started', { document_type, company_prefix, region })
-
-    // Ищем подходящий шаблон
-    let templateContext = ''
-    let templateUsed = false
-
-    const { data: templates } = await supabase
-      .from('document_templates')
-      .select('*')
-      .eq('type', document_type)
-      .eq('is_active', true)
-      .or(`company_prefix.eq.${company_prefix},company_prefix.is.null`)
-      .order('company_prefix', { ascending: false })
-      .limit(1)
-
-    if (templates && templates.length > 0) {
-      const template = templates[0]
-      const text = await getTemplateText(template.file_url, template.file_name)
-      if (text) {
-        templateContext = text
-        templateUsed = true
-      }
-    }
-
-    // Генерируем документ
-    // Загружаем реквизиты компании из базы
-    let companyName = 'ГК ЭПОТОС'
-    let companyRequisites = 'ГК ЭПОТОС, реквизиты не заполнены — обратитесь к администратору'
-
-    if (company_prefix) {
-      const { data: reqData } = await supabase
-        .from('company_requisites')
-        .select('*')
-        .eq('company_prefix', company_prefix)
-        .single()
-
-      if (reqData) {
-        companyName = reqData.company_name || company_prefix
-        companyRequisites = [
-          reqData.company_name,
-          reqData.inn ? `ИНН: ${reqData.inn}` : '',
-          reqData.kpp ? `КПП: ${reqData.kpp}` : '',
-          reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
-          reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
-          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
-          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
-          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
-          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
-          reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
-        ].filter(Boolean).join(', ')
-      }
-    }
-
-    const systemPrompt = `Ты опытный корпоративный юрист компании ${companyName}, входящей в Группу компаний ЭПОТОС (производство и обслуживание противопожарного оборудования). Твоя задача — составлять полные, профессиональные юридические документы на русском языке в соответствии с законодательством РФ. Документы должны быть готовы к подписанию без дополнительного редактирования.`
-
-    const templateInstruction = templateContext
-      ? `КРИТИЧЕСКИ ВАЖНО: Ниже приведён корпоративный шаблон документа. Ты ОБЯЗАН:
-1. Сохранить ВСЕ разделы и пункты шаблона без исключения
-2. Сохранить нумерацию и структуру разделов точно как в шаблоне
-3. Сохранить ВСЕ условия, формулировки и специальные оговорки из шаблона
-4. Только заменить: наименования сторон, реквизиты, предмет договора и конкретные параметры сделки
-5. НЕ упрощать, НЕ сокращать, НЕ удалять разделы шаблона
-
-ШАБЛОН ДОКУМЕНТА:
----
-${templateContext}
----
-Конец шаблона. Создай документ строго по этой структуре с учётом параметров задачи.`
-      : `Создай полный профессиональный документ по стандартной структуре для данного типа по законодательству РФ. Включи все стандартные разделы без сокращений.`
-
-    const userPrompt = `Составь ${document_type} со следующими параметрами:
-
-СТОРОНЫ:
-- Сторона 1 (наша компания): ${companyRequisites}
-- Сторона 2 (контрагент): ${counterparty ?? 'указать наименование'} (реквизиты указать в квадратных скобках)
-- Регион применения: ${region ?? 'Российская Федерация'}
-
-ЗАДАЧА:
-${prompt}
-
-${templateInstruction}
-
-ТРЕБОВАНИЯ К ДОКУМЕНТУ:
-1. Используй реквизиты компании ЭПОТОС ТОЧНО как указано выше — не заменяй банк и не выдумывай реквизиты
-2. Сохраняй сквозную нумерацию пунктов без пропусков (1.1, 1.2, 1.3... 2.1, 2.2...)
-3. Включи ВСЕ разделы — не обрывай документ, доведи до подписей
-4. Реквизиты контрагента указывай в квадратных скобках [заполнить]
-5. Документ должен быть полным и готовым к подписанию
-
-Выводи только текст документа без пояснений и комментариев.`
-
-    console.log('calling OpenRouter...')
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'EpotosYurIntel',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        route: 'fallback',
-        models: ['google/gemini-2.0-flash-001', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 8000,
-        temperature: 0.1,
-      }),
-    })
-
-    console.log('OpenRouter response status:', response.status)
-    const data = await response.json()
-    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
-    const generatedText = data.choices?.[0]?.message?.content ?? ''
-
-    if (!generatedText) {
-      return NextResponse.json({ error: 'AI не вернул результат' }, { status: 400 })
-    }
-
-    // Создаём DOCX файл
-    const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx')
-
-    const paragraphs = generatedText.split('\n').map((line: string) => {
-      if (line.startsWith('# ')) {
-        return new Paragraph({
-          text: line.replace('# ', ''),
-          heading: HeadingLevel.HEADING_1,
-        })
-      } else if (line.startsWith('## ')) {
-        return new Paragraph({
-          text: line.replace('## ', ''),
-          heading: HeadingLevel.HEADING_2,
-        })
-      } else if (line.trim() === '') {
-        return new Paragraph({ text: '' })
-      } else {
-        return new Paragraph({
-          children: [new TextRun({ text: line, size: 24, font: 'Times New Roman' })],
-          spacing: { after: 120 },
-        })
-      }
-    })
-
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: paragraphs,
-      }],
-    })
-
-    const buffer = await Packer.toBuffer(doc)
-
-    // Сохраняем в лог если есть contract_id
-    if (contract_id) {
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'AI генерация документа',
-        details: `Тип: ${document_type}. Шаблон: ${templateUsed ? 'использован' : 'не найден'}`,
-        user_name: user_name ?? 'Система',
-      })
-    }
-
-    const uint8 = new Uint8Array(buffer)
-
-    return new NextResponse(uint8, {
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="generated.docx"`,
-        'X-Template-Used': templateUsed ? 'true' : 'false',
-      },
-    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })

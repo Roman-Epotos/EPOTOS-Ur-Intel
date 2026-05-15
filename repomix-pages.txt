@@ -1283,84 +1283,6 @@ span.text-gray-900 {
 }
 </file>
 
-<file path="app/hooks/useBitrixAuth.ts">
-'use client'
-
-import { useState, useEffect } from 'react'
-
-export interface BitrixUser {
-  id: string
-  name: string
-  email: string
-  avatar: string | null
-  auth_id: string
-  refresh_id: string
-  domain: string
-  member_id: string
-}
-
-export function useBitrixAuth() {
-  const [user, setUser] = useState<BitrixUser | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const authenticate = async () => {
-      try {
-        // Проверяем параметры в URL (от Битрикс24)
-        const params = new URLSearchParams(window.location.search)
-        const authId = params.get('auth_id')
-        const refreshId = params.get('refresh_id')
-        const domain = params.get('domain')
-        const memberId = params.get('member_id')
-
-        if (authId && domain && memberId) {
-          // Отправляем данные на сервер для верификации
-          const formData = new FormData()
-          formData.append('AUTH_ID', authId)
-          formData.append('REFRESH_ID', refreshId ?? '')
-          formData.append('DOMAIN', domain)
-          formData.append('member_id', memberId)
-
-          const response = await fetch('/api/bitrix/callback', {
-            method: 'POST',
-            body: formData,
-          })
-
-          const data = await response.json()
-
-          if (data.success) {
-            setUser(data.user)
-            // Сохраняем в sessionStorage
-            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
-            // Убираем параметры из URL
-            window.history.replaceState({}, '', '/')
-          }
-        } else {
-          // Проверяем sessionStorage
-          const stored = sessionStorage.getItem('bitrix_user')
-          if (stored) {
-            setUser(JSON.parse(stored))
-          }
-        }
-      } catch (err) {
-        console.error('Bitrix auth error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    authenticate()
-  }, [])
-
-  const logout = () => {
-    sessionStorage.removeItem('bitrix_user')
-    setUser(null)
-  }
-
-  return { user, loading, logout }
-}
-</file>
-
 <file path="app/layout.tsx">
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -1488,6 +1410,89 @@ export async function createClient() {
 }
 </file>
 
+<file path="app/hooks/useBitrixAuth.ts">
+'use client'
+
+import { useState, useEffect } from 'react'
+
+export interface BitrixUser {
+  id: string
+  name: string
+  email: string
+  avatar: string | null
+  auth_id: string
+  refresh_id: string
+  domain: string
+  member_id: string
+}
+
+export function useBitrixAuth() {
+  const [user, setUser] = useState<BitrixUser | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const authenticate = async () => {
+      try {
+        // Проверяем параметры в URL (от Битрикс24)
+        const params = new URLSearchParams(window.location.search)
+        const authId = params.get('auth_id')
+        const refreshId = params.get('refresh_id')
+        const domain = params.get('domain')
+        const memberId = params.get('member_id')
+
+        if (authId && domain && memberId) {
+          // Отправляем данные на сервер для верификации
+          const formData = new FormData()
+          formData.append('AUTH_ID', authId)
+          formData.append('REFRESH_ID', refreshId ?? '')
+          formData.append('DOMAIN', domain)
+          formData.append('member_id', memberId)
+
+          const response = await fetch('/api/bitrix/callback', {
+            method: 'POST',
+            body: formData,
+          })
+
+          const data = await response.json()
+
+          if (data.success) {
+            setUser(data.user)
+            // Сохраняем в sessionStorage
+            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
+            // Если есть contract_id — редиректим на документ, иначе на главную
+            const contractId = params.get('contract_id')
+            if (contractId) {
+              window.history.replaceState({}, '', `/contracts/${contractId}`)
+            } else {
+              window.history.replaceState({}, '', '/')
+            }
+          }
+        } else {
+          // Проверяем sessionStorage
+          const stored = sessionStorage.getItem('bitrix_user')
+          if (stored) {
+            setUser(JSON.parse(stored))
+          }
+        }
+      } catch (err) {
+        console.error('Bitrix auth error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    authenticate()
+  }, [])
+
+  const logout = () => {
+    sessionStorage.removeItem('bitrix_user')
+    setUser(null)
+  }
+
+  return { user, loading, logout }
+}
+</file>
+
 <file path="app/lib/documentTypes.ts">
 export const DOCUMENT_TYPES = [
   {
@@ -1594,47 +1599,6 @@ export function renderDocumentTypeOptions() {
     group: group.group,
     options: group.types,
   }))
-}
-</file>
-
-<file path="app/lib/notify.ts">
-// Вспомогательная функция для отправки уведомлений Битрикс24
-// Используется из других API роутов
-
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-export type NotifyType =
-  | 'document_created'
-  | 'sent_for_approval'
-  | 'approval_required'
-  | 'document_approved'
-  | 'document_rejected'
-  | 'documents_uploaded'
-  | 'checklist_generated'
-  | 'checklist_deadline'
-
-interface NotifyOptions {
-  recipients: number[]        // Битрикс24 ID получателей
-  type: NotifyType
-  document_id: string
-  document_title: string
-  document_number: string
-  extra?: string
-}
-
-export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
-
-  try {
-    await fetch(`${baseUrl}/api/bitrix-notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opts),
-    })
-  } catch (err) {
-    // Уведомления не критичны — логируем и продолжаем
-    console.error('sendBitrixNotify error:', err)
-  }
 }
 </file>
 
@@ -2863,6 +2827,84 @@ export default function AdminPage() {
 
       </div>
     </div>
+  )
+}
+</file>
+
+<file path="app/lib/notify.ts">
+// Вспомогательная функция для отправки уведомлений Битрикс24
+// Используется из других API роутов
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+export type NotifyType =
+  | 'document_created'
+  | 'sent_for_approval'
+  | 'approval_required'
+  | 'document_approved'
+  | 'document_rejected'
+  | 'documents_uploaded'
+  | 'checklist_generated'
+  | 'checklist_deadline'
+
+interface NotifyOptions {
+  recipients: number[]        // Битрикс24 ID получателей
+  type: NotifyType
+  document_id: string
+  document_title: string
+  document_number: string
+  extra?: string
+}
+
+function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
+  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+  const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${documentId}`
+  const doc = `${documentNumber} — ${documentTitle} [${link}]`
+
+  const messages: Record<NotifyType, string> = {
+    document_created:    `📄 Создан новый документ: ${doc}`,
+    sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
+    approval_required:   `⚡ Требуется ваше согласование: ${doc}`,
+    document_approved:   `✅ Документ согласован: ${doc}`,
+    document_rejected:   `❌ Документ отклонён: ${doc}${extra ? `\nПричина: ${extra}` : ''}`,
+    documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
+    checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
+    checklist_deadline:  `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
+  }
+  return messages[type] ?? `Уведомление по документу: ${doc}`
+}
+
+export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
+  if (!opts.recipients || opts.recipients.length === 0) return
+
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) {
+    console.error('BITRIX_WEBHOOK_URL не задан')
+    return
+  }
+
+  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
+
+  await Promise.all(
+    opts.recipients.map(async (userId) => {
+      try {
+        const url = `${webhookUrl}im.notify.system.add.json`
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            USER_ID: userId,
+            MESSAGE: message,
+          }),
+        })
+        const data = await res.json()
+        if (data.error) {
+          console.error(`Bitrix notify error for user ${userId}:`, data.error)
+        }
+      } catch (err) {
+        console.error(`sendBitrixNotify error for user ${userId}:`, err)
+      }
+    })
   )
 }
 </file>
