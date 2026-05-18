@@ -118,11 +118,16 @@ export default function ExecutionControl({
   const canGenerate = canManage && ['подписан', 'на_исполнении'].includes(contractStatus)
 
   // Состояние для создания задач в Битрикс24
-  const [taskLoading, setTaskLoading] = useState<string | null>(null) // id пункта или 'all'
+  const [taskLoading, setTaskLoading] = useState<string | null>(null)
   const [showTaskModal, setShowTaskModal] = useState(false)
-  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null) // null = все задачи
+  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null)
   const [taskResponsibleId, setTaskResponsibleId] = useState<number>(authorBitrixId ?? 30)
   const [taskResponsibleName, setTaskResponsibleName] = useState('')
+  // Список сотрудников для выбора исполнителя
+  const [companyUsers, setCompanyUsers] = useState<{id: number, name: string, position: string}[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
 
   useEffect(() => {
     loadItems()
@@ -211,12 +216,30 @@ export default function ExecutionControl({
     }
   }
 
+  // Загрузить сотрудников компании
+  const loadCompanyUsers = async () => {
+    if (companyUsers.length > 0) return // уже загружены
+    setUsersLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-users?prefix=${companyPrefix}`)
+      const data = await res.json()
+      setCompanyUsers(data.users ?? [])
+    } catch {
+      console.error('Ошибка загрузки сотрудников')
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
   // Открыть модал для одного пункта
   const openTaskModal = (item: ChecklistItem) => {
     setTaskModalItem(item)
     setTaskResponsibleId(authorBitrixId ?? 30)
     setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
     setShowTaskModal(true)
+    loadCompanyUsers()
   }
 
   // Открыть модал для всех пунктов
@@ -224,7 +247,10 @@ export default function ExecutionControl({
     setTaskModalItem(null)
     setTaskResponsibleId(authorBitrixId ?? 30)
     setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
     setShowTaskModal(true)
+    loadCompanyUsers()
   }
 
   // Создать задачу для одного пункта
@@ -782,23 +808,57 @@ export default function ExecutionControl({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Исполнитель <span className="text-gray-400 font-normal">(по умолчанию — автор документа)</span>
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={taskResponsibleId}
-                  onChange={e => setTaskResponsibleId(Number(e.target.value))}
-                  placeholder="Bitrix ID"
-                  className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
+              <div className="relative">
                 <input
                   type="text"
-                  value={taskResponsibleName}
-                  onChange={e => setTaskResponsibleName(e.target.value)}
-                  placeholder="Имя (для справки)"
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={userSearch}
+                  onChange={e => {
+                    setUserSearch(e.target.value)
+                    setShowUserDropdown(true)
+                  }}
+                  onFocus={() => setShowUserDropdown(true)}
+                  placeholder={usersLoading ? 'Загрузка сотрудников...' : 'Начните вводить фамилию...'}
+                  disabled={usersLoading}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
                 />
+                {/* Выбранный пользователь */}
+                {taskResponsibleId && taskResponsibleName && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1">
+                    <span>✓ {taskResponsibleName}</span>
+                    <button
+                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
+                      className="text-gray-400 hover:text-red-500 ml-auto"
+                    >✕</button>
+                  </div>
+                )}
+                {/* Выпадающий список */}
+                {showUserDropdown && userSearch.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {companyUsers
+                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
+                      .map(u => (
+                        <button
+                          key={u.id}
+                          onClick={() => {
+                            setTaskResponsibleId(u.id)
+                            setTaskResponsibleName(u.name)
+                            setUserSearch(u.name)
+                            setShowUserDropdown(false)
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-medium">{u.name}</span>
+                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
+                        </button>
+                      ))
+                    }
+                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-400">Сотрудник не найден</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-gray-400 mt-2">
                 Постановщик — ГД компании {companyPrefix}. Исполнитель выбирается выше.
               </p>
             </div>
