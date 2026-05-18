@@ -68,6 +68,25 @@ export async function POST(
         user_name: added_by_name ?? 'Система',
       })
 
+    // Уведомляем добавленного участника
+    if (bitrix_user_id && contract_id) {
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        await sendBitrixNotify({
+          recipients: [bitrix_user_id],
+          type: 'approval_required',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+      }
+    }
+
     // Если сессия завершена — возвращаем статусы на активные
     if (session.status === 'completed') {
       await supabase

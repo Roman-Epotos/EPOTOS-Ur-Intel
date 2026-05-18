@@ -130,10 +130,30 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (contractData) {
+        // Получаем участников последней сессии согласования
+        const { data: lastSession } = await supabase
+          .from('approval_sessions')
+          .select('id')
+          .eq('contract_id', contract_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        let participantIds: number[] = []
+        if (lastSession) {
+          const { data: participantsData } = await supabase
+            .from('approval_participants')
+            .select('bitrix_user_id')
+            .eq('session_id', lastSession.id)
+            .not('bitrix_user_id', 'is', null)
+          participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        }
+
         const gcManagerIds = [1, 246, 504]
         const recipients = [...new Set([
           ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
           ...gcManagerIds,
+          ...participantIds,
         ])]
         await sendBitrixNotify({
           recipients,
