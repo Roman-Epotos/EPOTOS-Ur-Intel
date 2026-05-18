@@ -1080,6 +1080,7 @@ interface ChecklistItem {
   done_by_bitrix_id: number | null
   source_document: string | null
   created_at: string
+  bitrix_task_id: string | null
 }
 
 interface Version {
@@ -1100,6 +1101,10 @@ interface Attachment {
 interface Props {
   contractId: string
   contractStatus: string
+  contractNumber: string
+  contractTitle: string
+  companyPrefix: string
+  authorBitrixId?: number
   versions: Version[]
   attachments: Attachment[]
   userName?: string
@@ -1129,7 +1134,9 @@ const CAT_LABELS: Record<string, string> = {
 }
 
 export default function ExecutionControl({
-  contractId, contractStatus, versions, attachments,
+  contractId, contractStatus, contractNumber, contractTitle, companyPrefix,
+  authorBitrixId,
+  versions, attachments,
   userName, userId, sessionParticipantBitrixIds = [], onStatusChange,
 }: Props) {
 
@@ -1173,6 +1180,13 @@ export default function ExecutionControl({
     : false
 
   const canGenerate = canManage && ['подписан', 'на_исполнении'].includes(contractStatus)
+
+  // Состояние для создания задач в Битрикс24
+  const [taskLoading, setTaskLoading] = useState<string | null>(null) // id пункта или 'all'
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null) // null = все задачи
+  const [taskResponsibleId, setTaskResponsibleId] = useState<number>(authorBitrixId ?? 30)
+  const [taskResponsibleName, setTaskResponsibleName] = useState('')
 
   useEffect(() => {
     loadItems()
@@ -1258,6 +1272,101 @@ export default function ExecutionControl({
       alert('Ошибка соединения')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // Открыть модал для одного пункта
+  const openTaskModal = (item: ChecklistItem) => {
+    setTaskModalItem(item)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setShowTaskModal(true)
+  }
+
+  // Открыть модал для всех пунктов
+  const openBulkTaskModal = () => {
+    setTaskModalItem(null)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setShowTaskModal(true)
+  }
+
+  // Создать задачу для одного пункта
+  const createSingleTask = async () => {
+    if (!taskModalItem) return
+    setTaskLoading(taskModalItem.id)
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          checklist_item_id: taskModalItem.id,
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          item_title: taskModalItem.title,
+          item_description: taskModalItem.description,
+          due_date: taskModalItem.due_date,
+          responsible_bitrix_id: taskResponsibleId,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+      } else {
+        alert('Ошибка создания задачи: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  // Создать задачи для всех пунктов
+  const createBulkTasks = async () => {
+    const pendingItems = items.filter(i => !i.bitrix_task_id)
+    if (pendingItems.length === 0) {
+      alert('Все задачи уже созданы в Битрикс24')
+      setShowTaskModal(false)
+      return
+    }
+    setTaskLoading('all')
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          responsible_bitrix_id: taskResponsibleId,
+          items: pendingItems.map(i => ({
+            id: i.id,
+            title: i.title,
+            description: i.description,
+            due_date: i.due_date,
+            bitrix_task_id: i.bitrix_task_id,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        const created = data.results.filter((r: { skipped?: boolean }) => !r.skipped).length
+        const skipped = data.results.filter((r: { skipped?: boolean }) => r.skipped).length
+        alert(`✅ Создано задач: ${created}${skipped ? `\nПропущено (уже созданы): ${skipped}` : ''}`)
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
     }
   }
 
@@ -1478,6 +1587,23 @@ export default function ExecutionControl({
             ? <p className="text-sm text-gray-500">Нажмите «Сгенерировать чек-лист» — AI проанализирует все документы и составит план исполнения</p>
             : <p className="text-sm text-gray-400">Чек-лист будет доступен после загрузки подписанных документов</p>
           }
+        </div>
+      )}
+
+      {/* Кнопка создать все задачи в Б24 */}
+      {!loading && items.length > 0 && canManage && activeSection === 'checklist' && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={openBulkTaskModal}
+            disabled={taskLoading === 'all'}
+            className="flex items-center gap-2 text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+          >
+            {taskLoading === 'all' ? (
+              <><span className="animate-spin">⏳</span> Создаём задачи...</>
+            ) : (
+              <><span>📋</span> Создать все в Битрикс24</>
+            )}
+          </button>
         </div>
       )}
 

@@ -1197,6 +1197,10 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
             <ExecutionControl
               contractId={contract.id}
               contractStatus={contractStatus}
+              contractNumber={contract.number ?? ''}
+              contractTitle={contract.title ?? ''}
+              companyPrefix={(contract.number ?? '').split('-')[0]}
+              authorBitrixId={contract.author_bitrix_id ?? undefined}
               versions={versions.map(v => ({
                 id: v.id,
                 file_url: v.file_url,

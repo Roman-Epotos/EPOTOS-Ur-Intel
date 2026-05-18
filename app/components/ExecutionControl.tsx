@@ -16,6 +16,7 @@ interface ChecklistItem {
   done_by_bitrix_id: number | null
   source_document: string | null
   created_at: string
+  bitrix_task_id: string | null
 }
 
 interface Version {
@@ -36,6 +37,10 @@ interface Attachment {
 interface Props {
   contractId: string
   contractStatus: string
+  contractNumber: string
+  contractTitle: string
+  companyPrefix: string
+  authorBitrixId?: number
   versions: Version[]
   attachments: Attachment[]
   userName?: string
@@ -65,7 +70,9 @@ const CAT_LABELS: Record<string, string> = {
 }
 
 export default function ExecutionControl({
-  contractId, contractStatus, versions, attachments,
+  contractId, contractStatus, contractNumber, contractTitle, companyPrefix,
+  authorBitrixId,
+  versions, attachments,
   userName, userId, sessionParticipantBitrixIds = [], onStatusChange,
 }: Props) {
 
@@ -109,6 +116,13 @@ export default function ExecutionControl({
     : false
 
   const canGenerate = canManage && ['подписан', 'на_исполнении'].includes(contractStatus)
+
+  // Состояние для создания задач в Битрикс24
+  const [taskLoading, setTaskLoading] = useState<string | null>(null) // id пункта или 'all'
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null) // null = все задачи
+  const [taskResponsibleId, setTaskResponsibleId] = useState<number>(authorBitrixId ?? 30)
+  const [taskResponsibleName, setTaskResponsibleName] = useState('')
 
   useEffect(() => {
     loadItems()
@@ -194,6 +208,101 @@ export default function ExecutionControl({
       alert('Ошибка соединения')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // Открыть модал для одного пункта
+  const openTaskModal = (item: ChecklistItem) => {
+    setTaskModalItem(item)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setShowTaskModal(true)
+  }
+
+  // Открыть модал для всех пунктов
+  const openBulkTaskModal = () => {
+    setTaskModalItem(null)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setShowTaskModal(true)
+  }
+
+  // Создать задачу для одного пункта
+  const createSingleTask = async () => {
+    if (!taskModalItem) return
+    setTaskLoading(taskModalItem.id)
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          checklist_item_id: taskModalItem.id,
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          item_title: taskModalItem.title,
+          item_description: taskModalItem.description,
+          due_date: taskModalItem.due_date,
+          responsible_bitrix_id: taskResponsibleId,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+      } else {
+        alert('Ошибка создания задачи: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  // Создать задачи для всех пунктов
+  const createBulkTasks = async () => {
+    const pendingItems = items.filter(i => !i.bitrix_task_id)
+    if (pendingItems.length === 0) {
+      alert('Все задачи уже созданы в Битрикс24')
+      setShowTaskModal(false)
+      return
+    }
+    setTaskLoading('all')
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          responsible_bitrix_id: taskResponsibleId,
+          items: pendingItems.map(i => ({
+            id: i.id,
+            title: i.title,
+            description: i.description,
+            due_date: i.due_date,
+            bitrix_task_id: i.bitrix_task_id,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        const created = data.results.filter((r: { skipped?: boolean }) => !r.skipped).length
+        const skipped = data.results.filter((r: { skipped?: boolean }) => r.skipped).length
+        alert(`✅ Создано задач: ${created}${skipped ? `\nПропущено (уже созданы): ${skipped}` : ''}`)
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
     }
   }
 
@@ -417,6 +526,23 @@ export default function ExecutionControl({
         </div>
       )}
 
+      {/* Кнопка создать все задачи в Б24 */}
+      {!loading && items.length > 0 && canManage && activeSection === 'checklist' && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={openBulkTaskModal}
+            disabled={taskLoading === 'all'}
+            className="flex items-center gap-2 text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+          >
+            {taskLoading === 'all' ? (
+              <><span className="animate-spin">⏳</span> Создаём задачи...</>
+            ) : (
+              <><span>📋</span> Создать все в Битрикс24</>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Чек-лист */}
       {!loading && items.length > 0 && activeSection === 'checklist' && (
         <div>
@@ -483,6 +609,25 @@ export default function ExecutionControl({
                             <span className="text-xs text-emerald-600">✓ {item.done_by_name}</span>
                           )}
                         </div>
+                        {/* Кнопка / ссылка Битрикс24 */}
+                        {item.bitrix_task_id ? (
+                          
+                            href={`https://gkepotos.bitrix24.ru/company/personal/user/30/tasks/task/view/${item.bitrix_task_id}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                          >
+                            ✅ Задача в Б24 #{item.bitrix_task_id}
+                          </a>
+                        ) : canManage && (
+                          <button
+                            onClick={() => openTaskModal(item)}
+                            disabled={taskLoading === item.id}
+                            className="mt-1 text-xs text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                          >
+                            {taskLoading === item.id ? '⏳ Создаём...' : '+ Создать задачу в Б24'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -609,6 +754,66 @@ export default function ExecutionControl({
               <button onClick={() => setEditingItem(null)}
                 className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
                 Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал выбора исполнителя задачи Битрикс24 */}
+      {showTaskModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              {taskModalItem ? '📋 Создать задачу в Битрикс24' : '📋 Создать все задачи в Битрикс24'}
+            </h3>
+            {taskModalItem && (
+              <p className="text-sm text-gray-500 mb-4 line-clamp-2">{taskModalItem.title}</p>
+            )}
+            {!taskModalItem && (
+              <p className="text-sm text-gray-500 mb-4">
+                Будет создано <b>{items.filter(i => !i.bitrix_task_id).length}</b> задач
+                {items.filter(i => i.bitrix_task_id).length > 0 && (
+                  <span className="text-gray-400"> (уже созданы: {items.filter(i => i.bitrix_task_id).length})</span>
+                )}
+              </p>
+            )}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Исполнитель <span className="text-gray-400 font-normal">(по умолчанию — автор документа)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={taskResponsibleId}
+                  onChange={e => setTaskResponsibleId(Number(e.target.value))}
+                  placeholder="Bitrix ID"
+                  className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  value={taskResponsibleName}
+                  onChange={e => setTaskResponsibleName(e.target.value)}
+                  placeholder="Имя (для справки)"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Постановщик — ГД компании {companyPrefix}. Исполнитель выбирается выше.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowTaskModal(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={taskModalItem ? createSingleTask : createBulkTasks}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Создать задач{taskModalItem ? 'у' : 'и'}
               </button>
             </div>
           </div>
