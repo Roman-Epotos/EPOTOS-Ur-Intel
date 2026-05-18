@@ -16,12 +16,13 @@ export async function POST(
     const body = await request.json()
     const { participant_id, comment, user_name, contract_id } = body
     const isAcknowledge = body.is_acknowledge === true
+    const isRejected = body.is_rejected === true
 
     // Обновляем статус участника
     const { error: updateError } = await supabase
       .from('approval_participants')
       .update({
-        status: isAcknowledge ? 'acknowledged' : 'approved',
+        status: isAcknowledge ? 'acknowledged' : isRejected ? 'rejected' : 'approved',
         comment: comment || null,
         decided_at: new Date().toISOString(),
       })
@@ -31,12 +32,44 @@ export async function POST(
       return NextResponse.json({ error: updateError.message }, { status: 400 })
     }
 
+    // При отклонении — меняем статус контракта и сессии
+    if (isRejected) {
+      const { data: sessionData } = await supabase
+        .from('approval_sessions')
+        .select('contract_id')
+        .eq('id', sessionId)
+        .single()
+
+      const actualContractId = sessionData?.contract_id ?? contract_id
+
+      await supabase.from('contracts').update({ status: 'отклонён' }).eq('id', actualContractId)
+      await supabase.from('approval_sessions').update({ status: 'cancelled' }).eq('id', sessionId)
+
+      // Уведомляем автора
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', actualContractId)
+        .single()
+
+      if (contractData?.author_bitrix_id) {
+        await sendBitrixNotify({
+          recipients: [contractData.author_bitrix_id],
+          type: 'document_rejected',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+          extra: comment ?? undefined,
+        })
+      }
+    }
+
     // Записываем в лог
     await supabase
       .from('contract_logs')
       .insert({
         contract_id,
-        action: isAcknowledge ? 'Ознакомлен' : 'Согласовано',
+        action: isAcknowledge ? 'Ознакомлен' : isRejected ? 'Отклонено' : 'Согласовано',
         details: isAcknowledge
           ? 'Участник ознакомился(ась) с документом'
           : comment ? `Комментарий: ${comment}` : 'Без комментария',
@@ -50,7 +83,9 @@ export async function POST(
         session_id: sessionId,
         message: isAcknowledge
           ? `👁 ${user_name} ознакомлен с документом`
-          : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
+          : isRejected
+            ? `❌ ${user_name} отклонил(а) документ${comment ? `. Причина: «${comment}»` : ''}`
+            : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
         author_name: 'Система',
         is_ai: false,
       })

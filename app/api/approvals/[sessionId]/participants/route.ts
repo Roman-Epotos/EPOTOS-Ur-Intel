@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -149,7 +150,7 @@ export async function DELETE(
     // Получаем участника
     const { data: participant } = await supabase
       .from('approval_participants')
-      .select('user_name, role')
+      .select('user_name, role, bitrix_user_id')
       .eq('id', participant_id)
       .single()
 
@@ -165,6 +166,26 @@ export async function DELETE(
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Уведомляем исключённого участника
+    if (participant.bitrix_user_id && contract_id) {
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        await sendBitrixNotify({
+          recipients: [participant.bitrix_user_id],
+          type: 'document_rejected',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+          extra: `Вы исключены из согласования администратором (${admin_name})`,
+        })
+      }
     }
 
     // Сообщение в чат

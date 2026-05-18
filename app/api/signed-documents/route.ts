@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -121,6 +122,28 @@ export async function POST(request: NextRequest) {
         user_name: user_name || 'Система',
       })
 
+      // Уведомляем автора и gc_manager
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        const gcManagerIds = [1, 246, 504]
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+        ])]
+        await sendBitrixNotify({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+      }
+
       return NextResponse.json({ success: true, status: 'подписан' })
     }
 
@@ -193,6 +216,28 @@ export async function POST(request: NextRequest) {
         details: 'Статус изменён на "Подписанные документы загружены"',
         user_name: user_name || 'Система',
       })
+
+      // Уведомляем автора и gc_manager
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        const gcManagerIds = [1, 246, 504]
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+        ])]
+        await sendBitrixNotify({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+      }
 
       return NextResponse.json({ success: true, status: 'подписан' })
     }
