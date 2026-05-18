@@ -134,16 +134,31 @@ export async function POST(
           user_name: 'Система',
         })
 
-      // Уведомляем автора о полном согласовании
+      // Уведомляем автора + всех участников о полном согласовании
       const { data: contractData } = await supabase
         .from('contracts')
         .select('title, number, author_bitrix_id')
         .eq('id', actualContractId)
         .single()
 
-      if (contractData?.author_bitrix_id) {
+      if (contractData) {
+        const { data: participantsData } = await supabase
+          .from('approval_participants')
+          .select('bitrix_user_id')
+          .eq('session_id', sessionId)
+          .not('bitrix_user_id', 'is', null)
+
+        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        const gcManagerIds = [1, 246, 504]
+
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+          ...participantIds,
+        ])]
+
         await sendBitrixNotify({
-          recipients: [contractData.author_bitrix_id],
+          recipients,
           type: 'document_approved',
           document_id: actualContractId,
           document_title: contractData.title ?? '',
