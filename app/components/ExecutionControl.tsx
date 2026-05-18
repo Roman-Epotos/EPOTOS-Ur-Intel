@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 
@@ -611,7 +611,7 @@ export default function ExecutionControl({
                         </div>
                         {/* Кнопка / ссылка Битрикс24 */}
                         {item.bitrix_task_id ? (
-                          
+                          <a
                             href={`https://gkepotos.bitrix24.ru/company/personal/user/30/tasks/task/view/${item.bitrix_task_id}/`}
                             target="_blank"
                             rel="noopener noreferrer"
