@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+﻿import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
 
@@ -80,8 +80,6 @@ export async function POST(
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
           extra: comment ?? undefined,
-        })
-      } undefined,
         })
       }
     }
