@@ -305,14 +305,15 @@ export default function ExecutionControl({
     }
   }
 
-  // Создать задачи для всех пунктов
+  // Создать одну задачу с чек-листом из всех пунктов
   const createBulkTasks = async () => {
-    const pendingItems = items.filter(i => !i.bitrix_task_id)
-    if (pendingItems.length === 0) {
-      alert('Все задачи уже созданы в Битрикс24')
+    const allItems = items.filter(i => !i.is_done)
+    if (allItems.length === 0) {
+      alert('Нет активных пунктов для создания задачи')
       setShowTaskModal(false)
       return
     }
+    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
     setTaskLoading('all')
     setShowTaskModal(false)
     try {
@@ -325,21 +326,20 @@ export default function ExecutionControl({
           contract_title: contractTitle,
           company_prefix: companyPrefix,
           responsible_bitrix_id: taskResponsibleId,
-          items: pendingItems.map(i => ({
+          task_title: title,
+          mode: 'single_with_checklist',
+          items: allItems.map(i => ({
             id: i.id,
             title: i.title,
             description: i.description,
             due_date: i.due_date,
-            bitrix_task_id: i.bitrix_task_id,
           })),
         }),
       })
       const data = await res.json()
       if (data.success) {
         await loadItems()
-        const created = data.results.filter((r: { skipped?: boolean }) => !r.skipped).length
-        const skipped = data.results.filter((r: { skipped?: boolean }) => r.skipped).length
-        alert(`✅ Создано задач: ${created}${skipped ? `\nПропущено (уже созданы): ${skipped}` : ''}`)
+        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
       } else {
         alert('Ошибка: ' + data.error)
       }
