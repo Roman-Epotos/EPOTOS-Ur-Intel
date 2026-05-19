@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
       responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
       // Для создания всех задач сразу
       items,  // массив {id, title, description, due_date} если bulk
+      mode,   // 'single_with_checklist' для одной задачи с чек-листом
+      task_title, // название задачи для single_with_checklist
     } = body
 
     if (!contract_id || !company_prefix) {
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     // === SINGLE WITH CHECKLIST: одна задача с чек-листом ===
     if (mode === 'single_with_checklist' && items && Array.isArray(items)) {
-      const taskTitle = body.task_title || `Контроль договора № ${contract_number}`
+      const taskTitle = task_title || `Контроль договора № ${contract_number}`
 
       // Дедлайн = максимальная дата из пунктов
       const dates = items
