@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       const dates = items
         .map((i: { due_date?: string }) => i.due_date)
         .filter(Boolean)
-        .map((d: string) => new Date(d).getTime())
+        .map((d: string | undefined) => new Date(d!).getTime())
       const maxDeadline = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null
 
       const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
