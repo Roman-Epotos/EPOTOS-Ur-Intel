@@ -1,7 +1,3 @@
-$content = @'
-// Вспомогательная функция для отправки уведомлений Битрикс24
-// Используется из других API роутов
-
 export type NotifyType =
   | 'document_created'
   | 'sent_for_approval'
@@ -75,5 +71,3 @@ export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
     } catch (err) { console.error(`sendBitrixMessage error for user ${userId}:`, err) }
   }))
 }
-'@
-[System.IO.File]::WriteAllText("app\lib\notify.ts", $content, [System.Text.Encoding]::UTF8)
