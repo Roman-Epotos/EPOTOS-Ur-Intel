@@ -94,6 +94,65 @@ export async function POST(request: NextRequest) {
       return { bitrix_task_id: taskId }
     }
 
+    // === SINGLE WITH CHECKLIST: одна задача с чек-листом ===
+    if (mode === 'single_with_checklist' && items && Array.isArray(items)) {
+      const taskTitle = body.task_title || `Контроль договора № ${contract_number}`
+
+      // Дедлайн = максимальная дата из пунктов
+      const dates = items
+        .map((i: { due_date?: string }) => i.due_date)
+        .filter(Boolean)
+        .map((d: string) => new Date(d).getTime())
+      const maxDeadline = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null
+
+      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const noDeadlineNote = !maxDeadline
+        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!'
+        : ''
+
+      const fields: Record<string, unknown> = {
+        TITLE: taskTitle,
+        DESCRIPTION: `${contractRef}${noDeadlineNote}`,
+        DESCRIPTION_IN_BBCODE: 'Y',
+        RESPONSIBLE_ID: String(responsible_bitrix_id),
+        CREATED_BY: String(directorId),
+        PRIORITY: '1',
+      }
+      if (maxDeadline) fields.DEADLINE = maxDeadline
+
+      // Создаём задачу
+      const taskResp = await fetch(`${WEBHOOK}tasks.task.add.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      })
+      const taskData = await taskResp.json()
+
+      if (taskData.error) {
+        return NextResponse.json(
+          { error: taskData.error_description ?? taskData.error },
+          { status: 400 }
+        )
+      }
+
+      const taskId = String(taskData.result?.task?.id)
+
+      // Добавляем пункты как чек-лист задачи
+      for (const item of items) {
+        await fetch(`${WEBHOOK}tasks.task.checklistitem.add.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            fields: { TITLE: item.title },
+          }),
+        })
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      return NextResponse.json({ success: true, bitrix_task_id: taskId })
+    }
+
     // === BULK: создать все задачи ===
     if (items && Array.isArray(items)) {
       const results = []

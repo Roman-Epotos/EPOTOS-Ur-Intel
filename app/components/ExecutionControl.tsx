@@ -129,6 +129,12 @@ export default function ExecutionControl({
   const [userSearch, setUserSearch] = useState('')
   const [showUserDropdown, setShowUserDropdown] = useState(false)
 
+  // Режим выбора пунктов для задачи Б24
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [showSelectedTaskModal, setShowSelectedTaskModal] = useState(false)
+  const [selectedTaskTitle, setSelectedTaskTitle] = useState('')
+
   useEffect(() => {
     loadItems()
   }, [contractId])
@@ -253,6 +259,18 @@ export default function ExecutionControl({
     loadCompanyUsers()
   }
 
+  // Открыть модал для выбранных пунктов
+  const openSelectedTaskModal = () => {
+    if (selectedItemIds.size === 0) return
+    setTaskModalItem(null)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
+    setShowSelectedTaskModal(true)
+    loadCompanyUsers()
+  }
+
   // Создать задачу для одного пункта
   const createSingleTask = async () => {
     if (!taskModalItem) return
@@ -322,6 +340,50 @@ export default function ExecutionControl({
         const created = data.results.filter((r: { skipped?: boolean }) => !r.skipped).length
         const skipped = data.results.filter((r: { skipped?: boolean }) => r.skipped).length
         alert(`✅ Создано задач: ${created}${skipped ? `\nПропущено (уже созданы): ${skipped}` : ''}`)
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  // Создать одну задачу с чек-листом из выбранных пунктов
+  const createSelectedTask = async () => {
+    const selected = items.filter(i => selectedItemIds.has(i.id))
+    if (selected.length === 0) return
+    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
+    setShowSelectedTaskModal(false)
+    setTaskLoading('selected')
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          responsible_bitrix_id: taskResponsibleId,
+          task_title: title,
+          mode: 'single_with_checklist',
+          items: selected.map(i => ({
+            id: i.id,
+            title: i.title,
+            description: i.description,
+            due_date: i.due_date,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        setSelectionMode(false)
+        setSelectedItemIds(new Set())
+        setSelectedTaskTitle('')
+        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
       } else {
         alert('Ошибка: ' + data.error)
       }
@@ -552,18 +614,44 @@ export default function ExecutionControl({
         </div>
       )}
 
-      {/* Кнопка создать все задачи в Б24 */}
+      {/* Кнопки управления задачами Б24 */}
       {!loading && items.length > 0 && canManage && activeSection === 'checklist' && (
-        <div className="flex justify-end mb-3">
+        <div className="flex flex-wrap justify-end gap-2 mb-3">
+          {/* Кнопка режима выбора */}
+          {!selectionMode ? (
+            <button
+              onClick={() => { setSelectionMode(true); setSelectedItemIds(new Set()) }}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+            >
+              <span>☑️</span> Выбрать пункты
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => { setSelectionMode(false); setSelectedItemIds(new Set()) }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                ✕ Отмена выбора
+              </button>
+              <button
+                onClick={openSelectedTaskModal}
+                disabled={selectedItemIds.size === 0}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 transition-colors"
+              >
+                📋 Создать задачу из выбранных ({selectedItemIds.size})
+              </button>
+            </>
+          )}
+          {/* Создать задачу из всех пунктов */}
           <button
             onClick={openBulkTaskModal}
             disabled={taskLoading === 'all'}
             className="flex items-center gap-2 text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
           >
             {taskLoading === 'all' ? (
-              <><span className="animate-spin">⏳</span> Создаём задачи...</>
+              <><span className="animate-spin">⏳</span> Создаём...</>
             ) : (
-              <><span>📋</span> Создать все в Битрикс24</>
+              <><span>📋</span> Создать задачу из всех пунктов</>
             )}
           </button>
         </div>
@@ -582,6 +670,33 @@ export default function ExecutionControl({
                   <div key={item.id}
                     className={`rounded-lg border border-gray-200 bg-white p-3 transition-opacity ${item.is_done ? 'opacity-60' : ''}`}>
                     <div className="flex items-start gap-3">
+                      {/* Синий чекбокс выбора (только в режиме selectionMode) */}
+                      {selectionMode && (
+                        <button
+                          onClick={() => {
+                            if (item.is_done) return
+                            setSelectedItemIds(prev => {
+                              const next = new Set(prev)
+                              next.has(item.id) ? next.delete(item.id) : next.add(item.id)
+                              return next
+                            })
+                          }}
+                          disabled={item.is_done}
+                          className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                            item.is_done
+                              ? 'border-gray-200 bg-gray-100 cursor-not-allowed'
+                              : selectedItemIds.has(item.id)
+                              ? 'bg-purple-500 border-purple-500 text-white'
+                              : 'border-purple-300 hover:border-purple-500'
+                          }`}
+                        >
+                          {selectedItemIds.has(item.id) && !item.is_done && (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+                            </svg>
+                          )}
+                        </button>
+                      )}
                       {/* Чекбокс */}
                       <button onClick={() => toggleItem(item)} disabled={!canManage}
                         className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
@@ -780,6 +895,92 @@ export default function ExecutionControl({
               <button onClick={() => setEditingItem(null)}
                 className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
                 Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал создания задачи из выбранных пунктов */}
+      {showSelectedTaskModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              📋 Создать задачу из выбранных пунктов
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Выбрано пунктов: <b>{selectedItemIds.size}</b> — они станут чек-листом внутри задачи
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Название задачи
+              </label>
+              <input
+                type="text"
+                value={selectedTaskTitle}
+                onChange={e => setSelectedTaskTitle(e.target.value)}
+                placeholder={`Контроль договора № ${contractNumber}`}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Если не заполнить — будет использовано название по умолчанию
+              </p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Исполнитель
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={e => { setUserSearch(e.target.value); setShowUserDropdown(true) }}
+                  onFocus={() => setShowUserDropdown(true)}
+                  placeholder={usersLoading ? 'Загрузка...' : 'Начните вводить фамилию...'}
+                  disabled={usersLoading}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                />
+                {taskResponsibleId && taskResponsibleName && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-purple-700 bg-purple-50 rounded px-2 py-1">
+                    <span>✓ {taskResponsibleName}</span>
+                    <button
+                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
+                      className="text-gray-400 hover:text-red-500 ml-auto"
+                    >✕</button>
+                  </div>
+                )}
+                {showUserDropdown && userSearch.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                    {companyUsers
+                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
+                      .map(u => (
+                        <button key={u.id}
+                          onClick={() => { setTaskResponsibleId(u.id); setTaskResponsibleName(u.name); setUserSearch(u.name); setShowUserDropdown(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-medium">{u.name}</span>
+                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
+                        </button>
+                      ))}
+                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-400">Не найден</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowSelectedTaskModal(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={createSelectedTask}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              >
+                Создать задачу
               </button>
             </div>
           </div>
