@@ -53,21 +53,65 @@ export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
   }))
 }
 
-// Личное сообщение (im.message.add)
-export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
+// Создать групповой чат Битрикс24
+export async function createBitrixChat(opts: {
+  document_number: string
+  document_title: string
+  member_ids: number[]
+}): Promise<number | null> {
   const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
-  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
-  await Promise.all(opts.recipients.map(async (userId) => {
-    try {
-      const res = await fetch(`${webhookUrl}im.message.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ DIALOG_ID: userId, USER_ID: userId, MESSAGE: message }),
-      })
-      const data = await res.json()
-      if (data.error) console.error(`Bitrix message error for user ${userId}:`, data.error)
-    } catch (err) { console.error(`sendBitrixMessage error for user ${userId}:`, err) }
-  }))
+  if (!webhookUrl) return null
+  try {
+    const title = `Чат согласования ${opts.document_number} — ${opts.document_title}`
+    const res = await fetch(`${webhookUrl}im.chat.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        TYPE: 'OPEN',
+        TITLE: title,
+        USERS: opts.member_ids,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
+    const chatId = data.result
+    // Отправляем приветственное сообщение
+    await fetch(`${webhookUrl}im.message.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        DIALOG_ID: `chat${chatId}`,
+        MESSAGE: `🤖 Это автоматический чат уведомлений по документу ${opts.document_number} — ${opts.document_title}.\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
+      }),
+    })
+    return chatId
+  } catch (err) { console.error('createBitrixChat error:', err); return null }
+}
+
+// Добавить участника в чат Битрикс24
+export async function addUserToBitrixChat(chatId: number, userId: number): Promise<void> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+  try {
+    await fetch(`${webhookUrl}im.chat.user.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CHAT_ID: chatId, USERS: [userId] }),
+    })
+  } catch (err) { console.error('addUserToBitrixChat error:', err) }
+}
+
+// Отправить сообщение в групповой чат Битрикс24
+export async function sendBitrixChatMessage(chatId: number, message: string): Promise<void> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+  try {
+    const res = await fetch(`${webhookUrl}im.message.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ DIALOG_ID: `chat${chatId}`, MESSAGE: message }),
+    })
+    const data = await res.json()
+    if (data.error) console.error('Bitrix chat message error:', data.error)
+  } catch (err) { console.error('sendBitrixChatMessage error:', err) }
 }

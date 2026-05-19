@@ -1,6 +1,6 @@
 ﻿import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
+import { sendBitrixNotify, sendBitrixMessage, sendBitrixChatMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,6 +81,21 @@ export async function POST(
           document_number: contractData.number ?? '',
           extra: comment ?? undefined,
         })
+
+        // Сообщение в групповой чат Битрикс24
+        const { data: sessionInfo } = await supabase
+          .from('approval_sessions')
+          .select('bitrix_chat_id')
+          .eq('id', sessionId)
+          .single()
+        if (sessionInfo?.bitrix_chat_id) {
+          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
+          await sendBitrixChatMessage(
+            sessionInfo.bitrix_chat_id,
+            `❌ Документ отклонён: ${contractData.number} — ${contractData.title} [${link}]${comment ? `\nПричина: ${comment}` : ''}`
+          )
+        }
       }
     }
 
@@ -191,6 +206,21 @@ export async function POST(
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
+
+        // Сообщение в групповой чат Битрикс24
+        const { data: approvedSessionInfo } = await supabase
+          .from('approval_sessions')
+          .select('bitrix_chat_id')
+          .eq('id', sessionId)
+          .single()
+        if (approvedSessionInfo?.bitrix_chat_id) {
+          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
+          await sendBitrixChatMessage(
+            approvedSessionInfo.bitrix_chat_id,
+            `✅ Документ согласован: ${contractData.number} — ${contractData.title} [${link}]`
+          )
+        }
       }
     }
 

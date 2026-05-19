@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify } from '@/app/lib/notify'
+import { sendBitrixNotify, createBitrixChat } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,8 +88,32 @@ export async function POST(request: NextRequest) {
       .eq('id', contract_id)
       .single()
 
-    const participantIds = participants
-      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+    const { data: contractInfo } = await supabase
+      .from('contracts')
+      .select('title, number, author_bitrix_id')
+      .eq('id', contract_id)
+      .single()
+
+    // Создаём групповой чат Битрикс24
+    const chatMemberIds = [...new Set([
+      ...(contractInfo?.author_bitrix_id ? [contractInfo.author_bitrix_id] : []),
+      ...participants
+        .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+        .map((p: { bitrix_user_id: number }) => p.bitrix_user_id),
+    ])]
+    if (chatMemberIds.length > 0 && contractInfo) {
+      const chatId = await createBitrixChat({
+        document_number: contractInfo.number ?? '',
+        document_title: contractInfo.title ?? '',
+        member_ids: chatMemberIds,
+      })
+      if (chatId) {
+        await supabase
+          .from('approval_sessions')
+          .update({ bitrix_chat_id: chatId })
+          .eq('id', session.id)
+      }
+    }: number }) => p.bitrix_user_id)
       .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
 
     if (participantIds.length > 0 && contractInfo) {
