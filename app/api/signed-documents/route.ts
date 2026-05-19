@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify } from '@/app/lib/notify'
+import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -162,6 +162,13 @@ export async function POST(request: NextRequest) {
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
+        await sendBitrixMessage({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
       }
 
       return NextResponse.json({ success: true, status: 'подписан' })
@@ -251,6 +258,13 @@ export async function POST(request: NextRequest) {
           ...gcManagerIds,
         ])]
         await sendBitrixNotify({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+        await sendBitrixMessage({
           recipients,
           type: 'documents_uploaded',
           document_id: contract_id,

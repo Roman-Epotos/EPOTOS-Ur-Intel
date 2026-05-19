@@ -1610,152 +1610,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/bitrix-tasks/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
-
-// Постановщик = ГД компании по префиксу
-const COMPANY_DIRECTORS: Record<string, number> = {
-  'ТХ':  1,    // Чащина Елена — Ген. директор ООО Техно
-  'НПП': 592,  // директор НПП
-  'СПТ': 6,    // Валюк Андрей — ГД СПТ/ОС
-  'ОС':  6,
-  'Э-К': 954,  // директор Э-К
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const {
-      checklist_item_id,   // id пункта чек-листа (или null при создании всех)
-      contract_id,
-      contract_number,
-      contract_title,
-      company_prefix,
-      item_title,
-      item_description,
-      due_date,
-      responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
-      // Для создания всех задач сразу
-      items,  // массив {id, title, description, due_date} если bulk
-    } = body
-
-    if (!contract_id || !company_prefix) {
-      return NextResponse.json({ error: 'Не переданы обязательные поля' }, { status: 400 })
-    }
-
-    const directorId = COMPANY_DIRECTORS[company_prefix] ?? 1
-
-    // Функция создания одной задачи в Битрикс24
-    const createBitrixTask = async (
-      title: string,
-      description: string | null,
-      deadline: string | null,
-      responsibleId: number,
-      itemId: string
-    ): Promise<{ bitrix_task_id: string | null; error?: string }> => {
-      
-      // Формируем описание задачи
-      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
-      const noDeadlineNote = !deadline 
-        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 
-        : ''
-      const fullDescription = `${description || title}\n\n${contractRef}${noDeadlineNote}`
-
-      const fields: Record<string, unknown> = {
-        TITLE: title,
-        DESCRIPTION: fullDescription,
-        DESCRIPTION_IN_BBCODE: 'Y',
-        RESPONSIBLE_ID: String(responsibleId),
-        CREATED_BY: String(directorId),  // постановщик = ГД компании
-        PRIORITY: '1',
-      }
-
-      if (deadline) {
-        // Конвертируем дату в формат Битрикс (ISO 8601)
-        fields.DEADLINE = new Date(deadline).toISOString()
-      }
-
-      const url = `${WEBHOOK}tasks.task.add.json`
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
-      })
-
-      const data = await resp.json()
-
-      if (data.error) {
-        return { bitrix_task_id: null, error: data.error_description ?? data.error }
-      }
-
-      const taskId = String(data.result?.task?.id)
-
-      // Сохраняем bitrix_task_id в Supabase
-      await supabase
-        .from('contract_checklist')
-        .update({ bitrix_task_id: taskId })
-        .eq('id', itemId)
-
-      return { bitrix_task_id: taskId }
-    }
-
-    // === BULK: создать все задачи ===
-    if (items && Array.isArray(items)) {
-      const results = []
-      for (const item of items) {
-        // Пропускаем уже созданные
-        if (item.bitrix_task_id) {
-          results.push({ id: item.id, skipped: true, bitrix_task_id: item.bitrix_task_id })
-          continue
-        }
-        const result = await createBitrixTask(
-          item.title,
-          item.description,
-          item.due_date,
-          responsible_bitrix_id,
-          item.id
-        )
-        results.push({ id: item.id, ...result })
-        // Пауза между запросами чтобы не превысить лимит Битрикс
-        await new Promise(r => setTimeout(r, 300))
-      }
-      return NextResponse.json({ success: true, results })
-    }
-
-    // === SINGLE: создать одну задачу ===
-    if (!checklist_item_id || !item_title) {
-      return NextResponse.json({ error: 'Не переданы item данные' }, { status: 400 })
-    }
-
-    const result = await createBitrixTask(
-      item_title,
-      item_description,
-      due_date,
-      responsible_bitrix_id,
-      checklist_item_id
-    )
-
-    if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true, bitrix_task_id: result.bitrix_task_id })
-
-  } catch (err) {
-    console.error('bitrix-tasks error:', err)
-    return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/bitrix-users/route.ts">
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -1819,6 +1673,152 @@ export async function GET(request: NextRequest) {
     console.error('bitrix-users error:', err)
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
   }
+}
+</file>
+
+<file path="app/api/onlyoffice/callback/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const version_id = request.nextUrl.searchParams.get('version_id')
+    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
+    const body = await request.json()
+
+    console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
+    console.log('OnlyOffice body:', JSON.stringify(body))
+
+    // Статусы OnlyOffice:
+    // 1 - документ редактируется
+    // 2 - документ готов к сохранению
+    // 3 - ошибка сохранения
+    // 4 - документ закрыт без изменений
+    // 6 - принудительное сохранение
+
+    // Получаем имя пользователя из actions
+    const getUserName = async (userId: string): Promise<string> => {
+      const { data } = await supabase
+        .from('approval_settings')
+        .select('user_name')
+        .eq('bitrix_user_id', parseInt(userId))
+        .limit(1)
+        .single()
+      return data?.user_name ?? `Пользователь ID:${userId}`
+    }
+
+    // Записываем лог при начале редактирования (статус 1)
+    if (body.status === 1 && body.actions?.length > 0) {
+      const version = await supabase
+        .from('versions')
+        .select('*')
+        .eq('id', version_id)
+        .single()
+
+      if (version.data) {
+        const userId = body.actions[0]?.userid
+        const userName = userId ? await getUserName(userId) : 'Неизвестный'
+        await supabase.from('contract_logs').insert({
+          contract_id: version.data.contract_id,
+          action: 'Документ открыт на редактирование',
+          details: `Файл: ${version.data.file_name}`,
+          user_name: userName,
+        })
+      }
+    }
+
+    if (body.status === 2 || body.status === 6) {
+      if (!body.url || (!version_id && !attachment_id)) {
+        return NextResponse.json({ error: 0 })
+      }
+
+      // Скачиваем обновлённый файл от OnlyOffice
+      const fileResponse = await fetch(body.url)
+      const arrayBuffer = await fileResponse.arrayBuffer()
+      const buffer = new Uint8Array(arrayBuffer)
+
+      // Получаем имена редакторов
+      const actions = body.actions ?? []
+      const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
+      const userNames = await Promise.all(
+        userIds.map((uid) => getUserName(uid as string))
+      )
+      const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
+
+      if (version_id) {
+        // Режим версии документа
+        const { data: version } = await supabase
+          .from('versions')
+          .select('*')
+          .eq('id', version_id)
+          .single()
+
+        if (!version) return NextResponse.json({ error: 0 })
+
+        const filePath = version.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: version.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
+
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: version.contract_id,
+            action: 'Документ отредактирован в OnlyOffice',
+            details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
+      } else if (attachment_id) {
+        // Режим дополнительного материала
+        const { data: attachment } = await supabase
+          .from('document_attachments')
+          .select('*')
+          .eq('id', attachment_id)
+          .single()
+
+        if (!attachment) return NextResponse.json({ error: 0 })
+
+        const filePath = attachment.file_url.split('/contracts/')[1]
+        const { error: uploadError } = await supabase.storage
+          .from('contracts')
+          .update(filePath, buffer, {
+            contentType: attachment.file_name.endsWith('.xlsx')
+              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: true,
+          })
+
+        if (!uploadError) {
+          await supabase.from('contract_logs').insert({
+            contract_id: attachment.contract_id,
+            action: 'Дополнительный материал отредактирован в OnlyOffice',
+            details: `Файл: ${attachment.file_name}. Редактировал(и): ${editorsStr}`,
+            user_name: editorsStr,
+          })
+        }
+      }
+    }
+
+    // OnlyOffice ожидает ответ { error: 0 } для подтверждения
+    return NextResponse.json({ error: 0 })
+  } catch (err) {
+    console.error('Callback error:', err)
+    return NextResponse.json({ error: 0 })
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ error: 0 })
 }
 </file>
 
@@ -2950,156 +2950,10 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/onlyoffice/callback/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(request: NextRequest) {
-  try {
-    const version_id = request.nextUrl.searchParams.get('version_id')
-    const attachment_id = request.nextUrl.searchParams.get('attachment_id')
-    const body = await request.json()
-
-    console.log('OnlyOffice callback:', body.status, 'version_id:', version_id)
-    console.log('OnlyOffice body:', JSON.stringify(body))
-
-    // Статусы OnlyOffice:
-    // 1 - документ редактируется
-    // 2 - документ готов к сохранению
-    // 3 - ошибка сохранения
-    // 4 - документ закрыт без изменений
-    // 6 - принудительное сохранение
-
-    // Получаем имя пользователя из actions
-    const getUserName = async (userId: string): Promise<string> => {
-      const { data } = await supabase
-        .from('approval_settings')
-        .select('user_name')
-        .eq('bitrix_user_id', parseInt(userId))
-        .limit(1)
-        .single()
-      return data?.user_name ?? `Пользователь ID:${userId}`
-    }
-
-    // Записываем лог при начале редактирования (статус 1)
-    if (body.status === 1 && body.actions?.length > 0) {
-      const version = await supabase
-        .from('versions')
-        .select('*')
-        .eq('id', version_id)
-        .single()
-
-      if (version.data) {
-        const userId = body.actions[0]?.userid
-        const userName = userId ? await getUserName(userId) : 'Неизвестный'
-        await supabase.from('contract_logs').insert({
-          contract_id: version.data.contract_id,
-          action: 'Документ открыт на редактирование',
-          details: `Файл: ${version.data.file_name}`,
-          user_name: userName,
-        })
-      }
-    }
-
-    if (body.status === 2 || body.status === 6) {
-      if (!body.url || (!version_id && !attachment_id)) {
-        return NextResponse.json({ error: 0 })
-      }
-
-      // Скачиваем обновлённый файл от OnlyOffice
-      const fileResponse = await fetch(body.url)
-      const arrayBuffer = await fileResponse.arrayBuffer()
-      const buffer = new Uint8Array(arrayBuffer)
-
-      // Получаем имена редакторов
-      const actions = body.actions ?? []
-      const userIds = [...new Set(actions.map((a: {userid: string}) => a.userid))]
-      const userNames = await Promise.all(
-        userIds.map((uid) => getUserName(uid as string))
-      )
-      const editorsStr = userNames.length > 0 ? userNames.join(', ') : 'Неизвестный'
-
-      if (version_id) {
-        // Режим версии документа
-        const { data: version } = await supabase
-          .from('versions')
-          .select('*')
-          .eq('id', version_id)
-          .single()
-
-        if (!version) return NextResponse.json({ error: 0 })
-
-        const filePath = version.file_url.split('/contracts/')[1]
-        const { error: uploadError } = await supabase.storage
-          .from('contracts')
-          .update(filePath, buffer, {
-            contentType: version.file_name.endsWith('.xlsx')
-              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            upsert: true,
-          })
-
-        if (!uploadError) {
-          await supabase.from('contract_logs').insert({
-            contract_id: version.contract_id,
-            action: 'Документ отредактирован в OnlyOffice',
-            details: `Файл: ${version.file_name}. Редактировал(и): ${editorsStr}`,
-            user_name: editorsStr,
-          })
-        }
-      } else if (attachment_id) {
-        // Режим дополнительного материала
-        const { data: attachment } = await supabase
-          .from('document_attachments')
-          .select('*')
-          .eq('id', attachment_id)
-          .single()
-
-        if (!attachment) return NextResponse.json({ error: 0 })
-
-        const filePath = attachment.file_url.split('/contracts/')[1]
-        const { error: uploadError } = await supabase.storage
-          .from('contracts')
-          .update(filePath, buffer, {
-            contentType: attachment.file_name.endsWith('.xlsx')
-              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            upsert: true,
-          })
-
-        if (!uploadError) {
-          await supabase.from('contract_logs').insert({
-            contract_id: attachment.contract_id,
-            action: 'Дополнительный материал отредактирован в OnlyOffice',
-            details: `Файл: ${attachment.file_name}. Редактировал(и): ${editorsStr}`,
-            user_name: editorsStr,
-          })
-        }
-      }
-    }
-
-    // OnlyOffice ожидает ответ { error: 0 } для подтверждения
-    return NextResponse.json({ error: 0 })
-  } catch (err) {
-    console.error('Callback error:', err)
-    return NextResponse.json({ error: 0 })
-  }
-}
-
-export async function GET() {
-  return NextResponse.json({ error: 0 })
-}
-</file>
-
 <file path="app/api/approvals/[sessionId]/approve/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify } from '@/app/lib/notify'
+import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -3322,6 +3176,215 @@ export async function DELETE(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/bitrix-tasks/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
+
+// Постановщик = ГД компании по префиксу
+const COMPANY_DIRECTORS: Record<string, number> = {
+  'ТХ':  1,    // Чащина Елена — Ген. директор ООО Техно
+  'НПП': 592,  // директор НПП
+  'СПТ': 6,    // Валюк Андрей — ГД СПТ/ОС
+  'ОС':  6,
+  'Э-К': 954,  // директор Э-К
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      checklist_item_id,   // id пункта чек-листа (или null при создании всех)
+      contract_id,
+      contract_number,
+      contract_title,
+      company_prefix,
+      item_title,
+      item_description,
+      due_date,
+      responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
+      // Для создания всех задач сразу
+      items,  // массив {id, title, description, due_date} если bulk
+      mode,   // 'single_with_checklist' для одной задачи с чек-листом
+      task_title, // название задачи для single_with_checklist
+    } = body
+
+    if (!contract_id || !company_prefix) {
+      return NextResponse.json({ error: 'Не переданы обязательные поля' }, { status: 400 })
+    }
+
+    const directorId = COMPANY_DIRECTORS[company_prefix] ?? 1
+
+    // Функция создания одной задачи в Битрикс24
+    const createBitrixTask = async (
+      title: string,
+      description: string | null,
+      deadline: string | null,
+      responsibleId: number,
+      itemId: string
+    ): Promise<{ bitrix_task_id: string | null; error?: string }> => {
+      
+      // Формируем описание задачи
+      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const noDeadlineNote = !deadline 
+        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 
+        : ''
+      const fullDescription = `${description || title}\n\n${contractRef}${noDeadlineNote}`
+
+      const fields: Record<string, unknown> = {
+        TITLE: title,
+        DESCRIPTION: fullDescription,
+        DESCRIPTION_IN_BBCODE: 'Y',
+        RESPONSIBLE_ID: String(responsibleId),
+        CREATED_BY: String(directorId),  // постановщик = ГД компании
+        PRIORITY: '1',
+      }
+
+      if (deadline) {
+        // Конвертируем дату в формат Битрикс (ISO 8601)
+        fields.DEADLINE = new Date(deadline).toISOString()
+      }
+
+      const url = `${WEBHOOK}tasks.task.add.json`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      })
+
+      const data = await resp.json()
+
+      if (data.error) {
+        return { bitrix_task_id: null, error: data.error_description ?? data.error }
+      }
+
+      const taskId = String(data.result?.task?.id)
+
+      // Сохраняем bitrix_task_id в Supabase
+      await supabase
+        .from('contract_checklist')
+        .update({ bitrix_task_id: taskId })
+        .eq('id', itemId)
+
+      return { bitrix_task_id: taskId }
+    }
+
+    // === SINGLE WITH CHECKLIST: одна задача с чек-листом ===
+    if (mode === 'single_with_checklist' && items && Array.isArray(items)) {
+      const taskTitle = task_title || `Контроль договора № ${contract_number}`
+
+      // Дедлайн = максимальная дата из пунктов
+      const dates = items
+        .map((i: { due_date?: string }) => i.due_date)
+        .filter(Boolean)
+        .map((d: string | undefined) => new Date(d!).getTime())
+      const maxDeadline = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null
+
+      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const noDeadlineNote = !maxDeadline
+        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!'
+        : ''
+
+      const fields: Record<string, unknown> = {
+        TITLE: taskTitle,
+        DESCRIPTION: `${contractRef}${noDeadlineNote}`,
+        DESCRIPTION_IN_BBCODE: 'Y',
+        RESPONSIBLE_ID: String(responsible_bitrix_id),
+        CREATED_BY: String(directorId),
+        PRIORITY: '1',
+      }
+      if (maxDeadline) fields.DEADLINE = maxDeadline
+
+      // Создаём задачу
+      const taskResp = await fetch(`${WEBHOOK}tasks.task.add.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      })
+      const taskData = await taskResp.json()
+
+      if (taskData.error) {
+        return NextResponse.json(
+          { error: taskData.error_description ?? taskData.error },
+          { status: 400 }
+        )
+      }
+
+      const taskId = String(taskData.result?.task?.id)
+
+      // Добавляем пункты как чек-лист задачи
+      for (const item of items) {
+        const checkResp = await fetch(`${WEBHOOK}task.checklistitem.add.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            TASKID: taskId,
+            fields: { TITLE: item.title },
+          }),
+        })
+        const checkData = await checkResp.json()
+        console.log(`checklistitem.add taskId=${taskId} title="${item.title}":`, JSON.stringify(checkData))
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      return NextResponse.json({ success: true, bitrix_task_id: taskId })
+    }
+
+    // === BULK: создать все задачи ===
+    if (items && Array.isArray(items)) {
+      const results = []
+      for (const item of items) {
+        // Пропускаем уже созданные
+        if (item.bitrix_task_id) {
+          results.push({ id: item.id, skipped: true, bitrix_task_id: item.bitrix_task_id })
+          continue
+        }
+        const result = await createBitrixTask(
+          item.title,
+          item.description,
+          item.due_date,
+          responsible_bitrix_id,
+          item.id
+        )
+        results.push({ id: item.id, ...result })
+        // Пауза между запросами чтобы не превысить лимит Битрикс
+        await new Promise(r => setTimeout(r, 300))
+      }
+      return NextResponse.json({ success: true, results })
+    }
+
+    // === SINGLE: создать одну задачу ===
+    if (!checklist_item_id || !item_title) {
+      return NextResponse.json({ error: 'Не переданы item данные' }, { status: 400 })
+    }
+
+    const result = await createBitrixTask(
+      item_title,
+      item_description,
+      due_date,
+      responsible_bitrix_id,
+      checklist_item_id
+    )
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, bitrix_task_id: result.bitrix_task_id })
+
+  } catch (err) {
+    console.error('bitrix-tasks error:', err)
+    return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 })
   }
 }
 </file>

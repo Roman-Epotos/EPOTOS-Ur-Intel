@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify } from '@/app/lib/notify'
+import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,14 +52,36 @@ export async function POST(
         .eq('id', actualContractId)
         .single()
 
-      if (contractData?.author_bitrix_id) {
+      if (contractData) {
+        const { data: participantsData } = await supabase
+          .from('approval_participants')
+          .select('bitrix_user_id')
+          .eq('session_id', sessionId)
+          .not('bitrix_user_id', 'is', null)
+
+        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        const rejectedRecipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...participantIds,
+        ])]
+
         await sendBitrixNotify({
-          recipients: [contractData.author_bitrix_id],
+          recipients: rejectedRecipients,
           type: 'document_rejected',
           document_id: actualContractId,
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
           extra: comment ?? undefined,
+        })
+        await sendBitrixMessage({
+          recipients: rejectedRecipients,
+          type: 'document_rejected',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+          extra: comment ?? undefined,
+        })
+      } undefined,
         })
       }
     }
@@ -158,6 +180,13 @@ export async function POST(
         ])]
 
         await sendBitrixNotify({
+          recipients,
+          type: 'document_approved',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+        await sendBitrixMessage({
           recipients,
           type: 'document_approved',
           document_id: actualContractId,

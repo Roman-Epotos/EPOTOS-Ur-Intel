@@ -40,7 +40,38 @@ function buildMessage(type: NotifyType, documentTitle: string, documentNumber: s
   return messages[type] ?? `Уведомление по документу: ${doc}`
 }
 
-export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
+// Отправка личного сообщения в Битрикс24 (im.message.add)
+export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
+  if (!opts.recipients || opts.recipients.length === 0) return
+
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+
+  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
+
+  await Promise.all(
+    opts.recipients.map(async (userId) => {
+      try {
+        const url = `${webhookUrl}im.message.add.json`
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            DIALOG_ID: userId,
+            USER_ID: userId,
+            MESSAGE: message,
+          }),
+        })
+        const data = await res.json()
+        if (data.error) {
+          console.error(`Bitrix message error for user ${userId}:`, data.error)
+        }
+      } catch (err) {
+        console.error(`sendBitrixMessage error for user ${userId}:`, err)
+      }
+    })
+  )
+}
   if (!opts.recipients || opts.recipients.length === 0) return
 
   const webhookUrl = process.env.BITRIX_WEBHOOK_URL
