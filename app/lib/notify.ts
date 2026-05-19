@@ -72,6 +72,8 @@ export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
     })
   )
 }
+
+export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
   if (!opts.recipients || opts.recipients.length === 0) return
 
   const webhookUrl = process.env.BITRIX_WEBHOOK_URL
@@ -85,7 +87,7 @@ export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
   await Promise.all(
     opts.recipients.map(async (userId) => {
       try {
-        const url = `${webhookUrl}im.notify.system.add.json`
+        const url = `${webhookUrl}im.message.add.json`
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
