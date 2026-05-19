@@ -192,6 +192,9 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejectComment, setRejectComment] = useState('')
+  const [rejecting, setRejecting] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
   const [signedDocs, setSignedDocs] = useState<{id: string; file_url: string; file_name: string; uploaded_by_name: string; created_at: string}[]>([])
@@ -528,6 +531,36 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     await loadSession()
     if (approveData.all_approved) {
       setContractStatus('согласован')
+    }
+  }
+
+  const handleReject = async () => {
+    if (!approvingId) return
+    setRejecting(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/approvals/${session?.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participant_id: approvingId,
+          comment: rejectComment,
+          user_name: user?.name ?? 'Система',
+          contract_id: contract.id,
+          is_rejected: true,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowRejectModal(false)
+        setRejectComment('')
+        loadSession()
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setRejecting(false)
     }
   }
 
@@ -1122,6 +1155,10 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                             className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">
                             ✓ Согласовать документ
                           </button>
+                          <button onClick={() => { setApprovingId(myParticipant.id); setShowRejectModal(true) }}
+                            className="w-full mt-2 bg-red-50 border border-red-200 text-red-700 py-2 rounded-lg text-sm font-medium hover:bg-red-100">
+                            ✕ Отклонить документ
+                          </button>
                         </div>
                       )}
                       {myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
@@ -1473,6 +1510,35 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
                 {addingParticipant ? 'Добавление...' : 'Добавить'}
               </button>
               <button onClick={() => { setShowAddParticipantModal(false); setNewParticipantName('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal отклонения */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Отклонение документа</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Вы отклоняете документ <strong>{contract.number}</strong>. Укажите причину.
+            </p>
+            <textarea
+              value={rejectComment}
+              onChange={e => setRejectComment(e.target.value)}
+              placeholder="Причина отклонения (обязательно)..."
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 mb-4 resize-none"
+            />
+            <div className="flex gap-3">
+              <button onClick={handleReject} disabled={rejecting || !rejectComment.trim()}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                {rejecting ? 'Отклонение...' : '✕ Отклонить документ'}
+              </button>
+              <button onClick={() => { setShowRejectModal(false); setRejectComment('') }}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Отмена
               </button>
