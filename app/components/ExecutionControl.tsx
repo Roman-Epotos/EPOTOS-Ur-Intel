@@ -698,7 +698,7 @@ export default function ExecutionControl({
                         </button>
                       )}
                       {/* Чекбокс */}
-                      <button onClick={() => toggleItem(item)} disabled={!canManage}
+                      <button onClick={() => toggleItem(item)} disabled={!canManage || selectionMode}
                         className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                           item.is_done ? 'bg-emerald-500 border-emerald-500 text-white'
                           : canManage ? 'border-gray-300 hover:border-emerald-400'
