@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
 
       // Добавляем пункты как чек-лист задачи
       for (const item of items) {
-        await fetch(`${WEBHOOK}tasks.task.checklistitem.add.json`, {
+        const checkResp = await fetch(`${WEBHOOK}task.checklistitem.add.json`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -149,6 +149,8 @@ export async function POST(request: NextRequest) {
             fields: { TITLE: item.title },
           }),
         })
+        const checkData = await checkResp.json()
+        console.log(`checklistitem.add taskId=${taskId} title="${item.title}":`, JSON.stringify(checkData))
         await new Promise(r => setTimeout(r, 200))
       }
 
