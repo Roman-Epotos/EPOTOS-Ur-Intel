@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY!
 )
 
-// Запуск согласования
+// Р—Р°РїСѓСЃРє СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -20,16 +20,16 @@ export async function POST(request: NextRequest) {
     } = body
 
     if (!contract_id || !participants || !deadline) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+      return NextResponse.json({ error: 'РќРµ РІСЃРµ РїРѕР»СЏ Р·Р°РїРѕР»РЅРµРЅС‹' }, { status: 400 })
     }
 
-    // Создаём сессию согласования
+    // РЎРѕР·РґР°С‘Рј СЃРµСЃСЃРёСЋ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
     const { data: session, error: sessionError } = await supabase
       .from('approval_sessions')
       .insert({
         contract_id,
         deadline,
-        initiated_by_name: initiated_by_name ?? 'Система',
+        initiated_by_name: initiated_by_name ?? 'РЎРёСЃС‚РµРјР°',
         initiated_by_bitrix_id: initiated_by_bitrix_id ?? null,
         status: 'active',
       })
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: sessionError.message }, { status: 400 })
     }
 
-    // Добавляем участников
+    // Р”РѕР±Р°РІР»СЏРµРј СѓС‡Р°СЃС‚РЅРёРєРѕРІ
     const participantsToInsert = participants.map((p: {
       user_name: string
       bitrix_user_id?: number
@@ -65,36 +65,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: participantsError.message }, { status: 400 })
     }
 
-    // Обновляем статус договора
+    // РћР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚СѓСЃ РґРѕРіРѕРІРѕСЂР°
     await supabase
       .from('contracts')
-      .update({ status: 'на_согласовании' })
+      .update({ status: 'РЅР°_СЃРѕРіР»Р°СЃРѕРІР°РЅРёРё' })
       .eq('id', contract_id)
 
-    // Записываем в лог
+    // Р—Р°РїРёСЃС‹РІР°РµРј РІ Р»РѕРі
     await supabase
       .from('contract_logs')
       .insert({
         contract_id,
-        action: 'Согласование запущено',
-        details: `Запущено согласование. Участников: ${participants.length}. Дедлайн: ${deadline}.`,
-        user_name: initiated_by_name ?? 'Система',
+        action: 'РЎРѕРіР»Р°СЃРѕРІР°РЅРёРµ Р·Р°РїСѓС‰РµРЅРѕ',
+        details: `Р—Р°РїСѓС‰РµРЅРѕ СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ. РЈС‡Р°СЃС‚РЅРёРєРѕРІ: ${participants.length}. Р”РµРґР»Р°Р№РЅ: ${deadline}.`,
+        user_name: initiated_by_name ?? 'РЎРёСЃС‚РµРјР°',
       })
 
-    // Уведомляем участников о необходимости согласования
-    const { data: contractInfo } = await supabase
-      .from('contracts')
-      .select('title, number')
-      .eq('id', contract_id)
-      .single()
-
+    // РџРѕР»СѓС‡Р°РµРј РґР°РЅРЅС‹Рµ РґРѕРіРѕРІРѕСЂР°
     const { data: contractInfo } = await supabase
       .from('contracts')
       .select('title, number, author_bitrix_id')
       .eq('id', contract_id)
       .single()
 
-    // Создаём групповой чат Битрикс24
+    // РЎРѕР·РґР°С‘Рј РіСЂСѓРїРїРѕРІРѕР№ С‡Р°С‚ Р‘РёС‚СЂРёРєСЃ24
     const chatMemberIds = [...new Set([
       ...(contractInfo?.author_bitrix_id ? [contractInfo.author_bitrix_id] : []),
       ...participants
@@ -115,6 +109,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // РЈРІРµРґРѕРјР»СЏРµРј СѓС‡Р°СЃС‚РЅРёРєРѕРІ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
+    const participantIds = participants
+      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+      .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
 
     if (participantIds.length > 0 && contractInfo) {
       await sendBitrixNotify({
@@ -128,35 +126,37 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, session_id: session.id })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-// Получить сессию согласования по договору
+// РџРѕР»СѓС‡РµРЅРёРµ СЃРµСЃСЃРёРё СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
 export async function GET(request: NextRequest) {
-  const contractId = request.nextUrl.searchParams.get('contract_id')
+  try {
+    const contractId = request.nextUrl.searchParams.get('contract_id')
+    if (!contractId) {
+      return NextResponse.json({ error: 'contract_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
+    }
 
-  if (!contractId) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+    const { data: session, error } = await supabase
+      .from('approval_sessions')
+      .select(`
+        *,
+        approval_participants (*),
+        approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
+      `)
+      .eq('contract_id', contractId)
+      .in('status', ['active', 'completed'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (error && error.code !== 'PGRST116') {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    return NextResponse.json({ session: session ?? null })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const { data: session, error } = await supabase
-    .from('approval_sessions')
-    .select(`
-      *,
-      approval_participants (*),
-      approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
-    `)
-    .eq('contract_id', contractId)
-    .in('status', ['active', 'completed'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
-
-  if (error && error.code !== 'PGRST116') {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ session: session ?? null })
 }
