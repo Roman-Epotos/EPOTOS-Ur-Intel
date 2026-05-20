@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify } from '@/app/lib/notify'
+import { sendBitrixNotify, addUserToBitrixChat, sendBitrixChatMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -84,6 +84,23 @@ export async function POST(
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
+      }
+    }
+
+    // Добавляем нового участника в чат Битрикс24
+    if (bitrix_user_id) {
+      const { data: sessionWithChat } = await supabase
+        .from('approval_sessions')
+        .select('bitrix_chat_id')
+        .eq('id', sessionId)
+        .single()
+
+      if (sessionWithChat?.bitrix_chat_id) {
+        await addUserToBitrixChat(sessionWithChat.bitrix_chat_id, bitrix_user_id)
+        await sendBitrixChatMessage(
+          sessionWithChat.bitrix_chat_id,
+          `➕ Добавлен новый участник согласования: ${user_name}`
+        )
       }
     }
 
