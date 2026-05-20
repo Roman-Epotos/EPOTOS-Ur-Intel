@@ -2893,13 +2893,7 @@ export async function POST(request: NextRequest) {
         user_name: initiated_by_name ?? 'Система',
       })
 
-    // Уведомляем участников о необходимости согласования
-    const { data: contractInfo } = await supabase
-      .from('contracts')
-      .select('title, number')
-      .eq('id', contract_id)
-      .single()
-
+    // Получаем данные договора
     const { data: contractInfo } = await supabase
       .from('contracts')
       .select('title, number, author_bitrix_id')
@@ -2927,6 +2921,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Уведомляем участников о необходимости согласования
+    const participantIds = participants
+      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+      .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
 
     if (participantIds.length > 0 && contractInfo) {
       await sendBitrixNotify({
@@ -2945,32 +2943,34 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Получить сессию согласования по договору
+// Получение сессии согласования
 export async function GET(request: NextRequest) {
-  const contractId = request.nextUrl.searchParams.get('contract_id')
+  try {
+    const contractId = request.nextUrl.searchParams.get('contract_id')
+    if (!contractId) {
+      return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+    }
 
-  if (!contractId) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+    const { data: session, error } = await supabase
+      .from('approval_sessions')
+      .select(`
+        *,
+        approval_participants (*),
+        approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
+      `)
+      .eq('contract_id', contractId)
+      .in('status', ['active', 'completed'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (error && error.code !== 'PGRST116') {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    return NextResponse.json({ session: session ?? null })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const { data: session, error } = await supabase
-    .from('approval_sessions')
-    .select(`
-      *,
-      approval_participants (*),
-      approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
-    `)
-    .eq('contract_id', contractId)
-    .in('status', ['active', 'completed'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
-
-  if (error && error.code !== 'PGRST116') {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ session: session ?? null })
 }
 </file>
 
