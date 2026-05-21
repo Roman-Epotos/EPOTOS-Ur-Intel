@@ -1,0 +1,102 @@
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+// GET — список контрагентов или один по id
+export async function GET(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    const inn = request.nextUrl.searchParams.get('inn')
+    const search = request.nextUrl.searchParams.get('search')
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*, contracts(id, number, title, status, created_at)')
+        .eq('id', id)
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data })
+    }
+
+    if (inn) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*')
+        .eq('inn', inn)
+        .single()
+      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data ?? null })
+    }
+
+    let query = supabase
+      .from('counterparties')
+      .select('id, inn, short_name, full_name, status, risk_level, director_name, phone, email, created_at')
+      .order('full_name', { ascending: true })
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ counterparties: data ?? [] })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — создать или обновить контрагента
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, ...fields } = body
+
+    fields.updated_at = new Date().toISOString()
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .update(fields)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, counterparty: data })
+    }
+
+    const { data, error } = await supabase
+      .from('counterparties')
+      .insert(fields)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, counterparty: data })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить контрагента
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('counterparties')
+      .delete()
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
