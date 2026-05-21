@@ -613,8 +613,8 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
             <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-semibold text-gray-900">{contract.number}</h1>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
-              {statusLabel[contract.status] ?? contract.status}
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contractStatus] ?? 'bg-gray-100 text-gray-700'}`}>
+              {statusLabel[contractStatus] ?? contractStatus}
             </span>
           </div>
           <DeleteContractButton contractId={contract.id} contractNumber={contract.number} />
