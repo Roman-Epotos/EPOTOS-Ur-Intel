@@ -3,6 +3,10 @@
     {
       "path": "/api/backup",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron-checklist-deadline",
+      "schedule": "0 6 * * *"
     }
   ]
 }
