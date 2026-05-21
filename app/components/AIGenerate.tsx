@@ -29,6 +29,7 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
     region: '',
     counterparty: '',
   })
+  const [requisitesMode, setRequisitesMode] = useState<'full' | 'no_bank'>('full')
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -56,6 +57,7 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          requisites_mode: requisitesMode,
           user_name: user?.name ?? 'Система',
           contract_id: contractId ?? null,
         }),
@@ -123,6 +125,26 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
               <option value="">— Выберите компанию —</option>
               {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Банковские реквизиты</label>
+            <div className="flex gap-2">
+              <button type="button"
+                onClick={() => setRequisitesMode('full')}
+                className={`flex-1 text-xs py-2 px-3 rounded-lg border transition-colors ${requisitesMode === 'full' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                💳 Полные реквизиты
+              </button>
+              <button type="button"
+                onClick={() => setRequisitesMode('no_bank')}
+                className={`flex-1 text-xs py-2 px-3 rounded-lg border transition-colors ${requisitesMode === 'no_bank' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                ✏️ Без банк. реквизитов
+              </button>
+            </div>
+            {requisitesMode === 'no_bank' && (
+              <p className="text-xs text-gray-400 mt-1">
+                В документе банковские реквизиты будут заменены на поля для заполнения
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Контрагент</label>

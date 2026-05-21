@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       counterparty,
       user_name,
       contract_id,
+      requisites_mode,
     } = body
 
     if (!prompt || !document_type) {
@@ -86,16 +87,17 @@ export async function POST(request: NextRequest) {
 
       if (reqData) {
         companyName = reqData.company_name || company_prefix
+        const isNoBank = requisites_mode === 'no_bank'
         companyRequisites = [
           reqData.company_name,
           reqData.inn ? `ИНН: ${reqData.inn}` : '',
           reqData.kpp ? `КПП: ${reqData.kpp}` : '',
           reqData.ogrn ? `ОГРН: ${reqData.ogrn}` : '',
           reqData.legal_address ? `Адрес: ${reqData.legal_address}` : '',
-          reqData.bank_name ? `Банк: ${reqData.bank_name}` : '',
-          reqData.bank_account ? `р/с: ${reqData.bank_account}` : '',
-          reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : '',
-          reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : '',
+          isNoBank ? `Банк: _______________________` : (reqData.bank_name ? `Банк: ${reqData.bank_name}` : ''),
+          isNoBank ? `р/с: _______________________` : (reqData.bank_account ? `р/с: ${reqData.bank_account}` : ''),
+          isNoBank ? `БИК: _______________________` : (reqData.bank_bik ? `БИК: ${reqData.bank_bik}` : ''),
+          isNoBank ? `к/с: _______________________` : (reqData.bank_corr_account ? `к/с: ${reqData.bank_corr_account}` : ''),
           reqData.director_name ? `${reqData.director_title ?? 'Генеральный директор'}: ${reqData.director_name}` : '',
         ].filter(Boolean).join(', ')
       }

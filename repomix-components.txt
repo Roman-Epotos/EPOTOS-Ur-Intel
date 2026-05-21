@@ -91,6 +91,7 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
     region: '',
     counterparty: '',
   })
+  const [requisitesMode, setRequisitesMode] = useState<'full' | 'no_bank'>('full')
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -118,6 +119,7 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          requisites_mode: requisitesMode,
           user_name: user?.name ?? 'Система',
           contract_id: contractId ?? null,
         }),
