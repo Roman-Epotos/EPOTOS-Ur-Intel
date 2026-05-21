@@ -162,13 +162,7 @@ export async function POST(request: NextRequest) {
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
-        await sendBitrixMessage({
-          recipients,
-          type: 'documents_uploaded',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
+        
       }
 
       return NextResponse.json({ success: true, status: 'подписан' })
@@ -264,13 +258,7 @@ export async function POST(request: NextRequest) {
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
-        await sendBitrixMessage({
-          recipients,
-          type: 'documents_uploaded',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
+        
       }
 
       return NextResponse.json({ success: true, status: 'подписан' })

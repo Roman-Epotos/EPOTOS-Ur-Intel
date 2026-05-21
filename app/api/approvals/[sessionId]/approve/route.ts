@@ -73,14 +73,7 @@ export async function POST(
           document_number: contractData.number ?? '',
           extra: comment ?? undefined,
         })
-        await sendBitrixMessage({
-          recipients: rejectedRecipients,
-          type: 'document_rejected',
-          document_id: actualContractId,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-          extra: comment ?? undefined,
-        })
+        
 
         // Сообщение в групповой чат Битрикс24
         const { data: sessionInfo } = await supabase
@@ -199,13 +192,7 @@ export async function POST(
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
         })
-        await sendBitrixMessage({
-          recipients,
-          type: 'document_approved',
-          document_id: actualContractId,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
+        
 
         // Сообщение в групповой чат Битрикс24
         const { data: approvedSessionInfo } = await supabase
