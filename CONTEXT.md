@@ -1,7 +1,7 @@
 # CONTEXT.md — Эпотос-ЮрИнтел / Витрина Данных
 Документ передачи контекста для нового чата
-Дата: 2026-05-21 (обновлён — Спринт 3 в работе)
-Статус: Спринт 3 — реализован реестр контрагентов
+Дата: 2026-05-21 (обновлён — конец рабочей сессии)
+Статус: Спринт 3 — реестр контрагентов + привязка при создании документа
 
 =============================================================
 1. О ПРОЕКТЕ
@@ -81,7 +81,7 @@ document_attachments, signed_documents, document_templates, ai_analysis,
 company_requisites (+ short_name),
 contract_checklist (+ bitrix_task_id TEXT),
 contract_checklist_archive,
-counterparties (НОВАЯ — см. ниже)
+counterparties (НОВАЯ)
 
 Таблица counterparties:
   id, inn (UNIQUE), kpp, ogrn, full_name, short_name,
@@ -90,6 +90,8 @@ counterparties (НОВАЯ — см. ниже)
   status CHECK ('активный','ликвидирован','в_реорганизации','приостановлен'),
   risk_level CHECK ('низкий','средний','высокий','не_определён'),
   ai_score JSONB, notes, created_at, updated_at
+
+ВАЖНО: contracts/route.ts НЕ сохраняет counterparty_id — нужно добавить в Спринте 3!
 
 Storage: contracts (Public), templates (Public)
 
@@ -140,6 +142,7 @@ SPECIAL_SIGNERS: 782 Владимиров→Э-К, 152 Виноградова→
   - Крон-задача дедлайна чек-листа (09:00 МСК)
 
 ✅ СПРИНТ 3 — В РАБОТЕ:
+
   ✅ Реестр контрагентов (21.05.2026):
     Страницы:
       app/counterparties/page.tsx — список реестра
@@ -149,41 +152,47 @@ SPECIAL_SIGNERS: 782 Владимиров→Э-К, 152 Виноградова→
       app/api/counterparties/check-inn/route.ts — проверка по ИНН через DaData
     Навигация:
       Header.tsx — кнопка «🏢 Контрагенты» между «+ Новый документ» и «Настройки»
-      Реестр — стрелка «← Главная»
-      Профиль — стрелка «← Реестр»
+      Реестр — стрелка «← Главная», Профиль — стрелка «← Реестр»
     Функции:
       - Поиск по названию и ИНН
-      - Добавление по ИНН через DaData API (автозаполнение всех реквизитов)
+      - Добавление по ИНН через DaData API (автозаполнение реквизитов)
       - Редактирование профиля (реквизиты, риск, заметки)
       - Список договоров с контрагентом
-      - Статус (активный/ликвидирован/в_реорганизации/приостановлен)
-      - Уровень риска (низкий/средний/высокий/не_определён)
-    DaData API: метод findById/party, возвращает полные реквизиты по ИНН
-    ВАЖНО: contracts получила поле counterparty_id UUID → counterparties.id
+      - Статусы и уровень риска
+    DaData: POST https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party
+            Authorization: Token {DADATA_API_KEY}
+
+  ✅ Привязка контрагента при создании документа (21.05.2026):
+    app/contracts/new/page.tsx:
+      - Поле контрагента заменено на поиск с автодополнением из реестра
+      - При вводе 2+ символов — подсказки из counterparties
+      - При выборе из реестра — показывается метка «✓ из реестра»
+      - Можно ввести вручную (не из реестра)
+      - counterparty_id передаётся в API при создании
+    ВАЖНО: contracts/route.ts ещё не сохраняет counterparty_id в БД!
+           Нужно добавить в следующей сессии.
 
 
 =============================================================
 9. ИЗВЕСТНЫЕ ПРОБЛЕМЫ / ТЕХНИЧЕСКИЙ ДОЛГ
 =============================================================
+⚠️ contracts/route.ts не сохраняет counterparty_id → нужно добавить!
 ⚠️ Ссылка из уведомления → главная (не конкретный документ) — финал
 ⚠️ Realtime статуса — требует репликации Supabase → ЭПОТОС-Core
 ⚠️ Таблица contracts не переименована в documents — долг
 ⚠️ proxy.ts (middleware) — до SSO отключён
 ⚠️ Уведомление в чат Б24 при загрузке подписанных документов — не реализовано
 ⚠️ console.log в bitrix-tasks/route.ts (debug) — убрать перед продакшном
-⚠️ counterparty_id в contracts — пока не используется при создании документа
 
 
 =============================================================
 10. ГДЕ ОСТАНОВИЛИСЬ (21.05.2026)
 =============================================================
-✅ Реестр контрагентов — базовая версия РЕАЛИЗОВАНА
+Последнее сделанное: привязка контрагента при создании документа ✅
 
-Следующие задачи Спринта 3:
-  ⬜ Привязка контрагента при создании документа
-     (выбор из реестра в форме создания договора)
-  ⬜ 📊 Дашборды (юридический, финансовый, ГД, руководитель ГК)
-  ⬜ 📝 Модуль создания документов из шаблонов
+Первое что делаем в следующей сессии:
+  1. Добавить сохранение counterparty_id в contracts/route.ts (POST)
+  2. Продолжить Спринт 3: Дашборды или Модуль генерации документов
 
 
 =============================================================
@@ -194,7 +203,8 @@ SPECIAL_SIGNERS: 782 Владимиров→Э-К, 152 Виноградова→
 ✅ СПРИНТ 2 (май 2026) — ЗАВЕРШЁН
 🔄 СПРИНТ 3 (май-июнь 2026) — В РАБОТЕ:
   ✅ Реестр контрагентов + DaData/ФНС
-  ⬜ Привязка контрагента при создании документа
+  ✅ Поиск и выбор контрагента при создании документа
+  ⬜ Сохранение counterparty_id в contracts/route.ts
   ⬜ Дашборды (юридический, финансовый, ГД, руководитель ГК)
   ⬜ Модуль создания документов из шаблонов:
       • {{field}} теги в .docx
@@ -262,7 +272,7 @@ SPECIAL_SIGNERS: 782 Владимиров→Э-К, 152 Виноградова→
 =============================================================
 Уведомления (app/lib/notify.ts):
   sendBitrixNotify — колокольчик (im.notify.system.add)
-  sendBitrixMessage — личное сообщение (УБРАНА из роутов!)
+  sendBitrixMessage — (УБРАНА из роутов!)
   createBitrixChat — создать групповой чат (im.chat.add)
   addUserToBitrixChat — добавить в чат (im.chat.user.add)
   sendBitrixChatMessage — сообщение в чат (DIALOG_ID=chat{id})
@@ -274,15 +284,13 @@ SPECIAL_SIGNERS: 782 Владимиров→Э-К, 152 Виноградова→
 Задачи Битрикс24:
   tasks.task.add — создание задачи
   task.checklistitem.add — пункт чек-листа (TASKID заглавными!)
-  Режим single_with_checklist — одна задача + все пункты как чек-лист
 
 Контрагенты:
-  DaData API: POST https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party
-  Authorization: Token {DADATA_API_KEY}
-  Возвращает: inn, kpp, ogrn, full_name, short_name, address, director, status
+  DaData: POST .../findById/party, Authorization: Token {DADATA_API_KEY}
+  counterparties/route.ts: GET (list/id/inn/search), POST (create/update), DELETE
+  check-inn/route.ts: GET ?inn=XXX → данные из DaData
 
 Реквизиты: SELECT→UPDATE/INSERT. id исключается из тела запроса.
-Чек-лист: action='restore_archive', files[]: {file_url, file_name, source}
 OnlyOffice: version_id / attachment_id, прокси /api/onlyoffice/file/route.ts
 Realtime: ContractsList=INSERT, ContractTabs=UPDATE+INSERT (чат)
 Supabase в компонентах: supabaseClient с PUBLISHABLE_KEY
