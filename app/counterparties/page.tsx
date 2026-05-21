@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 interface Counterparty {
   id: string
@@ -119,7 +120,11 @@ export default function CounterpartiesPage() {
         {/* Заголовок */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">🏢 Реестр контрагентов</h1>
+            <div className="flex items-center gap-3 mb-1">
+              <Link href="/" className="text-sm text-gray-500 hover:text-gray-900">← Главная</Link>
+              <span className="text-gray-300">/</span>
+              <h1 className="text-xl font-bold text-gray-900">🏢 Реестр контрагентов</h1>
+            </div>
             <p className="text-sm text-gray-500 mt-0.5">Управление и проверка контрагентов</p>
           </div>
           <button onClick={() => setShowAddModal(true)}
