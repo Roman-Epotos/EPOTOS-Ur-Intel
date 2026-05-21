@@ -32,6 +32,11 @@ export default function NewContractPage() {
     document_category: 'contract',
     region: '',
   })
+  const [counterpartyId, setCounterpartyId] = useState<string | null>(null)
+  const [counterpartySearch, setCounterpartySearch] = useState('')
+  const [counterpartySuggestions, setCounterpartySuggestions] = useState<{id: string, short_name: string | null, full_name: string, inn: string}[]>([])
+  const [showCounterpartySuggestions, setShowCounterpartySuggestions] = useState(false)
+  const [counterpartySearchLoading, setCounterpartySearchLoading] = useState(false)
 
   useEffect(() => {
     if (!form.company_prefix || !form.type) {
@@ -58,6 +63,26 @@ export default function NewContractPage() {
     }
     generate()
   }, [form.company_prefix, form.type])
+
+  const searchCounterparties = async (q: string) => {
+    if (q.length < 2) { setCounterpartySuggestions([]); return }
+    setCounterpartySearchLoading(true)
+    try {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setCounterpartySuggestions(data.counterparties ?? [])
+      setShowCounterpartySuggestions(true)
+    } finally {
+      setCounterpartySearchLoading(false)
+    }
+  }
+
+  const selectCounterparty = (c: {id: string, short_name: string | null, full_name: string, inn: string}) => {
+    setForm(p => ({ ...p, counterparty: c.short_name ?? c.full_name }))
+    setCounterpartyId(c.id)
+    setCounterpartySearch(c.short_name ?? c.full_name)
+    setShowCounterpartySuggestions(false)
+  }
 
   const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
 
@@ -95,6 +120,7 @@ export default function NewContractPage() {
             number: finalNumber,
             title: form.title,
             counterparty: form.counterparty,
+            counterparty_id: counterpartyId ?? null,
             type: form.type,
             amount: form.amount,
             start_date: form.start_date,
@@ -219,9 +245,45 @@ export default function NewContractPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Контрагент <span className="text-red-500">*</span>
               </label>
-              <input name="counterparty" value={form.counterparty} onChange={handleChange} required
-                placeholder="ООО Название компании"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={counterpartySearch}
+                  onChange={e => {
+                    setCounterpartySearch(e.target.value)
+                    setForm(p => ({ ...p, counterparty: e.target.value }))
+                    setCounterpartyId(null)
+                    searchCounterparties(e.target.value)
+                  }}
+                  onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}
+                  placeholder="Начните вводить название или ИНН..."
+                  required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+                {counterpartyId && (
+                  <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
+                )}
+                {counterpartySearchLoading && (
+                  <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
+                )}
+                {showCounterpartySuggestions && counterpartySuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {counterpartySuggestions.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={() => selectCounterparty(c)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
+                        <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
+                      </button>
+                    ))}
+                    <button type="button"
+                      onMouseDown={() => setShowCounterpartySuggestions(false)}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50">
+                      + Ввести вручную
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
