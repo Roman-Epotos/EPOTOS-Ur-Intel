@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
         number: body.number,
         title: body.title,
         counterparty: body.counterparty,
+        counterparty_id: body.counterparty_id ?? null,
         type: body.type,
         amount: body.amount ? parseFloat(body.amount) : null,
         start_date: body.start_date || null,
