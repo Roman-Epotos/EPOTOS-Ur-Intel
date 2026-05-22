@@ -40,8 +40,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: sessionError.message }, { status: 400 })
     }
 
+    // Дедупликация — убираем дубли по bitrix_user_id (оставляем первого)
+    const seenUserIds = new Set<number>()
+    const uniqueParticipants = participants.filter((p: { bitrix_user_id?: number }) => {
+      if (!p.bitrix_user_id) return true
+      if (seenUserIds.has(p.bitrix_user_id)) return false
+      seenUserIds.add(p.bitrix_user_id)
+      return true
+    })
+
     // Добавляем участников
-    const participantsToInsert = participants.map((p: {
+    const participantsToInsert = uniqueParticipants.map((p: {
       user_name: string
       bitrix_user_id?: number
       department?: string
