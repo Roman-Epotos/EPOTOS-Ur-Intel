@@ -1066,98 +1066,6 @@ export async function DELETE(
 }
 </file>
 
-<file path="app/api/my-documents/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  try {
-    // 1. Документы где я согласующий (обязательный) со статусом pending
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
-      .select(`
-        id,
-        role,
-        status,
-        stage,
-        session_id,
-        approval_sessions!inner (
-          id,
-          contract_id,
-          deadline,
-          initiated_by_name,
-          contracts!inner (
-            id,
-            number,
-            title,
-            counterparty,
-            status,
-            amount
-          )
-        )
-      `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-
-    // 2. Мои черновики
-    const { data: myDrafts } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'черновик')
-      .order('created_at', { ascending: false })
-
-    // 3. Документы где я инициатор согласования
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id,
-        deadline,
-        status,
-        created_at,
-        contracts!inner (
-          id,
-          number,
-          title,
-          counterparty,
-          status,
-          amount
-        )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-
-    // Разделяем на обязательных и для ознакомления
-    const requiredApprovals = (myApprovals ?? []).filter(p => p.role === 'required')
-    const optionalApprovals = (myApprovals ?? []).filter(p => p.role === 'optional')
-
-    return NextResponse.json({
-      required_approvals: requiredApprovals,
-      optional_approvals: optionalApprovals,
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/onlyoffice/callback/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3122,70 +3030,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/counterparties/check-inn/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-export async function GET(request: NextRequest) {
-  try {
-    const inn = request.nextUrl.searchParams.get('inn')
-    if (!inn) return NextResponse.json({ error: 'ИНН обязателен' }, { status: 400 })
-
-    if (!/^\d{10}$|^\d{12}$/.test(inn)) {
-      return NextResponse.json({ error: 'ИНН должен содержать 10 или 12 цифр' }, { status: 400 })
-    }
-
-    const apiKey = process.env.DADATA_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'DADATA_API_KEY не задан' }, { status: 500 })
-
-    const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Token ${apiKey}`,
-      },
-      body: JSON.stringify({ query: inn, count: 1 }),
-    })
-
-    if (!response.ok) {
-      return NextResponse.json({ error: 'Ошибка обращения к DaData' }, { status: 502 })
-    }
-
-    const data = await response.json()
-
-    if (!data.suggestions || data.suggestions.length === 0) {
-      return NextResponse.json({ found: false, message: 'Организация не найдена' })
-    }
-
-    const org = data.suggestions[0]
-    const d = org.data
-
-    return NextResponse.json({
-      found: true,
-      data: {
-        inn: d.inn ?? inn,
-        kpp: d.kpp ?? null,
-        ogrn: d.ogrn ?? null,
-        full_name: d.name?.full_with_opf ?? org.value ?? null,
-        short_name: d.name?.short_with_opf ?? null,
-        legal_address: d.address?.value ?? null,
-        status: d.state?.status === 'ACTIVE' ? 'активный'
-          : d.state?.status === 'LIQUIDATED' ? 'ликвидирован'
-          : d.state?.status === 'REORGANIZING' ? 'в_реорганизации'
-          : 'приостановлен',
-        director_name: d.management?.name ?? null,
-        director_title: d.management?.post ?? 'Генеральный директор',
-      }
-    })
-
-  } catch (err) {
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Ошибка проверки ИНН'
-    }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/contracts/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3314,6 +3158,166 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/counterparties/check-inn/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  try {
+    const inn = request.nextUrl.searchParams.get('inn')
+    if (!inn) return NextResponse.json({ error: 'ИНН обязателен' }, { status: 400 })
+
+    if (!/^\d{10}$|^\d{12}$/.test(inn)) {
+      return NextResponse.json({ error: 'ИНН должен содержать 10 или 12 цифр' }, { status: 400 })
+    }
+
+    const apiKey = process.env.DADATA_API_KEY
+    if (!apiKey) return NextResponse.json({ error: 'DADATA_API_KEY не задан' }, { status: 500 })
+
+    const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Token ${apiKey}`,
+      },
+      body: JSON.stringify({ query: inn, count: 1 }),
+    })
+
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Ошибка обращения к DaData' }, { status: 502 })
+    }
+
+    const data = await response.json()
+
+    if (!data.suggestions || data.suggestions.length === 0) {
+      return NextResponse.json({ found: false, message: 'Организация не найдена' })
+    }
+
+    const org = data.suggestions[0]
+    const d = org.data
+
+    return NextResponse.json({
+      found: true,
+      data: {
+        inn: d.inn ?? inn,
+        kpp: d.kpp ?? null,
+        ogrn: d.ogrn ?? null,
+        full_name: d.name?.full_with_opf ?? org.value ?? null,
+        short_name: d.name?.short_with_opf ?? null,
+        legal_address: d.address?.value ?? null,
+        status: d.state?.status === 'ACTIVE' ? 'активный'
+          : d.state?.status === 'LIQUIDATED' ? 'ликвидирован'
+          : d.state?.status === 'REORGANIZING' ? 'в_реорганизации'
+          : 'приостановлен',
+        director_name: d.management?.name ?? null,
+        director_title: d.management?.post ?? 'Генеральный директор',
+      }
+    })
+
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : 'Ошибка проверки ИНН'
+    }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/my-documents/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
+      .select(`
+        id,
+        role,
+        status,
+        stage,
+        session_id,
+        approval_sessions!inner (
+          id,
+          contract_id,
+          deadline,
+          initiated_by_name,
+          contracts!inner (
+            id,
+            number,
+            title,
+            counterparty,
+            status,
+            amount
+          )
+        )
+      `)
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+
+    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
+    const { data: myDrafts } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
+      .in('document_category', ['contract', 'document'])
+      .order('created_at', { ascending: false })
+
+    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id,
+        deadline,
+        status,
+        created_at,
+        contracts!inner (
+          id,
+          number,
+          title,
+          counterparty,
+          status,
+          amount
+        )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+// Фильтруем — только основные документы (не вложения)
+    const filteredApprovals = (myApprovals ?? []).filter(p => {
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const category = sessions?.contracts?.document_category
+      return category !== 'attachment'
+    })
+    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
+    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    return NextResponse.json({
+      required_approvals: requiredApprovals,
+      optional_approvals: optionalApprovals,
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/approvals/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3357,8 +3361,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: sessionError.message }, { status: 400 })
     }
 
+    // Дедупликация — убираем дубли по bitrix_user_id (оставляем первого)
+    const seenUserIds = new Set<number>()
+    const uniqueParticipants = participants.filter((p: { bitrix_user_id?: number }) => {
+      if (!p.bitrix_user_id) return true
+      if (seenUserIds.has(p.bitrix_user_id)) return false
+      seenUserIds.add(p.bitrix_user_id)
+      return true
+    })
+
     // Добавляем участников
-    const participantsToInsert = participants.map((p: {
+    const participantsToInsert = uniqueParticipants.map((p: {
       user_name: string
       bitrix_user_id?: number
       department?: string
