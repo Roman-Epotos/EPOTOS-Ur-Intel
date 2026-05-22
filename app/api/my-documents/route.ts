@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('author_bitrix_id', userId)
       .eq('status', 'черновик')
+      .in('document_category', ['contract', 'document'])
       .order('created_at', { ascending: false })
 
     // 3. Документы где я инициатор согласования

@@ -722,10 +722,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Версии документа</h2>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Link href={`/contracts/${contract.id}/upload`}
-                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
-                    + Загрузить версию
-                  </Link>
+                  {!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) && (
+                    <Link href={`/contracts/${contract.id}/upload`}
+                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                      + Загрузить версию
+                    </Link>
+                  )}
                   
                 </div>
               </div>
@@ -791,10 +793,12 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               <div className="mt-6 border-t border-gray-100 pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Дополнительные материалы</h3>
-                  <button onClick={() => setShowAttachmentForm(p => !p)}
-                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
-                    + Добавить
-                  </button>
+                  {!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) && (
+                    <button onClick={() => setShowAttachmentForm(p => !p)}
+                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                      + Добавить
+                    </button>
+                  )}
                 </div>
                 {showAttachmentForm && (
                   <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">

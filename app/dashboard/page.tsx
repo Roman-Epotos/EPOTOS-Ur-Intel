@@ -106,7 +106,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                👋 Добрый день, {user?.name?.split(' ')[0]}!
+                👋 Добрый день, {user?.name?.split(' ')[1] ?? user?.name?.split(' ')[0]}!
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">
                 {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}

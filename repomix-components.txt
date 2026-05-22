@@ -1384,6 +1384,12 @@ export default function Header() {
           + Новый документ
         </Link>
         <Link
+          href="/dashboard"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🖥️ Рабочий стол
+        </Link>
+        <Link
           href="/counterparties"
           className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
