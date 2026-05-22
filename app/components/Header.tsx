@@ -15,6 +15,12 @@ export default function Header() {
 
       <div className="flex items-center gap-4">
         <Link
+          href="/dashboard"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🖥️ Рабочий стол
+        </Link>
+        <Link
           href="/contracts/new"
           className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
         >
