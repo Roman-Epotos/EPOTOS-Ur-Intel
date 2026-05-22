@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 interface DashboardData {
@@ -105,6 +106,17 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-gray-900">
             👋 Добрый день, {user?.name?.split(' ')[0]}!
           </h1>
+          <div className="flex items-center gap-3 mt-2">
+            <Link href="/contracts" className="text-sm text-gray-500 hover:text-gray-900 border border-gray-200 px-3 py-1 rounded-lg">
+              📄 Все документы
+            </Link>
+            <Link href="/counterparties" className="text-sm text-gray-500 hover:text-gray-900 border border-gray-200 px-3 py-1 rounded-lg">
+              🏢 Контрагенты
+            </Link>
+            <Link href="/contracts/new" className="text-sm text-white bg-gray-900 px-3 py-1 rounded-lg hover:bg-gray-700">
+              + Новый документ
+            </Link>
+          </div>
           <p className="text-sm text-gray-500 mt-0.5">Рабочий стол — {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
 
