@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+﻿import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 const supabase = createClient(
@@ -10,13 +10,13 @@ export async function GET(request: NextRequest) {
   const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
 
   if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
   }
 
   const userId = parseInt(bitrixUserId)
 
   try {
-    // 1. Документы где я согласующий (обязательный) со статусом pending
+    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
     const { data: myApprovals } = await supabase
       .from('approval_participants')
       .select(`
@@ -43,16 +43,16 @@ export async function GET(request: NextRequest) {
       .eq('bitrix_user_id', userId)
       .eq('status', 'pending')
 
-    // 2. Мои черновики
+    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
     const { data: myDrafts } = await supabase
       .from('contracts')
       .select('*')
       .eq('author_bitrix_id', userId)
-      .eq('status', 'черновик')
+      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
       .in('document_category', ['contract', 'document'])
       .order('created_at', { ascending: false })
 
-    // 3. Документы где я инициатор согласования
+    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
     const { data: myInitiated } = await supabase
       .from('approval_sessions')
       .select(`
@@ -72,11 +72,14 @@ export async function GET(request: NextRequest) {
       .eq('initiated_by_bitrix_id', userId)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
-
-    // Разделяем на обязательных и для ознакомления
-    const requiredApprovals = (myApprovals ?? []).filter(p => p.role === 'required')
-    const optionalApprovals = (myApprovals ?? []).filter(p => p.role === 'optional')
-
+// Фильтруем — только основные документы (не вложения)
+    const filteredApprovals = (myApprovals ?? []).filter(p => {
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const category = sessions?.contracts?.document_category
+      return category !== 'attachment'
+    })
+    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
+    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
     return NextResponse.json({
       required_approvals: requiredApprovals,
       optional_approvals: optionalApprovals,
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
       my_initiated: myInitiated ?? [],
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
