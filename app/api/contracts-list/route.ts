@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (role === 'admin' || role === 'gc_manager') {
-      // Администратор и Менеджер ГК видят все договоры
-    } else if (role === 'director' || role === 'legal') {
+    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
+      // Роли ГК видят все договоры
+    } else if (role === 'director' || role === 'legal' || role === 'finance') {
       // ГД и юристы видят договоры своих компаний
       if (companiesParam) {
         const companies = companiesParam.split(',')
