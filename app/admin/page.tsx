@@ -93,6 +93,10 @@ export default function AdminPage() {
     email: '',
     website: '',
     short_name: '',
+    signatory_name: '',
+    poa_number: '',
+    poa_date: '',
+    poa_expires: '',
   })
   const [savingRequisites, setSavingRequisites] = useState(false)
   const [requisitesSuccess, setRequisitesSuccess] = useState('')
@@ -156,6 +160,7 @@ export default function AdminPage() {
           bank_name: '', bank_account: '', bank_bik: '', bank_corr_account: '',
           director_name: '', director_title: 'Генеральный директор',
           phone: '', email: '', website: '',
+          signatory_name: '', poa_number: '', poa_date: '', poa_expires: '',
         })
       }
     }
@@ -687,6 +692,33 @@ export default function AdminPage() {
                       placeholder="Генеральный директор"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
+
+                  <div className="col-span-2 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Подписант по доверенности (если есть)</p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ФИО подписанта</label>
+                    <input value={requisitesForm.signatory_name ?? ''} onChange={e => setRequisitesForm(p => ({...p, signatory_name: e.target.value}))}
+                      placeholder="Иванов Иван Иванович"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Номер доверенности</label>
+                    <input value={requisitesForm.poa_number ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_number: e.target.value}))}
+                      placeholder="№ 123"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Дата доверенности</label>
+                    <input type="date" value={requisitesForm.poa_date ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_date: e.target.value}))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Срок действия доверенности</label>
+                    <input type="date" value={requisitesForm.poa_expires ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_expires: e.target.value}))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-500 mb-1">Юридический адрес</label>
                     <input value={requisitesForm.legal_address} onChange={e => setRequisitesForm(p => ({...p, legal_address: e.target.value}))}

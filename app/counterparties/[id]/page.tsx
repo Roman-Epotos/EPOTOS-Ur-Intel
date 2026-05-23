@@ -20,6 +20,10 @@ interface Counterparty {
   status: string
   risk_level: string
   notes: string | null
+  signatory_name: string | null
+  poa_number: string | null
+  poa_date: string | null
+  poa_expires: string | null
   created_at: string
   updated_at: string
   contracts?: {
@@ -155,6 +159,8 @@ export default function CounterpartyPage() {
                   { label: 'Телефон', key: 'phone' },
                   { label: 'Email', key: 'email' },
                   { label: 'Сайт', key: 'website' },
+                  { label: 'Подписант по доверенности', key: 'signatory_name' },
+                  { label: 'Номер доверенности', key: 'poa_number' },
                 ].map(({ label, key }) => (
                   <div key={key}>
                     <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -181,6 +187,30 @@ export default function CounterpartyPage() {
                       className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400" />
                   ) : (
                     <p className="text-sm text-gray-900">{counterparty.legal_address ?? '—'}</p>
+                  )}
+                </div>
+
+<div>
+                  <p className="text-xs text-gray-400 mb-0.5">Дата доверенности</p>
+                  {editing ? (
+                    <input type="date" value={form.poa_date ?? ''}
+                      onChange={e => setForm(p => ({ ...p, poa_date: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400" />
+                  ) : (
+                    <p className="text-sm text-gray-900">{counterparty.poa_date ? new Date(counterparty.poa_date).toLocaleDateString('ru-RU') : '—'}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Срок действия доверенности</p>
+                  {editing ? (
+                    <input type="date" value={form.poa_expires ?? ''}
+                      onChange={e => setForm(p => ({ ...p, poa_expires: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400" />
+                  ) : (
+                    <p className={`text-sm ${counterparty.poa_expires && new Date(counterparty.poa_expires) < new Date() ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+                      {counterparty.poa_expires ? new Date(counterparty.poa_expires).toLocaleDateString('ru-RU') : '—'}
+                      {counterparty.poa_expires && new Date(counterparty.poa_expires) < new Date() ? ' ⚠️ истекла' : ''}
+                    </p>
                   )}
                 </div>
 
