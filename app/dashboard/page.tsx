@@ -59,6 +59,7 @@ interface DashboardData {
     on_execution: number
     total_counterparties: number
   }
+  has_dashboard_access: boolean
 }
 
 const baseUrl = 'https://epotos-ur-intel.vercel.app'
@@ -273,8 +274,8 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Аналитика — только для admin и gc_manager и directors */}
-          {user && ([30, 1148, 1, 246, 504, 592, 6, 954].includes(parseInt(user.id))) && (
+          {/* Аналитика — для всех у кого есть доступ к дашбордам */}
+          {user && ([30, 1148, 1, 246, 504, 10, 154, 592, 6, 954].includes(parseInt(user.id)) || data.has_dashboard_access) && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 lg:col-span-2">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">📊 Аналитика</h2>
               <div className="flex flex-wrap gap-2">

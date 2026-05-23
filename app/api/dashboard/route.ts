@@ -93,12 +93,22 @@ export async function GET(request: NextRequest) {
       .from('counterparties')
       .select('*', { count: 'exact', head: true })
 
+    // Проверяем доступ к дашбордам (финансисты и юристы компаний)
+    const { data: dashboardAccess } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting', 'legal'])
+      .eq('is_active', true)
+      .limit(1)
+
     return NextResponse.json({
       my_approvals: myApprovals ?? [],
       deadline_items: deadlineItems ?? [],
       my_drafts: myDrafts ?? [],
       my_initiated: myInitiated ?? [],
       high_risk_counterparties: highRiskCounterparties ?? [],
+      has_dashboard_access: (dashboardAccess ?? []).length > 0,
       stats: {
         total_docs: totalDocs ?? 0,
         on_approval: onApproval ?? 0,

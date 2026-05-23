@@ -205,6 +205,19 @@ export default function AdminPage() {
     const prefixes = newP.company_prefixes.length > 0 ? newP.company_prefixes : [null]
     let hasError = false
 
+    // Проверка на дубли
+    const duplicates = prefixes.filter(prefix =>
+      participants.some(p =>
+        p.bitrix_user_id === parseInt(newP.bitrix_user_id) &&
+        p.stage === newP.stage &&
+        (p.company_prefix === prefix || (p.company_prefix === null && prefix === null))
+      )
+    )
+    if (duplicates.length > 0) {
+      setError(`Участник уже добавлен в этот раздел для компании: ${duplicates.join(', ')}`)
+      return
+    }
+
     for (const prefix of prefixes) {
       const res = await fetch(`${baseUrl}/api/approval-settings`, {
         method: 'POST',
@@ -412,8 +425,8 @@ export default function AdminPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-500 mb-2">
-                      Компании участия
-                      <span className="text-gray-400 font-normal ml-1">(не выбрано = все компании)</span>
+                      Компании участия <span className="text-red-500">*</span>
+                      <span className="text-gray-400 font-normal ml-1">(выберите хотя бы одну)</span>
                     </label>
                     <div className="flex flex-wrap gap-2">
                       {COMPANIES.map(c => (
@@ -434,7 +447,8 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <button type="submit"
-                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
+                  disabled={!newP.user_name || !newP.bitrix_user_id || newP.company_prefixes.length === 0}
+                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                   Добавить
                 </button>
               </form>
