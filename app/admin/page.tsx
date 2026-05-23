@@ -133,8 +133,20 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdmin = async () => {
       if (!user?.id) return
-      const adminIds = [30, 1148]
-      if (adminIds.includes(parseInt(user.id))) {
+      const userId = parseInt(user.id)
+      // Разработчик — жёстко в коде
+      if (userId === 30) {
+        setIsAdmin(true)
+        setLoading(false)
+        return
+      }
+      // Остальные — проверяем через system_roles
+      const res = await fetch(`${baseUrl}/api/system-roles`)
+      const data = await res.json()
+      const myRole = (data.roles ?? []).find((r: {bitrix_user_id: number, role: string}) =>
+        r.bitrix_user_id === userId
+      )
+      if (myRole && ['admin', 'gc_manager'].includes(myRole.role)) {
         setIsAdmin(true)
       }
       setLoading(false)
