@@ -25,6 +25,7 @@ const ADMIN_TABS = [
   { id: 'approval', label: 'Согласующие' },
   { id: 'templates', label: 'Шаблоны документов' },
   { id: 'requisites', label: 'Реквизиты компаний' },
+  { id: 'gc_roles', label: 'Роли ГК' },
 ]
 
 interface Participant {
@@ -72,6 +73,22 @@ export default function AdminPage() {
     user_name: '',
     department: '',
   })
+
+  // Роли ГК
+  const [gcRoles, setGcRoles] = useState<{id: string, bitrix_user_id: number, user_name: string, role: string, created_at: string}[]>([])
+  const [gcRolesLoading, setGcRolesLoading] = useState(false)
+  const [gcRoleForm, setGcRoleForm] = useState({ bitrix_user_id: '', user_name: '', role: 'gc_manager' })
+  const [gcRoleError, setGcRoleError] = useState('')
+  const [gcRoleSuccess, setGcRoleSuccess] = useState('')
+
+  const DEVELOPER_ID = 30
+  const isDeveloper = parseInt(user?.id ?? '0') === DEVELOPER_ID
+  const GC_ROLE_OPTIONS = [
+    { value: 'admin', label: 'Администратор' },
+    { value: 'gc_manager', label: 'Менеджер ГК' },
+    { value: 'finance_gc', label: 'Финансист ГК' },
+    { value: 'legal_gc', label: 'Юрист ГК' },
+  ]
 
   // Реквизиты
   const [selectedCompany, setSelectedCompany] = useState('ТХ')
@@ -133,6 +150,17 @@ export default function AdminPage() {
     }
     load()
   }, [activeStage])
+
+useEffect(() => {
+    const loadGcRoles = async () => {
+      setGcRolesLoading(true)
+      const res = await fetch(`${baseUrl}/api/system-roles`)
+      const data = await res.json()
+      setGcRoles(data.roles ?? [])
+      setGcRolesLoading(false)
+    }
+    if (adminTab === 'gc_roles') loadGcRoles()
+  }, [adminTab])
 
   useEffect(() => {
     const loadTemplates = async () => {
@@ -805,6 +833,110 @@ export default function AdminPage() {
                   {savingRequisites ? 'Сохранение...' : 'Сохранить реквизиты'}
                 </button>
               </form>
+            </div>
+          </div>
+        )}
+
+{/* Вкладка — Роли ГК */}
+        {adminTab === 'gc_roles' && (
+          <div className="space-y-6">
+            {gcRoleError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{gcRoleError}</div>}
+            {gcRoleSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{gcRoleSuccess}</div>}
+
+            {/* Список текущих ролей */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Назначенные роли ГК</h2>
+              {gcRolesLoading ? (
+                <p className="text-sm text-gray-400">Загрузка...</p>
+              ) : gcRoles.length === 0 ? (
+                <p className="text-sm text-gray-400">Роли не назначены</p>
+              ) : (
+                <div className="space-y-2">
+                  {gcRoles.map(r => (
+                    <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{r.user_name}</p>
+                        <p className="text-xs text-gray-500">ID: {r.bitrix_user_id} · {GC_ROLE_OPTIONS.find(o => o.value === r.role)?.label ?? r.role}</p>
+                      </div>
+                      {isDeveloper && (
+                        <button onClick={async () => {
+                          if (!confirm('Удалить роль?')) return
+                          const res = await fetch(`${baseUrl}/api/system-roles`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: r.id, admin_bitrix_id: parseInt(user?.id ?? '0') }),
+                          })
+                          if (res.ok) {
+                            setGcRoles(prev => prev.filter(x => x.id !== r.id))
+                            setGcRoleSuccess('Роль удалена')
+                          }
+                        }}
+                          className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                          Удалить
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Форма добавления */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Назначить роль ГК</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
+                  <input value={gcRoleForm.user_name} onChange={e => setGcRoleForm(p => ({...p, user_name: e.target.value}))}
+                    placeholder="Иванов Иван Иванович"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Битрикс24 ID <span className="text-red-500">*</span></label>
+                  <input value={gcRoleForm.bitrix_user_id} onChange={e => setGcRoleForm(p => ({...p, bitrix_user_id: e.target.value}))}
+                    placeholder="123"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Роль <span className="text-red-500">*</span></label>
+                  <select value={gcRoleForm.role} onChange={e => setGcRoleForm(p => ({...p, role: e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                    {GC_ROLE_OPTIONS
+                      .filter(o => isDeveloper || o.value !== 'admin')
+                      .map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    disabled={!gcRoleForm.user_name || !gcRoleForm.bitrix_user_id}
+                    onClick={async () => {
+                      setGcRoleError('')
+                      setGcRoleSuccess('')
+                      const res = await fetch(`${baseUrl}/api/system-roles`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          ...gcRoleForm,
+                          bitrix_user_id: parseInt(gcRoleForm.bitrix_user_id),
+                          admin_bitrix_id: parseInt(user?.id ?? '0'),
+                        }),
+                      })
+                      const data = await res.json()
+                      if (data.success) {
+                        setGcRoleSuccess('Роль назначена')
+                        setGcRoleForm({ bitrix_user_id: '', user_name: '', role: 'gc_manager' })
+                        const reload = await fetch(`${baseUrl}/api/system-roles`)
+                        const reloadData = await reload.json()
+                        setGcRoles(reloadData.roles ?? [])
+                      } else {
+                        setGcRoleError(data.error ?? 'Ошибка')
+                      }
+                    }}
+                    className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                    Назначить роль
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
