@@ -6,70 +6,83 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY!
 )
 
-const ADMIN_IDS = [30, 1148]
-const GC_MANAGER_IDS = [1, 246, 504]
-const FINANCE_GC_IDS = [10, 154]
+const DEVELOPER_ID = 30
+const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
 
-const DIRECTORS: Record<number, string[]> = {
-  592: ['НПП'],
-  6: ['СПТ', 'ОС'],
-  954: ['Э-К'],
-}
-
-const LEGAL_IDS: Record<number, string[]> = {
-  782: ['Э-К'],
+// Иерархия ролей (чем меньше число — тем выше роль)
+const ROLE_PRIORITY: Record<string, number> = {
+  developer:  1,
+  admin:      2,
+  gc_manager: 3,
+  finance_gc: 4,
+  legal_gc:   5,
+  director:   6,
+  legal:      7,
+  finance:    8,
+  user:       9,
 }
 
 export async function GET(request: NextRequest) {
   const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
   if (!bitrixUserId) {
     return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
   }
-
   const userId = parseInt(bitrixUserId)
 
-  // Проверяем администратора
-  if (ADMIN_IDS.includes(userId)) {
-    return NextResponse.json({
-      role: 'admin',
-      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
-    })
+  // Собираем все роли пользователя
+  const roles: { role: string; companies: string[] }[] = []
+
+  // 1. Разработчик — жёстко в коде
+  if (userId === DEVELOPER_ID) {
+    roles.push({ role: 'developer', companies: ALL_COMPANIES })
   }
 
-  // Проверяем менеджеров ГК
-  if (GC_MANAGER_IDS.includes(userId)) {
-    return NextResponse.json({
-      role: 'gc_manager',
-      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
-    })
+  // 2. Роли ГК из таблицы system_roles
+  const { data: systemRole } = await supabase
+    .from('system_roles')
+    .select('role')
+    .eq('bitrix_user_id', userId)
+    .single()
+
+  if (systemRole) {
+    roles.push({ role: systemRole.role, companies: ALL_COMPANIES })
   }
 
-  // Проверяем ГД
-  if (DIRECTORS[userId]) {
-    return NextResponse.json({
-      role: 'director',
-      companies: DIRECTORS[userId],
-    })
+  // 3. Директор компании из approval_settings
+  const { data: directorSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'director')
+    .eq('is_active', true)
+
+  if (directorSettings && directorSettings.length > 0) {
+    const companies = directorSettings
+      .map((s: { company_prefix: string | null }) => s.company_prefix)
+      .filter(Boolean) as string[]
+    if (companies.length > 0) {
+      roles.push({ role: 'director', companies })
+    }
   }
 
-  // Проверяем юристов
-  if (LEGAL_IDS[userId]) {
-    return NextResponse.json({
-      role: 'legal',
-      companies: LEGAL_IDS[userId],
-    })
+  // 4. Юрист компании из approval_settings
+  const { data: legalSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'legal')
+    .eq('is_active', true)
+
+  if (legalSettings && legalSettings.length > 0) {
+    const companies = legalSettings
+      .map((s: { company_prefix: string | null }) => s.company_prefix)
+      .filter(Boolean) as string[]
+    if (companies.length > 0) {
+      roles.push({ role: 'legal', companies })
+    }
   }
 
-  // Финансисты ГК — все компании
-  if (FINANCE_GC_IDS.includes(userId)) {
-    return NextResponse.json({
-      role: 'finance_gc',
-      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
-    })
-  }
-
-  // Финансисты компаний — из approval_settings (finance + accounting)
+  // 5. Финансист компании из approval_settings
   const { data: financeSettings } = await supabase
     .from('approval_settings')
     .select('company_prefix')
@@ -83,15 +96,22 @@ export async function GET(request: NextRequest) {
         .map((s: { company_prefix: string | null }) => s.company_prefix)
         .filter(Boolean) as string[]
     )]
-    return NextResponse.json({
-      role: 'finance',
-      companies,
-    })
+    if (companies.length > 0) {
+      roles.push({ role: 'finance', companies })
+    }
   }
 
-  // Обычный сотрудник
+  // Если нет ни одной роли — обычный пользователь
+  if (roles.length === 0) {
+    return NextResponse.json({ role: 'user', companies: [] })
+  }
+
+  // Применяем наивысшую роль
+  roles.sort((a, b) => (ROLE_PRIORITY[a.role] ?? 99) - (ROLE_PRIORITY[b.role] ?? 99))
+  const best = roles[0]
+
   return NextResponse.json({
-    role: 'user',
-    companies: [],
+    role: best.role,
+    companies: best.companies,
   })
 }
