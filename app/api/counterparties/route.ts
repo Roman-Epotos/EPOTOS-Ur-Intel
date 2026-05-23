@@ -24,11 +24,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (inn) {
-      const { data, error } = await supabase
+      const kpp = request.nextUrl.searchParams.get('kpp')
+      let query = supabase
         .from('counterparties')
         .select('*')
         .eq('inn', inn)
-        .single()
+      if (kpp) query = query.eq('kpp', kpp)
+      const { data, error } = await query.single()
       if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
       return NextResponse.json({ counterparty: data ?? null })
     }
