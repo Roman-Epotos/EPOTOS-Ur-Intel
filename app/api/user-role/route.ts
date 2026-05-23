@@ -7,18 +7,15 @@ const supabase = createClient(
 )
 
 const ADMIN_IDS = [30, 1148]
-
-// Менеджеры ГК — видят все компании, без админ-панели
 const GC_MANAGER_IDS = [1, 246, 504]
+const FINANCE_GC_IDS = [10, 154]
 
-// Генеральные директора по компаниям
 const DIRECTORS: Record<number, string[]> = {
   592: ['НПП'],
   6: ['СПТ', 'ОС'],
   954: ['Э-К'],
 }
 
-// Юристы по компаниям
 const LEGAL_IDS: Record<number, string[]> = {
   782: ['Э-К'],
 }
@@ -61,6 +58,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       role: 'legal',
       companies: LEGAL_IDS[userId],
+    })
+  }
+
+  // Финансисты ГК — все компании
+  if (FINANCE_GC_IDS.includes(userId)) {
+    return NextResponse.json({
+      role: 'finance_gc',
+      companies: ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К'],
+    })
+  }
+
+  // Финансисты компаний — из approval_settings (finance + accounting)
+  const { data: financeSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .in('stage', ['finance', 'accounting'])
+    .eq('is_active', true)
+
+  if (financeSettings && financeSettings.length > 0) {
+    const companies = [...new Set(
+      financeSettings
+        .map((s: { company_prefix: string | null }) => s.company_prefix)
+        .filter(Boolean) as string[]
+    )]
+    return NextResponse.json({
+      role: 'finance',
+      companies,
     })
   }
 

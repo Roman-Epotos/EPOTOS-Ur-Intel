@@ -73,16 +73,28 @@ export default function LegalDashboardPage() {
 
   const ADMIN_IDS = [30, 1148]
   const GC_MANAGER_IDS = [1, 246, 504]
+  const FINANCE_GC_IDS = [10, 154]
   const DIRECTOR_MAP: Record<number, string[]> = {
     592: ['НПП'],
     6: ['СПТ', 'ОС'],
     954: ['Э-К'],
   }
   const userId = parseInt(user?.id ?? '0')
-  const isAdminOrManager = ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId)
+  const isAdminOrManager = ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId) || FINANCE_GC_IDS.includes(userId)
   const directorCompanies = DIRECTOR_MAP[userId] ?? []
-  const hasAccess = isAdminOrManager || directorCompanies.length > 0
-  const companyPrefix = isAdminOrManager ? null : directorCompanies.join(',')
+  const [financeCompanies, setFinanceCompanies] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!authLoading && user?.id && !isAdminOrManager && directorCompanies.length === 0) {
+      fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+        .then(r => r.json())
+        .then(d => { if (d.role === 'finance') setFinanceCompanies(d.companies) })
+    }
+  }, [authLoading, user?.id])
+
+  const allCompanies = [...directorCompanies, ...financeCompanies]
+  const hasAccess = isAdminOrManager || allCompanies.length > 0
+  const companyPrefix = isAdminOrManager ? null : allCompanies.join(',')
 
   useEffect(() => {
     if (!authLoading && user?.id) loadData()

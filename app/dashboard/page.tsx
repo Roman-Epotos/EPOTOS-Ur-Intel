@@ -282,6 +282,10 @@ export default function DashboardPage() {
                   className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
                   Юридический дашборд →
                 </Link>
+                <Link href="/dashboard-finance"
+                  className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                  Финансовый дашборд →
+                </Link>
               </div>
             </div>
           )}
