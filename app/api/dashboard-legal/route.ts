@@ -10,15 +10,22 @@ export async function GET(request: NextRequest) {
   try {
     const period = request.nextUrl.searchParams.get('period') ?? '30'
     const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
     const fromDate = new Date()
     fromDate.setDate(fromDate.getDate() - days)
     const fromDateStr = fromDate.toISOString()
 
     // 1. Статистика по статусам
-    const { data: allContracts } = await supabase
+    let contractsQuery = supabase
       .from('contracts')
       .select('status, company_prefix')
       .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(
+        companyPrefix.split(',').map(p => `number.like.${p}-%`).join(',')
+      )
+    }
+    const { data: allContracts } = await contractsQuery
 
     const statusStats: Record<string, number> = {}
     const companyStats: Record<string, number> = {}

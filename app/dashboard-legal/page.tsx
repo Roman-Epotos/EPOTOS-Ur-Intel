@@ -73,8 +73,16 @@ export default function LegalDashboardPage() {
 
   const ADMIN_IDS = [30, 1148]
   const GC_MANAGER_IDS = [1, 246, 504]
+  const DIRECTOR_MAP: Record<number, string[]> = {
+    592: ['НПП'],
+    6: ['СПТ', 'ОС'],
+    954: ['Э-К'],
+  }
   const userId = parseInt(user?.id ?? '0')
-  const hasAccess = ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId)
+  const isAdminOrManager = ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId)
+  const directorCompanies = DIRECTOR_MAP[userId] ?? []
+  const hasAccess = isAdminOrManager || directorCompanies.length > 0
+  const companyPrefix = isAdminOrManager ? null : directorCompanies.join(',')
 
   useEffect(() => {
     if (!authLoading && user?.id) loadData()
@@ -83,7 +91,10 @@ export default function LegalDashboardPage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${baseUrl}/api/dashboard-legal?period=${period}`)
+      const url = companyPrefix
+        ? `${baseUrl}/api/dashboard-legal?period=${period}&company_prefix=${companyPrefix}`
+        : `${baseUrl}/api/dashboard-legal?period=${period}`
+      const res = await fetch(url)
       const json = await res.json()
       setData(json)
     } finally {
