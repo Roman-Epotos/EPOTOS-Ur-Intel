@@ -65,9 +65,12 @@ export default function FinanceDashboardPage() {
     fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
       .then(r => r.json())
       .then(d => {
-        if (ALLOWED_ROLES.includes(d.role)) {
+        const allRoles: string[] = d.all_roles ?? [d.role]
+        const hasAllowed = allRoles.some(r => ALLOWED_ROLES.includes(r))
+        if (hasAllowed) {
           setHasAccess(true)
-          setCompanyPrefix(GC_ROLES.includes(d.role) ? null : d.companies.join(','))
+          const isGC = allRoles.some(r => GC_ROLES.includes(r))
+          setCompanyPrefix(isGC ? null : d.companies.join(','))
         }
       })
   }, [authLoading, user?.id])
