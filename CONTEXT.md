@@ -1,7 +1,7 @@
 # CONTEXT.md — Эпотос-ЮрИнтел / Витрина Данных
 Документ передачи контекста для нового чата
-Дата: 2026-05-23 (финал сессии)
-Статус: Спринт 3 в работе — динамические роли реализованы
+Дата: 2026-05-23 (финальная версия сессии)
+Статус: Спринт 3 в работе
 
 =============================================================
 1. О ПРОЕКТЕ
@@ -51,8 +51,8 @@ BITRIX_PORTAL=gkepotos.bitrix24.ru
 BITRIX_WEBHOOK_URL=<вебхук ЭПОТОС Ассистента, ID пользователя 678>
 ONLYOFFICE_URL=https://office.epotos-port.ru
 ONLYOFFICE_JWT_SECRET=<см. .env.local>
-YANDEX_DISK_TOKEN=<OAuth токен Яндекс.Диска>
-DADATA_API_KEY=<API ключ dadata.ru>
+YANDEX_DISK_TOKEN=<OAuth токен Яндекс.Диска, приложение "ЭПОТОС Бэкап">
+DADATA_API_KEY=<API ключ dadata.ru для проверки контрагентов по ИНН>
 
 ВАЖНО: BITRIX_WEBHOOK_URL — вебхук от "ЭПОТОС Ассистент" (ID: 678)
 ВАЖНО: Environment Variables в Vercel — в левом меню (не в Settings!)
@@ -67,21 +67,34 @@ DADATA_API_KEY=<API ключ dadata.ru>
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.<table> TO authenticated;
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.<table> TO service_role;
 
-Таблицы: contracts (+ counterparty_id UUID),
-versions, approval_sessions (+ bitrix_chat_id INTEGER),
-approval_participants, approval_messages, approval_settings,
-contract_logs, document_attachments, signed_documents,
-document_templates, ai_analysis,
-company_requisites (+ short_name + signatory_name + poa_number + poa_date + poa_expires),
-contract_checklist (+ bitrix_task_id TEXT),
-contract_checklist_archive,
-counterparties (+ signatory_name + poa_number + poa_date + poa_expires),
-system_roles
+Таблицы:
+  contracts (+ counterparty_id UUID → counterparties.id)
+  versions
+  approval_sessions (+ bitrix_chat_id INTEGER)
+  approval_participants
+  approval_messages
+  approval_settings
+  contract_logs
+  document_attachments
+  signed_documents
+  document_templates
+  ai_analysis
+  company_requisites (+ short_name, signatory_name, poa_number, poa_date, poa_expires)
+  contract_checklist (+ bitrix_task_id TEXT)
+  contract_checklist_archive
+  counterparties (+ signatory_name, poa_number, poa_date, poa_expires)
+    УНИКАЛЬНЫЙ КЛЮЧ: (inn, kpp) — составной!
+  system_roles
 
 Таблица system_roles:
   id UUID PRIMARY KEY, bitrix_user_id INTEGER UNIQUE,
   user_name TEXT, role TEXT, created_by INTEGER, created_at TIMESTAMPTZ
   CHECK role IN ('admin','gc_manager','finance_gc','legal_gc')
+
+Индексы созданы:
+  idx_contracts_status_created, idx_contracts_number, idx_contracts_author
+  idx_approval_participants_user_status, idx_approval_sessions_contract
+  idx_checklist_contract, idx_checklist_due_date
 
 ВАЖНО: approval_participants CHECK:
 CHECK (status IN ('pending','approved','rejected','acknowledged',
@@ -118,9 +131,10 @@ CHECK (status IN ('pending','approved','rejected','acknowledged',
 
 ПРАВИЛА:
   - Роли ГК (1-5) → доступ ко всем компаниям
-  - Роли компаний (6-8) → доступ только к своим, все одноранговые
+  - Роли компаний (6-8) → одноранговые, дополняют друг друга
   - При наличии роли ГК — она выше любой роли из согласующих
-  - all_roles: возвращает все роли для проверки доступа к дашбордам
+  - all_roles: все роли пользователя для проверки доступа к дашбордам
+  - Пример: Чащина Елена — gc_manager + director → применяется gc_manager
 
 ТЕКУЩИЕ НАЗНАЧЕНИЯ system_roles:
   ID 1148 → admin
@@ -131,14 +145,15 @@ CHECK (status IN ('pending','approved','rejected','acknowledged',
   ID 154 (Архипова Ольга) → finance_gc
 
 КТО НАЗНАЧАЕТ РОЛИ:
-  developer → все роли включая admin
+  developer (ID 30) → все роли включая admin
   admin → gc_manager, finance_gc, legal_gc
 
-API: app/api/user-role/route.ts — возвращает role, companies, all_roles
-API: app/api/system-roles/route.ts — CRUD для ролей ГК
+API:
+  app/api/user-role/route.ts → возвращает role, companies, all_roles
+  app/api/system-roles/route.ts → CRUD для ролей ГК (GET/POST/DELETE)
 
 НАСТРОЙКИ: вкладка «Роли ГК» в app/admin/page.tsx
-  Доступ к Настройкам: developer (ID 30) + admin + gc_manager из system_roles
+  Доступ к Настройкам: developer + admin + gc_manager из system_roles
 
 ЭПОТОС Ассистент: ID 678 — технический аккаунт, нет роли
 
@@ -155,74 +170,95 @@ API: app/api/system-roles/route.ts — CRUD для ролей ГК
 ✅ Кнопка «Отклонить документ» (с модалом причины)
 ✅ AI (EpotosGPT): Legal Review, Паспорт, анализ вложений, чат
    ВАЖНО: чек-лист убран из AIAnalysis.tsx — только вкладка «Контроль исполнения»
-✅ Реквизиты компаний: CRUD, short_name, доверенность
+✅ Реквизиты компаний: CRUD, short_name, доверенность (signatory_name, poa_*)
 ✅ Контроль исполнения: AI чек-лист, архив/восстановление, редактирование, даты
-✅ Переключатель реквизитов: полные / без банковских
-   Вкладка Генерация закомментирована — новый модуль в Спринте 3
+✅ Переключатель реквизитов: полные / без банковских (подчёркивания)
+   Вкладка «Генерация» закомментирована — новый модуль в Спринте 3
 
-✅ СПРИНТ 2 — ПОЛНОСТЬЮ ЗАВЕРШЁН
+✅ СПРИНТ 2 — ПОЛНОСТЬЮ ЗАВЕРШЁН:
+  - Уведомления Б24 (колокольчик + групповой чат)
+  - Задачи из чек-листа в Битрикс24 (3 режима)
+  - ЭПОТОС Ассистент (ID: 678) как технический аккаунт
+  - Автобэкап БД на Яндекс.Диск (17:00 МСК)
+  - Крон-задача дедлайна чек-листа (09:00 МСК)
 
 ✅ СПРИНТ 3 — В РАБОТЕ:
 
   ✅ Рабочий стол /dashboard:
+    API: app/api/dashboard/route.ts
     Блоки: согласования, дедлайны, черновики, активные согласования,
            контрагенты с высоким риском, статистика, блок «Аналитика»
     Блок «Аналитика»: показывает только доступные дашборды
-    has_dashboard_access, legal_dashboard_access, finance_dashboard_access
+    Флаги: has_dashboard_access, legal_dashboard_access, finance_dashboard_access
+    Проверка доступа напрямую из БД (не через fetch к user-role!)
 
   ✅ Юридический дашборд /dashboard-legal:
-    Доступ: все роли кроме user; ГК → все компании; остальные → свои
+    API: app/api/dashboard-legal/route.ts
+    Доступ через all_roles; ГК → все компании; остальные → свои
     Блоки: статусы, просроченные согласования, ожидают подписания,
            просроченные чек-листы, динамика (30д/квартал/полгода/год)
+    Возврат: «← Рабочий стол»
 
   ✅ Финансовый дашборд /dashboard-finance:
-    Доступ: все роли кроме user; проверка через all_roles!
+    API: app/api/dashboard-finance/route.ts
+    Доступ через all_roles (важно для пользователей с несколькими ролями!)
     Блоки: суммы по статусам, дебиторка, топ контрагентов,
            договоры без суммы, динамика по компаниям
+    Возврат: «← Рабочий стол»
 
   ✅ Реестр контрагентов:
+    Страницы: /counterparties, /counterparties/[id]
+    API: /api/counterparties, /api/counterparties/check-inn
     DaData: findById/party, Authorization: Token {DADATA_API_KEY}
+    Уникальный ключ: (inn, kpp) составной!
     Поля доверенности: signatory_name, poa_number, poa_date, poa_expires
 
-  ✅ Привязка контрагента при создании документа (counterparty_id)
+  ✅ Привязка контрагента при создании документа
+    counterparty_id сохраняется в contracts
 
   ✅ Динамические роли (23.05.2026):
-    - Таблица system_roles создана и заполнена
-    - user-role/route.ts — читает из system_roles + approval_settings
-    - contracts-list/route.ts — все роли ГК видят все договоры
-    - Вкладка «Роли ГК» в Настройках
-    - Доступ к Настройкам через system_roles динамически
+    Таблица system_roles + вкладка «Роли ГК» в Настройках
+    contracts-list/route.ts — все роли ГК видят все договоры
+    Доступ к Настройкам через system_roles динамически
 
-  ✅ Исправления:
-    - Дедупликация участников согласования
-    - Фильтр вложений в my-documents
-    - Запрет загрузки версий после согласования
-    - Валидация добавления согласующих (обязательный выбор компании)
-    - Защита от дублей в согласующих
+  ✅ Оптимизация БД (23.05.2026):
+    7 индексов для дашбордов и согласования
+    Составной ключ (inn, kpp) для контрагентов
+
+  ✅ Исправления интерфейса:
+    Дедупликация участников согласования по bitrix_user_id
+    Фильтр вложений в my-documents (category !== 'attachment')
+    Запрет загрузки версий после согласования
+    Валидация согласующих (обязательный выбор компании)
+    Защита от дублей в согласующих
+    Приветствие по имени: split(' ')[1] (Фамилия Имя в Б24)
 
 
 =============================================================
 9. ИЗВЕСТНЫЕ ПРОБЛЕМЫ / ТЕХНИЧЕСКИЙ ДОЛГ
 =============================================================
 ⚠️ Фильтр по компании в дашбордах — выпадающий список — не реализован
+   (URL параметры ?company=ТХ — рекомендованный подход)
+⚠️ roleLabels в ContractsList.tsx не включает новые роли (developer, finance_gc)
 ⚠️ Ссылка из уведомления → главная (не конкретный документ) — финал
 ⚠️ Realtime статуса — требует репликации Supabase → ЭПОТОС-Core
 ⚠️ Таблица contracts не переименована в documents — долг
 ⚠️ Уведомление в чат Б24 при загрузке подписанных документов — не реализовано
 ⚠️ console.log в bitrix-tasks/route.ts — убрать перед продакшном
-⚠️ roleLabels в ContractsList.tsx не включает все новые роли (developer, finance_gc и т.д.)
+⚠️ Cascad запросов в user-role/route.ts → заменить на RPC get_user_context()
 
 
 =============================================================
 10. ГДЕ ОСТАНОВИЛИСЬ (23.05.2026)
 =============================================================
-✅ Динамические роли — РЕАЛИЗОВАНЫ
-✅ Вкладка «Роли ГК» в Настройках — РЕАЛИЗОВАНА
+Последнее сделанное:
+  ✅ Индексы БД
+  ✅ Составной ключ ИНН+КПП для контрагентов
 
 Следующие задачи Спринта 3:
-  ⬜ Фильтр по компании в дашбордах (выпадающий список)
+  ⬜ Фильтр по компании в дашбордах (URL параметры + выпадающий список)
+  ⬜ Обновить roleLabels в ContractsList.tsx
   ⬜ Модуль создания документов из шаблонов ({{field}} + docxtemplater)
-  ⬜ Обновить roleLabels в ContractsList.tsx для новых ролей
 
 
 =============================================================
@@ -233,7 +269,9 @@ API: app/api/system-roles/route.ts — CRUD для ролей ГК
 🔄 СПРИНТ 3 (май-июнь 2026):
   ✅ Рабочий стол, реестр контрагентов, дашборды
   ✅ Динамические роли через system_roles
+  ✅ Оптимизация БД (индексы + ИНН+КПП)
   ⬜ Фильтр по компании в дашбордах
+  ⬜ Обновить roleLabels
   ⬜ Модуль создания документов из шаблонов
 
 🔴 СПРИНТ 4 (июль 2026):
@@ -250,13 +288,14 @@ API: app/api/system-roles/route.ts — CRUD для ролей ГК
 =============================================================
 - Event Bus в Core
 - Контрагент как central entity + AI-score риска
-- CoreB24Adapter (прототип: app/lib/bitrix/tasks.ts)
+- CoreB24Adapter → прототип: app/lib/bitrix/tasks.ts
 - core_activity_feed — единая лента событий
 - AI Digest на рабочем столе
 - CEO Dashboard с предиктивной аналитикой
 - PWA — Спринт 4
 - AI-Audit — Спринт 4
-- ИНН+КПП составной ключ — ЭПОТОС-Core
+- RPC get_user_context() → перед ЭПОТОС-Core
+- Supabase RLS → после стабилизации архитектуры
 
 
 =============================================================
@@ -264,31 +303,36 @@ API: app/api/system-roles/route.ts — CRUD для ролей ГК
 =============================================================
 1. Создание файлов/папок — ТОЛЬКО через терминал:
    New-Item -Path "путь\к\файлу" -ItemType File -Force
+   Затем открыть в VS Code и вставить код.
 
 2. Редактирование файлов — ТОЛЬКО вручную через VS Code (Ctrl+H)
    НЕЛЬЗЯ редактировать через PowerShell — портит кодировку!
 
-3. Step-by-step — не более 3 блоков кода в одном ответе с пояснениями
+3. Step-by-step — не более 3 блоков кода в одном ответе.
+   Каждый блок с пояснением что делаем и зачем.
 
-4. Перед деплоем — ВСЕГДА запускать npm run build локально
+4. Перед деплоем — ВСЕГДА запускать npm run build локально.
 
-5. Если фрагмент для Ctrl+H не найден — обновить repomix
+5. Если фрагмент для Ctrl+H не найден — сначала обновить repomix,
+   затем искать точный фрагмент из базы знаний.
 
-6. Код предлагается ОДИН РАЗ и только правильный вариант
-   НЕЛЬЗЯ: предложить код → попросить заменить → сказать "нет, это неправильно"
+6. Код предлагается ОДИН РАЗ и только правильный вариант.
+   НЕЛЬЗЯ: предложить код → попросить вставить → сказать "нет, неправильно".
 
-7. PowerShell только для: New-Item, git команды, npm команды
+7. PowerShell только для: New-Item, git команды, npm команды.
+   НЕ для редактирования .ts/.tsx файлов!
 
-8. notify.ts — только через VS Code (Ctrl+A, удалить, вставить)
+8. notify.ts — только через VS Code (Ctrl+A, удалить, вставить).
 
-9. AIAnalysis.tsx — чек-лист убран! Только в ExecutionControl.tsx
+9. AIAnalysis.tsx — чек-лист убран! Только в ExecutionControl.tsx.
 
-10. task.checklistitem.add (НЕ tasks.task.!) — TASKID заглавными
+10. task.checklistitem.add (НЕ tasks.task.!) — TASKID заглавными.
 
-11. sendBitrixMessage УБРАНА из роутов — только колокольчик + чат
+11. sendBitrixMessage УБРАНА из роутов — только колокольчик + чат.
 
-12. При создании новых страниц/API — сначала New-Item через терминал,
-    затем открыть в VS Code и вставить код
+12. При проблемах с кодировкой — всегда VS Code, не терминал.
+
+13. Перед любой правкой файла — убедиться что repomix актуален.
 
 
 =============================================================
@@ -301,29 +345,37 @@ API: app/api/system-roles/route.ts — CRUD для ролей ГК
   sendBitrixChatMessage — сообщение в чат (DIALOG_ID=chat{id})
 
 Крон-задачи (vercel.json):
-  /api/backup — 0 14 * * * (17:00 МСК)
+  /api/backup — 0 14 * * * (17:00 МСК) → Яндекс.Диск
   /api/cron-checklist-deadline — 0 6 * * * (09:00 МСК)
 
 Задачи Битрикс24:
-  tasks.task.add + task.checklistitem.add (TASKID заглавными!)
+  tasks.task.add — создание задачи
+  task.checklistitem.add — пункт чек-листа (TASKID заглавными!)
+  3 режима: single / single_with_checklist / по выбранным пунктам
 
 Роли:
-  user-role/route.ts: возвращает role, companies, all_roles
-  system-roles/route.ts: CRUD для ролей ГК
-  developer (ID 30) → жёстко в коде
+  user-role/route.ts → role, companies, all_roles
+  system-roles/route.ts → CRUD ролей ГК
+  developer (ID 30) → жёстко в коде, только этот!
   Роли ГК → system_roles; Роли компаний → approval_settings
+  Проверка доступа к дашбордам → all_roles (не только основная роль!)
+  dashboard/route.ts → проверяет доступ напрямую из БД
 
 Дашборды:
-  Доступ проверяется через all_roles (не только основная роль!)
-  dashboard/route.ts: проверяет доступ напрямую из БД (не через fetch)
+  /dashboard — рабочий стол (главная точка входа)
+  /dashboard-legal — юридический
+  /dashboard-finance — финансовый
+  Возврат из дашбордов → «← Рабочий стол» (не главная!)
 
 Контрагенты:
   DaData: POST .../findById/party, Authorization: Token {DADATA_API_KEY}
+  Уникальный ключ: (inn, kpp) составной
 
 Согласование:
   Дедупликация по bitrix_user_id в approvals/route.ts
-  Фильтр вложений: category !== 'attachment'
+  Фильтр вложений: category !== 'attachment' в my-documents
   Запрет загрузки при: согласован/загружен_частично/подписан/на_исполнении
+  Групповой чат Б24 создаётся при запуске согласования
 
 Реквизиты: id исключается из тела запроса при UPDATE
 OnlyOffice: прокси /api/onlyoffice/file/route.ts
