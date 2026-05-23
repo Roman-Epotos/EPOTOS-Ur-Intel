@@ -702,21 +702,25 @@ export default function AdminPage() {
                       placeholder="Иванов Иван Иванович"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Номер доверенности</label>
-                    <input value={requisitesForm.poa_number ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_number: e.target.value}))}
-                      placeholder="№ 123"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Дата доверенности</label>
-                    <input type="date" value={requisitesForm.poa_date ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_date: e.target.value}))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Срок действия доверенности</label>
-                    <input type="date" value={requisitesForm.poa_expires ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_expires: e.target.value}))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  <div className="col-span-2">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Номер доверенности</label>
+                        <input value={requisitesForm.poa_number ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_number: e.target.value}))}
+                          placeholder="№ 123"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Дата доверенности</label>
+                        <input type="date" value={requisitesForm.poa_date ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_date: e.target.value}))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Срок действия</label>
+                        <input type="date" value={requisitesForm.poa_expires ?? ''} onChange={e => setRequisitesForm(p => ({...p, poa_expires: e.target.value}))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="col-span-2">
