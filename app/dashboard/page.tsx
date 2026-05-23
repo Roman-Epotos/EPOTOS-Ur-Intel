@@ -60,6 +60,8 @@ interface DashboardData {
     total_counterparties: number
   }
   has_dashboard_access: boolean
+  legal_dashboard_access: boolean
+  finance_dashboard_access: boolean
 }
 
 const baseUrl = 'https://epotos-ur-intel.vercel.app'
@@ -274,19 +276,23 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Аналитика — для всех у кого есть доступ к дашбордам */}
-          {user && ([30, 1148, 1, 246, 504, 10, 154, 592, 6, 954].includes(parseInt(user.id)) || data.has_dashboard_access) && (
+          {/* Аналитика — показываем только доступные дашборды */}
+          {data.has_dashboard_access && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 lg:col-span-2">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">📊 Аналитика</h2>
               <div className="flex flex-wrap gap-2">
-                <Link href="/dashboard-legal"
-                  className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                  Юридический дашборд →
-                </Link>
-                <Link href="/dashboard-finance"
-                  className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                  Финансовый дашборд →
-                </Link>
+                {data.legal_dashboard_access && (
+                  <Link href="/dashboard-legal"
+                    className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    Юридический дашборд →
+                  </Link>
+                )}
+                {data.finance_dashboard_access && (
+                  <Link href="/dashboard-finance"
+                    className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    Финансовый дашборд →
+                  </Link>
+                )}
               </div>
             </div>
           )}

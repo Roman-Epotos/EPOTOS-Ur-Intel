@@ -57,26 +57,19 @@ export default function FinanceDashboardPage() {
   const [hasAccess, setHasAccess] = useState(false)
   const [companyPrefix, setCompanyPrefix] = useState<string | null>(null)
 
-  const ADMIN_IDS = [30, 1148]
-  const GC_MANAGER_IDS = [1, 246, 504]
-  const FINANCE_GC_IDS = [10, 154]
+  const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+  const ALLOWED_ROLES = [...GC_ROLES, 'director', 'finance']
 
   useEffect(() => {
     if (authLoading || !user?.id) return
-    const userId = parseInt(user.id)
-    if (ADMIN_IDS.includes(userId) || GC_MANAGER_IDS.includes(userId) || FINANCE_GC_IDS.includes(userId)) {
-      setHasAccess(true)
-      setCompanyPrefix(null)
-    } else {
-      fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-        .then(r => r.json())
-        .then(d => {
-          if (['director', 'finance', 'finance_gc'].includes(d.role) && d.companies.length > 0) {
-            setHasAccess(true)
-            setCompanyPrefix(d.companies.join(','))
-          }
-        })
-    }
+    fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (ALLOWED_ROLES.includes(d.role)) {
+          setHasAccess(true)
+          setCompanyPrefix(GC_ROLES.includes(d.role) ? null : d.companies.join(','))
+        }
+      })
   }, [authLoading, user?.id])
 
   useEffect(() => {

@@ -93,14 +93,17 @@ export async function GET(request: NextRequest) {
       .from('counterparties')
       .select('*', { count: 'exact', head: true })
 
-    // Проверяем доступ к дашбордам (финансисты и юристы компаний)
-    const { data: dashboardAccess } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting', 'legal'])
-      .eq('is_active', true)
-      .limit(1)
+    // Проверяем доступ к дашбордам через user-role API
+    const roleRes = await fetch(`https://epotos-ur-intel.vercel.app/api/user-role?bitrix_user_id=${userId}`)
+    const roleData = await roleRes.json()
+    const userRole = roleData.role ?? 'user'
+
+    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+    const LEGAL_ROLES = [...GC_ROLES, 'director', 'legal']
+    const FINANCE_ROLES = [...GC_ROLES, 'director', 'finance']
+
+    const legalAccess = LEGAL_ROLES.includes(userRole)
+    const financeAccess = FINANCE_ROLES.includes(userRole)
 
     return NextResponse.json({
       my_approvals: myApprovals ?? [],
@@ -108,7 +111,9 @@ export async function GET(request: NextRequest) {
       my_drafts: myDrafts ?? [],
       my_initiated: myInitiated ?? [],
       high_risk_counterparties: highRiskCounterparties ?? [],
-      has_dashboard_access: (dashboardAccess ?? []).length > 0,
+      has_dashboard_access: legalAccess || financeAccess,
+      legal_dashboard_access: legalAccess,
+      finance_dashboard_access: financeAccess,
       stats: {
         total_docs: totalDocs ?? 0,
         on_approval: onApproval ?? 0,
