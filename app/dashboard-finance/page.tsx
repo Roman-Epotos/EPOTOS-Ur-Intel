@@ -116,7 +116,7 @@ export default function FinanceDashboardPage() {
         {/* Шапка */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm text-gray-500 hover:text-gray-900">← Главная</Link>
+            <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900">← Рабочий стол</Link>
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-bold text-gray-900">💰 Финансовый дашборд</h1>
           </div>
