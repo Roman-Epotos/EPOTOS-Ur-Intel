@@ -9,17 +9,12 @@ const supabase = createClient(
 const DEVELOPER_ID = 30
 const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
 
-// Иерархия ролей (чем меньше число — тем выше роль)
-const ROLE_PRIORITY: Record<string, number> = {
+const GC_ROLE_PRIORITY: Record<string, number> = {
   developer:  1,
   admin:      2,
   gc_manager: 3,
   finance_gc: 4,
   legal_gc:   5,
-  director:   6,
-  legal:      7,
-  finance:    8,
-  user:       9,
 }
 
 export async function GET(request: NextRequest) {
@@ -29,43 +24,77 @@ export async function GET(request: NextRequest) {
   }
   const userId = parseInt(bitrixUserId)
 
-  // Собираем все роли пользователя
-  const roles: { role: string; companies: string[] }[] = []
+  // 1. Проверяем роль ГК (наивысшая из найденных)
+  let gcRole: string | null = null
 
-  // 1. Разработчик — жёстко в коде
   if (userId === DEVELOPER_ID) {
-    roles.push({ role: 'developer', companies: ALL_COMPANIES })
+    gcRole = 'developer'
+  } else {
+    const { data: systemRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+    if (systemRole) gcRole = systemRole.role
   }
 
-  // 2. Роли ГК из таблицы system_roles
-  const { data: systemRole } = await supabase
-    .from('system_roles')
-    .select('role')
-    .eq('bitrix_user_id', userId)
-    .single()
+  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
+  if (gcRole) {
+    // Но всё равно собираем роли из согласующих для all_roles
+    const approvalRoles: string[] = []
 
-  if (systemRole) {
-    roles.push({ role: systemRole.role, companies: ALL_COMPANIES })
+    const { data: dirSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'director')
+      .eq('is_active', true)
+      .limit(1)
+    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
+
+    const { data: legalSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'legal')
+      .eq('is_active', true)
+      .limit(1)
+    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
+
+    const { data: finSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting'])
+      .eq('is_active', true)
+      .limit(1)
+    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
+
+    return NextResponse.json({
+      role: gcRole,
+      companies: ALL_COMPANIES,
+      all_roles: [gcRole, ...approvalRoles],
+    })
   }
 
-  // 3. Директор компании из approval_settings
-  const { data: directorSettings } = await supabase
+  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
+  const approvalRoles: string[] = []
+  const companiesMap: Record<string, string[]> = {}
+
+  // Директор
+  const { data: dirSettings } = await supabase
     .from('approval_settings')
     .select('company_prefix')
     .eq('bitrix_user_id', userId)
     .eq('stage', 'director')
     .eq('is_active', true)
 
-  if (directorSettings && directorSettings.length > 0) {
-    const companies = directorSettings
-      .map((s: { company_prefix: string | null }) => s.company_prefix)
-      .filter(Boolean) as string[]
-    if (companies.length > 0) {
-      roles.push({ role: 'director', companies })
-    }
+  if (dirSettings && dirSettings.length > 0) {
+    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
   }
 
-  // 4. Юрист компании из approval_settings
+  // Юрист
   const { data: legalSettings } = await supabase
     .from('approval_settings')
     .select('company_prefix')
@@ -74,44 +103,36 @@ export async function GET(request: NextRequest) {
     .eq('is_active', true)
 
   if (legalSettings && legalSettings.length > 0) {
-    const companies = legalSettings
-      .map((s: { company_prefix: string | null }) => s.company_prefix)
-      .filter(Boolean) as string[]
-    if (companies.length > 0) {
-      roles.push({ role: 'legal', companies })
-    }
+    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
   }
 
-  // 5. Финансист компании из approval_settings
-  const { data: financeSettings } = await supabase
+  // Финансист
+  const { data: finSettings } = await supabase
     .from('approval_settings')
     .select('company_prefix')
     .eq('bitrix_user_id', userId)
     .in('stage', ['finance', 'accounting'])
     .eq('is_active', true)
 
-  if (financeSettings && financeSettings.length > 0) {
-    const companies = [...new Set(
-      financeSettings
-        .map((s: { company_prefix: string | null }) => s.company_prefix)
-        .filter(Boolean) as string[]
-    )]
-    if (companies.length > 0) {
-      roles.push({ role: 'finance', companies })
-    }
+  if (finSettings && finSettings.length > 0) {
+    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
+    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
   }
 
-  // Если нет ни одной роли — обычный пользователь
-  if (roles.length === 0) {
-    return NextResponse.json({ role: 'user', companies: [] })
+  if (approvalRoles.length === 0) {
+    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
   }
 
-  // Применяем наивысшую роль
-  roles.sort((a, b) => (ROLE_PRIORITY[a.role] ?? 99) - (ROLE_PRIORITY[b.role] ?? 99))
-  const best = roles[0]
+  // Объединяем все компании из всех ролей согласующих
+  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
+
+  // Основная роль — первая в списке приоритетов: director > legal > finance
+  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
 
   return NextResponse.json({
-    role: best.role,
-    companies: best.companies,
+    role: primaryRole,
+    companies: allCompanies,
+    all_roles: approvalRoles,
   })
 }
