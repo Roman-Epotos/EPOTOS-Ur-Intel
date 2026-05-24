@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
     if (!isNaN(lastSeq)) maxNum = lastSeq
   }
-  const nextNum = String(maxNum + 1).padStart(2, '0')
+  const nextNum = String(maxNum + 1)
   const number = `${fullPrefix}-${year}/${month}/${nextNum}`
 
   return NextResponse.json({ number })

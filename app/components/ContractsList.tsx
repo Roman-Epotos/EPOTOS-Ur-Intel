@@ -48,7 +48,7 @@ interface Contract {
 }
 
 interface UserRole {
-  role: 'admin' | 'director' | 'legal' | 'user'
+  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
   companies: string[]
 }
 
@@ -207,9 +207,14 @@ export default function ContractsList() {
   })
 
   const roleLabels: Record<string, string> = {
+    developer: 'Все документы (Разработчик)',
     admin: 'Все документы (Администратор)',
+    gc_manager: 'Все документы (Менеджер ГК)',
+    finance_gc: 'Все документы (Финансовый контроль ГК)',
+    legal_gc: 'Все документы (Юридический отдел ГК)',
     director: 'Договоры компании',
     legal: 'Договоры на юридическом сопровождении',
+    finance: 'Договоры финансового сопровождения',
     user: 'Мои договоры',
   }
 
