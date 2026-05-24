@@ -56,6 +56,8 @@ export default function FinanceDashboardPage() {
   const [period, setPeriod] = useState('30')
   const [hasAccess, setHasAccess] = useState(false)
   const [companyPrefix, setCompanyPrefix] = useState<string | null>(null)
+  const [selectedCompany, setSelectedCompany] = useState<string>('all')
+  const [companies, setCompanies] = useState<{ prefix: string; name: string }[]>([])
 
   const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
   const ALLOWED_ROLES = [...GC_ROLES, 'director', 'finance']
@@ -76,14 +78,29 @@ export default function FinanceDashboardPage() {
   }, [authLoading, user?.id])
 
   useEffect(() => {
+    fetch(`${baseUrl}/api/company-requisites`)
+      .then(r => r.json())
+      .then(d => {
+        const list = (d.requisites ?? []).map((r: { company_prefix: string; short_name: string }) => ({
+          prefix: r.company_prefix,
+          name: r.short_name ?? r.company_prefix,
+        }))
+        setCompanies(list)
+      })
+  }, [])
+
+  useEffect(() => {
     if (hasAccess) loadData()
-  }, [hasAccess, period])
+  }, [hasAccess, period, selectedCompany])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      const url = companyPrefix
-        ? `${baseUrl}/api/dashboard-finance?period=${period}&company_prefix=${companyPrefix}`
+      const effectivePrefix = selectedCompany !== 'all'
+        ? selectedCompany
+        : companyPrefix
+      const url = effectivePrefix
+        ? `${baseUrl}/api/dashboard-finance?period=${period}&company_prefix=${effectivePrefix}`
         : `${baseUrl}/api/dashboard-finance?period=${period}`
       const res = await fetch(url)
       const json = await res.json()
@@ -120,13 +137,26 @@ export default function FinanceDashboardPage() {
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-bold text-gray-900">💰 Финансовый дашборд</h1>
           </div>
-          <div className="flex gap-2">
-            {PERIOD_OPTIONS.map(opt => (
-              <button key={opt.value} onClick={() => setPeriod(opt.value)}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${period === opt.value ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {companies.length > 1 && (
+              <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <option value="all">ГК ЭПОТОС</option>
+                {companies
+                  .filter(c => !companyPrefix || companyPrefix.split(',').includes(c.prefix))
+                  .map(c => (
+                    <option key={c.prefix} value={c.prefix}>{c.name}</option>
+                  ))}
+              </select>
+            )}
+            <div className="flex gap-2">
+              {PERIOD_OPTIONS.map(opt => (
+                <button key={opt.value} onClick={() => setPeriod(opt.value)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${period === opt.value ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
