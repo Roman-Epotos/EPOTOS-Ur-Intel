@@ -129,12 +129,15 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
 
+  // Определяем префикс компании из номера документа если не задан явно
+  const effectivePrefix = contract.company_prefix ?? contract.number?.split('-')[0] ?? ''
+
   // Загружаем шаблоны для компании
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       const res = await fetch(
-        `${baseUrl}/api/generate-from-template?company_prefix=${contract.company_prefix}`
+        `${baseUrl}/api/generate-from-template?company_prefix=${effectivePrefix}`
       )
       const json = await res.json()
       setTemplates(json.templates ?? [])
@@ -174,7 +177,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
 
     // Реквизиты нашей компании из БД
     const reqRes = await fetch(
-      `${baseUrl}/api/company-requisites?prefix=${contract.company_prefix}`
+      `${baseUrl}/api/company-requisites?prefix=${effectivePrefix}`
     )
     const reqJson = await reqRes.json()
     const req = reqJson.requisites?.[0] ?? {}
@@ -302,7 +305,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
         {loading ? (
           <p className="text-sm text-gray-400">Загрузка шаблонов...</p>
         ) : templates.length === 0 ? (
-          <p className="text-sm text-gray-400">Шаблоны для компании «{contract.company_prefix ?? 'не определена'}» не найдены. Префикс: [{contract.company_prefix}]</p>
+          <p className="text-sm text-gray-400">Шаблоны для компании «{effectivePrefix || 'не определена'}» не найдены</p>
         ) : (
           <div className="grid gap-2">
             {templates.map(t => (
