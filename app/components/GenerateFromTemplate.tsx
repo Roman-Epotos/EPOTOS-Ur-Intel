@@ -58,6 +58,13 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'min_monthly_purchase_text', label: 'Минимальный объём закупки (прописью)', placeholder: 'два миллиона' },
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
   ],
+  'асц': [
+    { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
+    { key: 'insurance_amount_num', label: 'Сумма страхования (цифрами)', placeholder: '5 000 000' },
+    { key: 'insurance_amount_text', label: 'Сумма страхования (прописью)', placeholder: 'пять миллионов' },
+    { key: 'transport_types', label: 'Типы транспортных средств', placeholder: 'грузовые автомобили' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+  ],
   'asc_no_to': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'insurance_amount_num', label: 'Сумма страхования (цифрами)', placeholder: '5 000 000' },
