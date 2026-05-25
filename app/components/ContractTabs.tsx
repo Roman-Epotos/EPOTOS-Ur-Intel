@@ -596,11 +596,11 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
   const TABS = [
     { id: 'details', label: 'Реквизиты', icon: '📋' },
+    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
-    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
