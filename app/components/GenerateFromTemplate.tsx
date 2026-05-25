@@ -233,6 +233,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
     setGenerating(true)
     try {
       const fields = await buildFields()
+      console.log('Sending fields:', JSON.stringify(fields).slice(0, 500))
       const res = await fetch(`${baseUrl}/api/generate-from-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
