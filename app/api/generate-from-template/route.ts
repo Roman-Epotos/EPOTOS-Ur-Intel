@@ -47,11 +47,14 @@ export async function POST(request: NextRequest) {
     // Исправляем разбитые теги {{}} которые Word разбивает на несколько XML runs
     const fixBrokenTags = (content: string): string => {
       let fixed = content
+      // Убираем теги проверки орфографии которые Word вставляет между {{ и именем поля
+      fixed = fixed.replace(/<w:proofErr[^/]*\/>/g, '')
+      fixed = fixed.replace(/<w:proofErr[^>]*>[\s\S]*?<\/w:proofErr>/g, '')
       // Склеиваем {{ разбитый на два run-а
       fixed = fixed.replace(/\{(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\{/g, '{{')
       // Склеиваем }} разбитый на два run-а
       fixed = fixed.replace(/\}(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\}/g, '}}')
-      // Убираем XML внутри уже собранного {{...tag...}} если имя тега разбито
+      // Убираем XML внутри {{...}} если имя тега разбито между runs
       fixed = fixed.replace(/(\{\{[^}]*)(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)([^}]*\}\})/g, '$1$3')
       return fixed
     }
