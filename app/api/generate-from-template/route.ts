@@ -44,30 +44,7 @@ export async function POST(request: NextRequest) {
 
     const zip = new PizZip(buffer)
 
-    // Исправляем разбитые теги {{}} которые Word разбивает на несколько XML runs
-    const fixBrokenTags = (content: string): string => {
-      let fixed = content
-      // Убираем теги проверки орфографии которые Word вставляет между {{ и именем поля
-      fixed = fixed.replace(/<w:proofErr[^/]*\/>/g, '')
-      fixed = fixed.replace(/<w:proofErr[^>]*>[\s\S]*?<\/w:proofErr>/g, '')
-      // Склеиваем {{ разбитый на два run-а
-      fixed = fixed.replace(/\{(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\{/g, '{{')
-      // Склеиваем }} разбитый на два run-а
-      fixed = fixed.replace(/\}(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\}/g, '}}')
-      // Убираем XML внутри {{...}} если имя тега разбито между runs
-      fixed = fixed.replace(/(\{\{[^}]*)(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)([^}]*\}\})/g, '$1$3')
-      return fixed
-    }
-
-    // Патчим XML файлы в архиве
-    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
-                      'word/header2.xml', 'word/footer2.xml']
-    xmlFiles.forEach(f => {
-      try {
-        const content = zip.files[f]?.asText()
-        if (content) zip.file(f, fixBrokenTags(content))
-      } catch { /* файл не существует */ }
-    })
+    // Шаблоны предварительно обработаны скриптом fix_xml.py — дополнительный фикс не нужен
 
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
