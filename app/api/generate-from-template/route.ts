@@ -43,6 +43,25 @@ export async function POST(request: NextRequest) {
     const Docxtemplater = (await import('docxtemplater')).default
 
     const zip = new PizZip(buffer)
+
+    // Исправляем разбитые теги {{}} которые Word разбивает на несколько XML runs
+    const fixBrokenTags = (content: string): string => {
+      return content.replace(/\{(\{[^}]*)\}/g, (match) => match)
+        .replace(/\{[^}]*\}/g, (match) => match)
+        // Склеиваем разбитые теги вида { { field } }
+        .replace(/<\/w:t>(<\/w:r><w:r[^>]*><w:rPr>[^<]*<\/w:rPr>)?<w:t[^>]*>/g, '')
+    }
+
+    // Патчим XML файлы в архиве
+    const files = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                   'word/header2.xml', 'word/footer2.xml']
+    files.forEach(f => {
+      try {
+        const content = zip.files[f]?.asText()
+        if (content) zip.file(f, fixBrokenTags(content))
+      } catch { /* файл не существует */ }
+    })
+
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
