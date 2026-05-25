@@ -67,6 +67,11 @@ export async function POST(request: NextRequest) {
       linebreaks: true,
       nullGetter: () => '____________',
       errorLogging: false,
+      parser: (tag: string) => ({
+        get: (scope: Record<string, unknown>) => {
+          return scope[tag] !== undefined ? scope[tag] : '____________'
+        }
+      }),
     })
 
     try {
