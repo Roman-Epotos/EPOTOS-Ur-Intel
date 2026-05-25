@@ -15,15 +15,27 @@ export async function GET(request: NextRequest) {
     fromDate.setDate(fromDate.getDate() - days)
     const fromDateStr = fromDate.toISOString()
 
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
     // 1. Статистика по статусам
     let contractsQuery = supabase
       .from('contracts')
       .select('status, company_prefix')
       .neq('status', 'архив')
     if (companyPrefix) {
-      contractsQuery = contractsQuery.or(
-        companyPrefix.split(',').map(p => `number.like.${p}-%`).join(',')
-      )
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
     }
     const { data: allContracts } = await contractsQuery
 
@@ -37,7 +49,7 @@ export async function GET(request: NextRequest) {
     })
 
     // 2. Просроченные согласования
-    const { data: overdueApprovals } = await supabase
+    let overdueApprovalsQuery = supabase
       .from('approval_sessions')
       .select(`
         id, deadline, initiated_by_name,
@@ -47,17 +59,25 @@ export async function GET(request: NextRequest) {
       .lt('deadline', new Date().toISOString())
       .order('deadline', { ascending: true })
       .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
 
     // 3. Согласованы но без подписанных экземпляров
-    const { data: unsignedContracts } = await supabase
+    let unsignedQuery = supabase
       .from('contracts')
       .select('id, number, title, counterparty, created_at')
       .eq('status', 'согласован')
       .order('created_at', { ascending: true })
       .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
 
     // 4. Просроченные пункты чек-листа (без задачи Б24)
-    const { data: overdueChecklist } = await supabase
+    let overdueChecklistQuery = supabase
       .from('contract_checklist')
       .select(`
         id, title, due_date, contract_id,
@@ -68,6 +88,10 @@ export async function GET(request: NextRequest) {
       .lt('due_date', new Date().toISOString().slice(0, 10))
       .order('due_date', { ascending: true })
       .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
 
     // 5. Динамика создания документов за период
     const { data: recentContracts } = await supabase
