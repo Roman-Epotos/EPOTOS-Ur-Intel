@@ -1077,6 +1077,78 @@ export async function GET() {
 }
 </file>
 
+<file path="app/api/company-requisites/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const ADMIN_IDS = [30, 1148]
+
+export async function GET(request: NextRequest) {
+  const prefix = request.nextUrl.searchParams.get('prefix')
+
+  let query = supabase
+    .from('company_requisites')
+    .select('*')
+    .order('company_prefix')
+
+  if (prefix) query = query.eq('company_prefix', prefix)
+
+  const { data, error } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ requisites: data ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { admin_bitrix_id, id, ...requisites } = body
+
+    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
+      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
+    }
+
+    // Проверяем есть ли уже запись для этой компании
+    const { data: existing } = await supabase
+      .from('company_requisites')
+      .select('id')
+      .eq('company_prefix', requisites.company_prefix)
+      .single()
+
+    let dbError
+    if (existing) {
+      const { error: updateError } = await supabase
+        .from('company_requisites')
+        .update(requisites)
+        .eq('company_prefix', requisites.company_prefix)
+      dbError = updateError
+    } else {
+      const { error: insertError } = await supabase
+        .from('company_requisites')
+        .insert(requisites)
+      dbError = insertError
+    }
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/contracts/[contractId]/delegate/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2289,78 +2361,6 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('bitrix-users error:', err)
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/company-requisites/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const ADMIN_IDS = [30, 1148]
-
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-
-  let query = supabase
-    .from('company_requisites')
-    .select('*')
-    .order('company_prefix')
-
-  if (prefix) query = query.eq('company_prefix', prefix)
-
-  const { data, error } = await query
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ requisites: data ?? [] })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { admin_bitrix_id, id, ...requisites } = body
-
-    if (!ADMIN_IDS.includes(admin_bitrix_id)) {
-      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
-    }
-
-    // Проверяем есть ли уже запись для этой компании
-    const { data: existing } = await supabase
-      .from('company_requisites')
-      .select('id')
-      .eq('company_prefix', requisites.company_prefix)
-      .single()
-
-    let dbError
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from('company_requisites')
-        .update(requisites)
-        .eq('company_prefix', requisites.company_prefix)
-      dbError = updateError
-    } else {
-      const { error: insertError } = await supabase
-        .from('company_requisites')
-        .insert(requisites)
-      dbError = insertError
-    }
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 </file>
@@ -3729,287 +3729,6 @@ export async function DELETE(
 }
 </file>
 
-<file path="app/api/dashboard-legal/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
-
-    // Вспомогательная функция фильтра по префиксу компании
-    const prefixFilter = (prefix: string) =>
-      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
-
-    // ID договоров нужной компании (используем везде)
-    let companyContractIds: string[] | null = null
-    if (companyPrefix) {
-      const { data: filtered } = await supabase
-        .from('contracts')
-        .select('id')
-        .or(prefixFilter(companyPrefix))
-      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
-    }
-
-    // 1. Статистика по статусам
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('status, company_prefix')
-      .neq('status', 'архив')
-    if (companyPrefix) {
-      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: allContracts } = await contractsQuery
-
-    const statusStats: Record<string, number> = {}
-    const companyStats: Record<string, number> = {}
-    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
-      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
-      if (c.company_prefix) {
-        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    // 2. Просроченные согласования
-    let overdueApprovalsQuery = supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('status', 'active')
-      .lt('deadline', new Date().toISOString())
-      .order('deadline', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueApprovals } = await overdueApprovalsQuery
-
-    // 3. Согласованы но без подписанных экземпляров
-    let unsignedQuery = supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at')
-      .eq('status', 'согласован')
-      .order('created_at', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      unsignedQuery = unsignedQuery.in('id', companyContractIds)
-    }
-    const { data: unsignedContracts } = await unsignedQuery
-
-    // 4. Просроченные пункты чек-листа (без задачи Б24)
-    let overdueChecklistQuery = supabase
-      .from('contract_checklist')
-      .select(`
-        id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
-      `)
-      .eq('is_done', false)
-      .is('bitrix_task_id', null)
-      .lt('due_date', new Date().toISOString().slice(0, 10))
-      .order('due_date', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueChecklist } = await overdueChecklistQuery
-
-    // 5. Динамика создания документов за период
-    const { data: recentContracts } = await supabase
-      .from('contracts')
-      .select('created_at, company_prefix, status')
-      .gte('created_at', fromDateStr)
-      .order('created_at', { ascending: true })
-
-    // Группируем по неделям
-    const weeklyMap: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
-      const date = new Date(c.created_at)
-      const weekStart = new Date(date)
-      weekStart.setDate(date.getDate() - date.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
-    })
-
-    // Группируем по компаниям за период
-    const companyPeriodStats: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
-      if (c.company_prefix) {
-        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    return NextResponse.json({
-      status_stats: statusStats,
-      company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
-      weekly_dynamics: weeklyMap,
-      company_period_stats: companyPeriodStats,
-      total_period: recentContracts?.length ?? 0,
-      period_days: days,
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/user-role/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const DEVELOPER_ID = 30
-const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
-
-const GC_ROLE_PRIORITY: Record<string, number> = {
-  developer:  1,
-  admin:      2,
-  gc_manager: 3,
-  finance_gc: 4,
-  legal_gc:   5,
-}
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-  }
-  const userId = parseInt(bitrixUserId)
-
-  // 1. Проверяем роль ГК (наивысшая из найденных)
-  let gcRole: string | null = null
-
-  if (userId === DEVELOPER_ID) {
-    gcRole = 'developer'
-  } else {
-    const { data: systemRole } = await supabase
-      .from('system_roles')
-      .select('role')
-      .eq('bitrix_user_id', userId)
-      .single()
-    if (systemRole) gcRole = systemRole.role
-  }
-
-  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
-  if (gcRole) {
-    // Но всё равно собираем роли из согласующих для all_roles
-    const approvalRoles: string[] = []
-
-    const { data: dirSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'director')
-      .eq('is_active', true)
-      .limit(1)
-    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
-
-    const { data: legalSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'legal')
-      .eq('is_active', true)
-      .limit(1)
-    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
-
-    const { data: finSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting'])
-      .eq('is_active', true)
-      .limit(1)
-    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
-
-    return NextResponse.json({
-      role: gcRole,
-      companies: ALL_COMPANIES,
-      all_roles: [gcRole, ...approvalRoles],
-    })
-  }
-
-  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
-  const approvalRoles: string[] = []
-  const companiesMap: Record<string, string[]> = {}
-
-  // Директор
-  const { data: dirSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'director')
-    .eq('is_active', true)
-
-  if (dirSettings && dirSettings.length > 0) {
-    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
-  }
-
-  // Юрист
-  const { data: legalSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'legal')
-    .eq('is_active', true)
-
-  if (legalSettings && legalSettings.length > 0) {
-    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
-  }
-
-  // Финансист
-  const { data: finSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .in('stage', ['finance', 'accounting'])
-    .eq('is_active', true)
-
-  if (finSettings && finSettings.length > 0) {
-    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
-    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
-  }
-
-  if (approvalRoles.length === 0) {
-    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
-  }
-
-  // Объединяем все компании из всех ролей согласующих
-  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
-
-  // Основная роль — первая в списке приоритетов: director > legal > finance
-  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
-
-  return NextResponse.json({
-    role: primaryRole,
-    companies: allCompanies,
-    all_roles: approvalRoles,
-  })
-}
-</file>
-
 <file path="app/api/contract-checklist/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4483,6 +4202,287 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+</file>
+
+<file path="app/api/dashboard-legal/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
+
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
+    // 1. Статистика по статусам
+    let contractsQuery = supabase
+      .from('contracts')
+      .select('status, company_prefix')
+      .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: allContracts } = await contractsQuery
+
+    const statusStats: Record<string, number> = {}
+    const companyStats: Record<string, number> = {}
+    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
+      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
+      if (c.company_prefix) {
+        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // 2. Просроченные согласования
+    let overdueApprovalsQuery = supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, initiated_by_name,
+        contracts!inner ( id, number, title, counterparty, status )
+      `)
+      .eq('status', 'active')
+      .lt('deadline', new Date().toISOString())
+      .order('deadline', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
+
+    // 3. Согласованы но без подписанных экземпляров
+    let unsignedQuery = supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at')
+      .eq('status', 'согласован')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
+
+    // 4. Просроченные пункты чек-листа (без задачи Б24)
+    let overdueChecklistQuery = supabase
+      .from('contract_checklist')
+      .select(`
+        id, title, due_date, contract_id,
+        contracts!inner ( id, number, title )
+      `)
+      .eq('is_done', false)
+      .is('bitrix_task_id', null)
+      .lt('due_date', new Date().toISOString().slice(0, 10))
+      .order('due_date', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
+
+    // 5. Динамика создания документов за период
+    const { data: recentContracts } = await supabase
+      .from('contracts')
+      .select('created_at, company_prefix, status')
+      .gte('created_at', fromDateStr)
+      .order('created_at', { ascending: true })
+
+    // Группируем по неделям
+    const weeklyMap: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
+      const date = new Date(c.created_at)
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
+    })
+
+    // Группируем по компаниям за период
+    const companyPeriodStats: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
+      if (c.company_prefix) {
+        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    return NextResponse.json({
+      status_stats: statusStats,
+      company_stats: companyStats,
+      overdue_approvals: overdueApprovals ?? [],
+      unsigned_contracts: unsignedContracts ?? [],
+      overdue_checklist: overdueChecklist ?? [],
+      weekly_dynamics: weeklyMap,
+      company_period_stats: companyPeriodStats,
+      total_period: recentContracts?.length ?? 0,
+      period_days: days,
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/user-role/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DEVELOPER_ID = 30
+const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
+
+const GC_ROLE_PRIORITY: Record<string, number> = {
+  developer:  1,
+  admin:      2,
+  gc_manager: 3,
+  finance_gc: 4,
+  legal_gc:   5,
+}
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+  }
+  const userId = parseInt(bitrixUserId)
+
+  // 1. Проверяем роль ГК (наивысшая из найденных)
+  let gcRole: string | null = null
+
+  if (userId === DEVELOPER_ID) {
+    gcRole = 'developer'
+  } else {
+    const { data: systemRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+    if (systemRole) gcRole = systemRole.role
+  }
+
+  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
+  if (gcRole) {
+    // Но всё равно собираем роли из согласующих для all_roles
+    const approvalRoles: string[] = []
+
+    const { data: dirSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'director')
+      .eq('is_active', true)
+      .limit(1)
+    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
+
+    const { data: legalSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'legal')
+      .eq('is_active', true)
+      .limit(1)
+    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
+
+    const { data: finSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting'])
+      .eq('is_active', true)
+      .limit(1)
+    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
+
+    return NextResponse.json({
+      role: gcRole,
+      companies: ALL_COMPANIES,
+      all_roles: [gcRole, ...approvalRoles],
+    })
+  }
+
+  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
+  const approvalRoles: string[] = []
+  const companiesMap: Record<string, string[]> = {}
+
+  // Директор
+  const { data: dirSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'director')
+    .eq('is_active', true)
+
+  if (dirSettings && dirSettings.length > 0) {
+    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
+  }
+
+  // Юрист
+  const { data: legalSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'legal')
+    .eq('is_active', true)
+
+  if (legalSettings && legalSettings.length > 0) {
+    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
+  }
+
+  // Финансист
+  const { data: finSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .in('stage', ['finance', 'accounting'])
+    .eq('is_active', true)
+
+  if (finSettings && finSettings.length > 0) {
+    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
+    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
+  }
+
+  if (approvalRoles.length === 0) {
+    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
+  }
+
+  // Объединяем все компании из всех ролей согласующих
+  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
+
+  // Основная роль — первая в списке приоритетов: director > legal > finance
+  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
+
+  return NextResponse.json({
+    role: primaryRole,
+    companies: allCompanies,
+    all_roles: approvalRoles,
+  })
 }
 </file>
 

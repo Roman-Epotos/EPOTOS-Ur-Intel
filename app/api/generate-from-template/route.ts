@@ -43,10 +43,23 @@ export async function POST(request: NextRequest) {
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
-      nullGetter: () => '____________', // пустые поля → подчёркивания
+      nullGetter: () => '____________',
+      errorLogging: false,
     })
 
-    doc.render(fields)
+    try {
+      doc.render(fields)
+    } catch (renderError: unknown) {
+      const errObj = renderError as { properties?: { errors?: unknown[] }; message?: string }
+      const errors = errObj?.properties?.errors
+      if (errors && Array.isArray(errors) && errors.length > 0) {
+        console.error('Docxtemplater errors:', JSON.stringify(errors.map((e: unknown) => {
+          const err = e as { properties?: { explanation?: string; tag?: string } }
+          return { explanation: err?.properties?.explanation, tag: err?.properties?.tag }
+        })))
+      }
+      throw new Error('Ошибка при подстановке полей в шаблон: ' + (errObj?.message ?? 'неизвестная ошибка'))
+    }
 
     const output = doc.getZip().generate({
       type: 'nodebuffer',

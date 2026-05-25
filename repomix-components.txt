@@ -2145,7 +2145,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
 
     // Реквизиты нашей компании из БД
     const reqRes = await fetch(
-      `${baseUrl}/api/company-requisites?prefix=${contract.company_prefix}`
+      `${baseUrl}/api/company-requisites?prefix=${effectivePrefix}`
     )
     const reqJson = await reqRes.json()
     const req = reqJson.requisites?.[0] ?? {}
@@ -3019,11 +3019,11 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
 
   const TABS = [
     { id: 'details', label: 'Реквизиты', icon: '📋' },
+    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'documents', label: 'Документы', icon: '📁' },
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
-    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
