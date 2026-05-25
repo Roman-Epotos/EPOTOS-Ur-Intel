@@ -46,16 +46,20 @@ export async function POST(request: NextRequest) {
 
     // Исправляем разбитые теги {{}} которые Word разбивает на несколько XML runs
     const fixBrokenTags = (content: string): string => {
-      return content.replace(/\{(\{[^}]*)\}/g, (match) => match)
-        .replace(/\{[^}]*\}/g, (match) => match)
-        // Склеиваем разбитые теги вида { { field } }
-        .replace(/<\/w:t>(<\/w:r><w:r[^>]*><w:rPr>[^<]*<\/w:rPr>)?<w:t[^>]*>/g, '')
+      let fixed = content
+      // Склеиваем {{ разбитый на два run-а
+      fixed = fixed.replace(/\{(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\{/g, '{{')
+      // Склеиваем }} разбитый на два run-а
+      fixed = fixed.replace(/\}(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)\}/g, '}}')
+      // Убираем XML внутри уже собранного {{...tag...}} если имя тега разбито
+      fixed = fixed.replace(/(\{\{[^}]*)(<\/w:t><\/w:r><w:r[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>)([^}]*\}\})/g, '$1$3')
+      return fixed
     }
 
     // Патчим XML файлы в архиве
-    const files = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
-                   'word/header2.xml', 'word/footer2.xml']
-    files.forEach(f => {
+    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                      'word/header2.xml', 'word/footer2.xml']
+    xmlFiles.forEach(f => {
       try {
         const content = zip.files[f]?.asText()
         if (content) zip.file(f, fixBrokenTags(content))
@@ -67,11 +71,6 @@ export async function POST(request: NextRequest) {
       linebreaks: true,
       nullGetter: () => '____________',
       errorLogging: false,
-      parser: (tag: string) => ({
-        get: (scope: Record<string, unknown>) => {
-          return scope[tag] !== undefined ? scope[tag] : '____________'
-        }
-      }),
     })
 
     try {
