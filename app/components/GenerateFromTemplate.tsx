@@ -302,7 +302,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
         {loading ? (
           <p className="text-sm text-gray-400">Загрузка шаблонов...</p>
         ) : templates.length === 0 ? (
-          <p className="text-sm text-gray-400">Шаблоны для компании {contract.company_prefix} не найдены</p>
+          <p className="text-sm text-gray-400">Шаблоны для компании «{contract.company_prefix ?? 'не определена'}» не найдены. Префикс: [{contract.company_prefix}]</p>
         ) : (
           <div className="grid gap-2">
             {templates.map(t => (
