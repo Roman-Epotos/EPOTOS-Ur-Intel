@@ -74,13 +74,17 @@ export async function POST(request: NextRequest) {
     } catch (renderError: unknown) {
       const errObj = renderError as { properties?: { errors?: unknown[] }; message?: string }
       const errors = errObj?.properties?.errors
+      let errorDetails = ''
       if (errors && Array.isArray(errors) && errors.length > 0) {
-        console.error('Docxtemplater errors:', JSON.stringify(errors.map((e: unknown) => {
-          const err = e as { properties?: { explanation?: string; tag?: string } }
-          return { explanation: err?.properties?.explanation, tag: err?.properties?.tag }
-        })))
+        const details = errors.map((e: unknown) => {
+          const err = e as { properties?: { explanation?: string; tag?: string; xtag?: string } }
+          return `tag="${err?.properties?.tag ?? err?.properties?.xtag}" explanation="${err?.properties?.explanation}"`
+        })
+        errorDetails = details.join('; ')
+        console.error('Docxtemplater render errors:', errorDetails)
       }
-      throw new Error('Ошибка при подстановке полей в шаблон: ' + (errObj?.message ?? 'неизвестная ошибка'))
+      console.error('Full render error:', JSON.stringify(errObj))
+      throw new Error('Ошибка шаблона: ' + (errorDetails || errObj?.message || 'неизвестная ошибка'))
     }
 
     const output = doc.getZip().generate({
