@@ -70,6 +70,7 @@ app/api/cron-checklist-deadline/route.ts
 app/api/dashboard-finance/route.ts
 app/api/dashboard-legal/route.ts
 app/api/dashboard/route.ts
+app/api/generate-from-template/route.ts
 app/api/my-documents/route.ts
 app/api/onlyoffice/callback/route.ts
 app/api/onlyoffice/file/route.ts
@@ -1198,6 +1199,118 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/generate-from-template/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { template_id, fields, contract_id } = body
+
+    if (!template_id || !fields) {
+      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
+    }
+
+    // 1. Получаем шаблон из БД
+    const { data: template, error: tplError } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('id', template_id)
+      .eq('is_active', true)
+      .single()
+
+    if (tplError || !template) {
+      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
+    }
+
+    // 2. Скачиваем .docx шаблон из Supabase Storage
+    const fileRes = await fetch(template.file_url)
+    if (!fileRes.ok) {
+      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
+    }
+    const arrayBuffer = await fileRes.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // 3. Подставляем поля через docxtemplater
+    const PizZip = (await import('pizzip')).default
+    const Docxtemplater = (await import('docxtemplater')).default
+
+    const zip = new PizZip(buffer)
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: () => '____________', // пустые поля → подчёркивания
+    })
+
+    doc.render(fields)
+
+    const output = doc.getZip().generate({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    // 4. Логируем генерацию
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Документ сгенерирован из шаблона',
+        details: `Шаблон: ${template.name}`,
+        user_name: body.user_name ?? 'Пользователь',
+      })
+    }
+
+    // 5. Возвращаем файл
+    return new NextResponse(output, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
+      },
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    console.error('generate-from-template error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// GET — список шаблонов для компании и типа документа
+export async function GET(request: NextRequest) {
+  try {
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const docType = request.nextUrl.searchParams.get('type')
+
+    let query = supabase
+      .from('document_templates')
+      .select('id, name, type, company_prefix, file_name, created_at')
+      .eq('is_active', true)
+      .order('name')
+
+    if (companyPrefix) {
+      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
+    }
+    if (docType) {
+      query = query.eq('type', docType)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    return NextResponse.json({ templates: data ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -3233,138 +3346,6 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/dashboard-legal/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
-
-    // Вспомогательная функция фильтра по префиксу компании
-    const prefixFilter = (prefix: string) =>
-      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
-
-    // ID договоров нужной компании (используем везде)
-    let companyContractIds: string[] | null = null
-    if (companyPrefix) {
-      const { data: filtered } = await supabase
-        .from('contracts')
-        .select('id')
-        .or(prefixFilter(companyPrefix))
-      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
-    }
-
-    // 1. Статистика по статусам
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('status, company_prefix')
-      .neq('status', 'архив')
-    if (companyPrefix) {
-      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: allContracts } = await contractsQuery
-
-    const statusStats: Record<string, number> = {}
-    const companyStats: Record<string, number> = {}
-    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
-      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
-      if (c.company_prefix) {
-        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    // 2. Просроченные согласования
-    let overdueApprovalsQuery = supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('status', 'active')
-      .lt('deadline', new Date().toISOString())
-      .order('deadline', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueApprovals } = await overdueApprovalsQuery
-
-    // 3. Согласованы но без подписанных экземпляров
-    const { data: unsignedContracts } = await supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at')
-      .eq('status', 'согласован')
-      .order('created_at', { ascending: true })
-      .limit(10)
-
-    // 4. Просроченные пункты чек-листа (без задачи Б24)
-    const { data: overdueChecklist } = await supabase
-      .from('contract_checklist')
-      .select(`
-        id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
-      `)
-      .eq('is_done', false)
-      .is('bitrix_task_id', null)
-      .lt('due_date', new Date().toISOString().slice(0, 10))
-      .order('due_date', { ascending: true })
-      .limit(10)
-
-    // 5. Динамика создания документов за период
-    const { data: recentContracts } = await supabase
-      .from('contracts')
-      .select('created_at, company_prefix, status')
-      .gte('created_at', fromDateStr)
-      .order('created_at', { ascending: true })
-
-    // Группируем по неделям
-    const weeklyMap: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
-      const date = new Date(c.created_at)
-      const weekStart = new Date(date)
-      weekStart.setDate(date.getDate() - date.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
-    })
-
-    // Группируем по компаниям за период
-    const companyPeriodStats: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
-      if (c.company_prefix) {
-        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    return NextResponse.json({
-      status_stats: statusStats,
-      company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
-      weekly_dynamics: weeklyMap,
-      company_period_stats: companyPeriodStats,
-      total_period: recentContracts?.length ?? 0,
-      period_days: days,
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/my-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3748,6 +3729,146 @@ export async function DELETE(
 }
 </file>
 
+<file path="app/api/dashboard-legal/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
+
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
+    // 1. Статистика по статусам
+    let contractsQuery = supabase
+      .from('contracts')
+      .select('status, company_prefix')
+      .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: allContracts } = await contractsQuery
+
+    const statusStats: Record<string, number> = {}
+    const companyStats: Record<string, number> = {}
+    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
+      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
+      if (c.company_prefix) {
+        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // 2. Просроченные согласования
+    let overdueApprovalsQuery = supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, initiated_by_name,
+        contracts!inner ( id, number, title, counterparty, status )
+      `)
+      .eq('status', 'active')
+      .lt('deadline', new Date().toISOString())
+      .order('deadline', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
+
+    // 3. Согласованы но без подписанных экземпляров
+    let unsignedQuery = supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at')
+      .eq('status', 'согласован')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
+
+    // 4. Просроченные пункты чек-листа (без задачи Б24)
+    let overdueChecklistQuery = supabase
+      .from('contract_checklist')
+      .select(`
+        id, title, due_date, contract_id,
+        contracts!inner ( id, number, title )
+      `)
+      .eq('is_done', false)
+      .is('bitrix_task_id', null)
+      .lt('due_date', new Date().toISOString().slice(0, 10))
+      .order('due_date', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
+
+    // 5. Динамика создания документов за период
+    const { data: recentContracts } = await supabase
+      .from('contracts')
+      .select('created_at, company_prefix, status')
+      .gte('created_at', fromDateStr)
+      .order('created_at', { ascending: true })
+
+    // Группируем по неделям
+    const weeklyMap: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
+      const date = new Date(c.created_at)
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
+    })
+
+    // Группируем по компаниям за период
+    const companyPeriodStats: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
+      if (c.company_prefix) {
+        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    return NextResponse.json({
+      status_stats: statusStats,
+      company_stats: companyStats,
+      overdue_approvals: overdueApprovals ?? [],
+      unsigned_contracts: unsignedContracts ?? [],
+      overdue_checklist: overdueChecklist ?? [],
+      weekly_dynamics: weeklyMap,
+      company_period_stats: companyPeriodStats,
+      total_period: recentContracts?.length ?? 0,
+      period_days: days,
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/user-role/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4030,180 +4151,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/approvals/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify, createBitrixChat } from '@/app/lib/notify'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-// Запуск согласования
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const {
-      contract_id,
-      participants,
-      deadline,
-      initiated_by_name,
-      initiated_by_bitrix_id,
-    } = body
-
-    if (!contract_id || !participants || !deadline) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
-    }
-
-    // Создаём сессию согласования
-    const { data: session, error: sessionError } = await supabase
-      .from('approval_sessions')
-      .insert({
-        contract_id,
-        deadline,
-        initiated_by_name: initiated_by_name ?? 'Система',
-        initiated_by_bitrix_id: initiated_by_bitrix_id ?? null,
-        status: 'active',
-      })
-      .select('id')
-      .single()
-
-    if (sessionError) {
-      return NextResponse.json({ error: sessionError.message }, { status: 400 })
-    }
-
-    // Дедупликация — убираем дубли по bitrix_user_id (оставляем первого)
-    const seenUserIds = new Set<number>()
-    const uniqueParticipants = participants.filter((p: { bitrix_user_id?: number }) => {
-      if (!p.bitrix_user_id) return true
-      if (seenUserIds.has(p.bitrix_user_id)) return false
-      seenUserIds.add(p.bitrix_user_id)
-      return true
-    })
-
-    // Добавляем участников
-    const participantsToInsert = uniqueParticipants.map((p: {
-      user_name: string
-      bitrix_user_id?: number
-      department?: string
-      role: string
-      stage: string
-    }) => ({
-      session_id: session.id,
-      user_name: p.user_name,
-      bitrix_user_id: p.bitrix_user_id ?? null,
-      department: p.department ?? null,
-      role: p.role,
-      stage: p.stage,
-      status: 'pending',
-    }))
-
-    const { error: participantsError } = await supabase
-      .from('approval_participants')
-      .insert(participantsToInsert)
-
-    if (participantsError) {
-      return NextResponse.json({ error: participantsError.message }, { status: 400 })
-    }
-
-    // Обновляем статус договора
-    await supabase
-      .from('contracts')
-      .update({ status: 'на_согласовании' })
-      .eq('id', contract_id)
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Согласование запущено',
-        details: `Запущено согласование. Участников: ${participants.length}. Дедлайн: ${deadline}.`,
-        user_name: initiated_by_name ?? 'Система',
-      })
-
-    // Получаем данные договора
-    const { data: contractInfo } = await supabase
-      .from('contracts')
-      .select('title, number, author_bitrix_id')
-      .eq('id', contract_id)
-      .single()
-
-    // Создаём групповой чат Битрикс24
-    const chatMemberIds = [...new Set([
-      ...(contractInfo?.author_bitrix_id ? [contractInfo.author_bitrix_id] : []),
-      ...participants
-        .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
-        .map((p: { bitrix_user_id: number }) => p.bitrix_user_id),
-    ])]
-    if (chatMemberIds.length > 0 && contractInfo) {
-      const chatId = await createBitrixChat({
-        document_number: contractInfo.number ?? '',
-        document_title: contractInfo.title ?? '',
-        member_ids: chatMemberIds,
-      })
-      if (chatId) {
-        await supabase
-          .from('approval_sessions')
-          .update({ bitrix_chat_id: chatId })
-          .eq('id', session.id)
-      }
-    }
-
-    // Уведомляем участников о необходимости согласования
-    const participantIds = participants
-      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
-      .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
-
-    if (participantIds.length > 0 && contractInfo) {
-      await sendBitrixNotify({
-        recipients: participantIds,
-        type: 'approval_required',
-        document_id: contract_id,
-        document_title: contractInfo.title ?? '',
-        document_number: contractInfo.number ?? '',
-      })
-    }
-
-    return NextResponse.json({ success: true, session_id: session.id })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// Получение сессии согласования
-export async function GET(request: NextRequest) {
-  try {
-    const contractId = request.nextUrl.searchParams.get('contract_id')
-    if (!contractId) {
-      return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-    }
-
-    const { data: session, error } = await supabase
-      .from('approval_sessions')
-      .select(`
-        *,
-        approval_participants (*),
-        approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
-      `)
-      .eq('contract_id', contractId)
-      .in('status', ['active', 'completed'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-    if (error && error.code !== 'PGRST116') {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-    return NextResponse.json({ session: session ?? null })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -4568,6 +4515,180 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/approvals/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify, createBitrixChat } from '@/app/lib/notify'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+// Запуск согласования
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      contract_id,
+      participants,
+      deadline,
+      initiated_by_name,
+      initiated_by_bitrix_id,
+    } = body
+
+    if (!contract_id || !participants || !deadline) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    }
+
+    // Создаём сессию согласования
+    const { data: session, error: sessionError } = await supabase
+      .from('approval_sessions')
+      .insert({
+        contract_id,
+        deadline,
+        initiated_by_name: initiated_by_name ?? 'Система',
+        initiated_by_bitrix_id: initiated_by_bitrix_id ?? null,
+        status: 'active',
+      })
+      .select('id')
+      .single()
+
+    if (sessionError) {
+      return NextResponse.json({ error: sessionError.message }, { status: 400 })
+    }
+
+    // Дедупликация — убираем дубли по bitrix_user_id (оставляем первого)
+    const seenUserIds = new Set<number>()
+    const uniqueParticipants = participants.filter((p: { bitrix_user_id?: number }) => {
+      if (!p.bitrix_user_id) return true
+      if (seenUserIds.has(p.bitrix_user_id)) return false
+      seenUserIds.add(p.bitrix_user_id)
+      return true
+    })
+
+    // Добавляем участников
+    const participantsToInsert = uniqueParticipants.map((p: {
+      user_name: string
+      bitrix_user_id?: number
+      department?: string
+      role: string
+      stage: string
+    }) => ({
+      session_id: session.id,
+      user_name: p.user_name,
+      bitrix_user_id: p.bitrix_user_id ?? null,
+      department: p.department ?? null,
+      role: p.role,
+      stage: p.stage,
+      status: 'pending',
+    }))
+
+    const { error: participantsError } = await supabase
+      .from('approval_participants')
+      .insert(participantsToInsert)
+
+    if (participantsError) {
+      return NextResponse.json({ error: participantsError.message }, { status: 400 })
+    }
+
+    // Обновляем статус договора
+    await supabase
+      .from('contracts')
+      .update({ status: 'на_согласовании' })
+      .eq('id', contract_id)
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Согласование запущено',
+        details: `Запущено согласование. Участников: ${participants.length}. Дедлайн: ${deadline}.`,
+        user_name: initiated_by_name ?? 'Система',
+      })
+
+    // Получаем данные договора
+    const { data: contractInfo } = await supabase
+      .from('contracts')
+      .select('title, number, author_bitrix_id')
+      .eq('id', contract_id)
+      .single()
+
+    // Создаём групповой чат Битрикс24
+    const chatMemberIds = [...new Set([
+      ...(contractInfo?.author_bitrix_id ? [contractInfo.author_bitrix_id] : []),
+      ...participants
+        .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+        .map((p: { bitrix_user_id: number }) => p.bitrix_user_id),
+    ])]
+    if (chatMemberIds.length > 0 && contractInfo) {
+      const chatId = await createBitrixChat({
+        document_number: contractInfo.number ?? '',
+        document_title: contractInfo.title ?? '',
+        member_ids: chatMemberIds,
+      })
+      if (chatId) {
+        await supabase
+          .from('approval_sessions')
+          .update({ bitrix_chat_id: chatId })
+          .eq('id', session.id)
+      }
+    }
+
+    // Уведомляем участников о необходимости согласования
+    const participantIds = participants
+      .filter((p: { bitrix_user_id?: number }) => p.bitrix_user_id)
+      .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
+
+    if (participantIds.length > 0 && contractInfo) {
+      await sendBitrixNotify({
+        recipients: participantIds,
+        type: 'approval_required',
+        document_id: contract_id,
+        document_title: contractInfo.title ?? '',
+        document_number: contractInfo.number ?? '',
+      })
+    }
+
+    return NextResponse.json({ success: true, session_id: session.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// Получение сессии согласования
+export async function GET(request: NextRequest) {
+  try {
+    const contractId = request.nextUrl.searchParams.get('contract_id')
+    if (!contractId) {
+      return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+    }
+
+    const { data: session, error } = await supabase
+      .from('approval_sessions')
+      .select(`
+        *,
+        approval_participants (*),
+        approval_messages (created_at, id, author_name, bitrix_user_id, message, is_ai, session_id, file_url, file_name, file_type)
+      `)
+      .eq('contract_id', contractId)
+      .in('status', ['active', 'completed'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (error && error.code !== 'PGRST116') {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    return NextResponse.json({ session: session ?? null })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })

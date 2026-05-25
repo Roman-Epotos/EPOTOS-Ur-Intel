@@ -18,6 +18,7 @@ const ATTACHMENT_TYPES = [
   'Другое',
 ]
 import AIGenerate from '@/app/components/AIGenerate'
+import GenerateFromTemplate from '@/app/components/GenerateFromTemplate'
 import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import dynamic from 'next/dynamic'
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
@@ -599,7 +600,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
-    // { id: 'generate', label: 'Генерация', icon: '✨' }, // В разработке
+    { id: 'generate', label: 'Генерация', icon: '✨' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
@@ -1226,10 +1227,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
           {/* Генерация */}
           {activeTab === 'generate' && (
             <div className="p-6">
-              <AIGenerate
-                contractId={contract.id}
-                onGenerated={() => {}}
-              />
+              <GenerateFromTemplate contract={contract} />
             </div>
           )}
 
