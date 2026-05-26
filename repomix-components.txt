@@ -4711,6 +4711,89 @@ function HistorySection({ contractId }: { contractId: string }) {
 }
 </file>
 
+<file path="app/components/Header.tsx">
+'use client'
+
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
+        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Link
+          href="/contracts/new"
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+        >
+          + Новый документ
+        </Link>
+        <Link
+          href="/dashboard"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🖥️ Рабочий стол
+        </Link>
+        <Link
+          href="/counterparties"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🏢 Контрагенты
+        </Link>
+
+        {/* Профиль пользователя */}
+        
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/components/GenerateFromTemplate.tsx">
 'use client'
 
@@ -4730,6 +4813,14 @@ interface Counterparty {
   full_name: string
   short_name: string | null
   inn: string
+  kpp?: string | null
+  ogrn?: string | null
+  legal_address?: string | null
+  phone?: string | null
+  bank_name?: string | null
+  bank_account?: string | null
+  bank_bik?: string | null
+  bank_corr_account?: string | null
   signatory_name: string | null
   poa_number: string | null
   poa_date: string | null
@@ -4987,6 +5078,15 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
       counterparty_basis: cp?.poa_number
         ? `доверенности № ${cp.poa_number} от ${cp.poa_date ?? ''}`
         : 'Устава',
+      counterparty_inn: (cp as {inn?: string})?.inn ?? '',
+      counterparty_kpp: (cp as {kpp?: string})?.kpp ?? '',
+      counterparty_ogrn: (cp as {ogrn?: string})?.ogrn ?? '',
+      counterparty_address: (cp as {legal_address?: string})?.legal_address ?? '',
+      counterparty_phone: (cp as {phone?: string})?.phone ?? '',
+      counterparty_bank_name: (cp as {bank_name?: string})?.bank_name ?? '',
+      counterparty_bank_account: (cp as {bank_account?: string})?.bank_account ?? '',
+      counterparty_bank_bik: (cp as {bank_bik?: string})?.bank_bik ?? '',
+      counterparty_bank_corr: (cp as {bank_corr_account?: string})?.bank_corr_account ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
@@ -5220,89 +5320,6 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
   }
 
   return null
-}
-</file>
-
-<file path="app/components/Header.tsx">
-'use client'
-
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import Link from 'next/link'
-
-export default function Header() {
-  const { user, loading } = useBitrixAuth()
-
-  return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
-        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-        >
-          + Новый документ
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          🖥️ Рабочий стол
-        </Link>
-        <Link
-          href="/counterparties"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          🏢 Контрагенты
-        </Link>
-
-        {/* Профиль пользователя */}
-        
-        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
-          <Link href="/admin"
-            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            Настройки
-          </Link>
-        )}
-        {!loading && (
-          <div className="flex items-center gap-3">
-            {user ? (
-              <div className="flex items-center gap-2">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                  ?
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Гость</p>
-                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
 }
 </file>
 

@@ -350,16 +350,23 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
       const formData = new FormData()
       formData.append('file', generatedBlob, generatedFileName)
       formData.append('contract_id', contract.id)
-      formData.append('category', category === 'main' ? 'version' : 'attachment')
-      formData.append('bitrix_user_id', user.id)
       formData.append('user_name', user.name ?? 'Пользователь')
 
-      const endpoint = category === 'main'
-        ? `${baseUrl}/api/versions`
-        : `${baseUrl}/api/attachments`
+      let endpoint: string
+      if (category === 'main') {
+        formData.append('comment', 'Сгенерировано из шаблона')
+        endpoint = `${baseUrl}/api/versions`
+      } else {
+        formData.append('bitrix_user_id', user.id)
+        formData.append('category', 'attachment')
+        endpoint = `${baseUrl}/api/attachments`
+      }
 
       const res = await fetch(endpoint, { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('Ошибка загрузки')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? 'Ошибка загрузки')
+      }
       alert(category === 'main'
         ? '✅ Документ добавлен как основная версия'
         : '✅ Документ добавлен как дополнительный материал'
