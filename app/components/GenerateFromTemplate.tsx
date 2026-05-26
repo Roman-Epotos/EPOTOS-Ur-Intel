@@ -347,8 +347,9 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
     if (!generatedBlob || !user?.id) return
     setUploading(true)
     try {
+      const safeFileName = generatedFileName.replace(/\//g, '-')
       const formData = new FormData()
-      formData.append('file', generatedBlob, generatedFileName)
+      formData.append('file', generatedBlob, safeFileName)
       formData.append('contract_id', contract.id)
       formData.append('user_name', user.name ?? 'Пользователь')
 

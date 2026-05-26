@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
       }
       return map[char] ?? '_'
     })
-    const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${safeFileName}`
+    const cleanFileName = safeFileName.replace(/\//g, '-').replace(/—/g, '-')
+    const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${cleanFileName}`
     const arrayBuffer = await file.arrayBuffer()
 
     const { error: uploadError } = await supabase.storage
