@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('counterparties')
-      .select('id, inn, short_name, full_name, status, risk_level, director_name, phone, email, created_at')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at')
       .order('full_name', { ascending: true })
 
     if (search) {

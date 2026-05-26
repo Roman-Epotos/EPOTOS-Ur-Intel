@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 interface Template {
@@ -175,6 +176,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
 
 export default function GenerateFromTemplate({ contract }: GenerateFromTemplateProps) {
   const { user } = useBitrixAuth()
+  const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [counterparties, setCounterparties] = useState<Counterparty[]>([])
@@ -369,6 +371,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error ?? 'Ошибка загрузки')
       }
+      router.refresh()
       alert(category === 'main'
         ? '✅ Документ добавлен как основная версия'
         : '✅ Документ добавлен как дополнительный материал'

@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
     if (contract_id) {
       await supabase.from('contract_logs').insert({
         contract_id,
-        action: 'Документ сгенерирован из шаблона',
-        details: `Шаблон: ${template.name}`,
+        action: `Сгенерирован документ из шаблона: ${template.name}`,
+        details: `Файл: ${template.name}.docx`,
         user_name: body.user_name ?? 'Пользователь',
       })
     }
