@@ -38,22 +38,34 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await fileRes.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // 3. Подставляем поля через docx-templates
-    const { createReport } = await import('docx-templates')
+    // 3. Простая замена меток {{field}} в XML напрямую
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(buffer)
 
-    // Заменяем undefined/null на подчёркивания
+    // Безопасные значения полей
     const safeFields: Record<string, string> = {}
     for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
       safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
     }
 
-    const output = await createReport({
-      template: buffer,
-      data: safeFields,
-      cmdDelimiter: ['{{', '}}'],
-      literalXmlDelimiter: '||',
-      processLineBreaks: true,
-      failFast: false,
+    // Заменяем метки во всех XML файлах документа
+    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
+
+    for (const xmlFile of xmlFiles) {
+      const file = zip.file(xmlFile)
+      if (!file) continue
+      let content = await file.async('string')
+      // Заменяем каждую метку
+      for (const [key, value] of Object.entries(safeFields)) {
+        content = content.split(`{{${key}}}`).join(value)
+      }
+      zip.file(xmlFile, content)
+    }
+
+    const output = await zip.generateAsync({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     })
 
     // 4. Логируем генерацию

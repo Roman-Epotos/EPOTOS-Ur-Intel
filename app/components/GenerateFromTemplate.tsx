@@ -92,7 +92,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'nda': [
     { key: 'nda_penalty_num', label: 'Штраф за разглашение (цифрами)', placeholder: '1 000 000' },
-    { key: 'nda_penalty_text', label: 'Штраф за разглашение (прописью)', placeholder: 'один миллион' },
+    { key: 'nda_penalty_kopecks', label: 'Копеек', placeholder: '00' },
   ],
   'edo': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
