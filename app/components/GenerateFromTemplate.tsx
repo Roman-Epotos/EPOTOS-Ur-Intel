@@ -16,6 +16,14 @@ interface Counterparty {
   full_name: string
   short_name: string | null
   inn: string
+  kpp?: string | null
+  ogrn?: string | null
+  legal_address?: string | null
+  phone?: string | null
+  bank_name?: string | null
+  bank_account?: string | null
+  bank_bik?: string | null
+  bank_corr_account?: string | null
   signatory_name: string | null
   poa_number: string | null
   poa_date: string | null
@@ -273,6 +281,15 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
       counterparty_basis: cp?.poa_number
         ? `доверенности № ${cp.poa_number} от ${cp.poa_date ?? ''}`
         : 'Устава',
+      counterparty_inn: (cp as {inn?: string})?.inn ?? '',
+      counterparty_kpp: (cp as {kpp?: string})?.kpp ?? '',
+      counterparty_ogrn: (cp as {ogrn?: string})?.ogrn ?? '',
+      counterparty_address: (cp as {legal_address?: string})?.legal_address ?? '',
+      counterparty_phone: (cp as {phone?: string})?.phone ?? '',
+      counterparty_bank_name: (cp as {bank_name?: string})?.bank_name ?? '',
+      counterparty_bank_account: (cp as {bank_account?: string})?.bank_account ?? '',
+      counterparty_bank_bik: (cp as {bank_bik?: string})?.bank_bik ?? '',
+      counterparty_bank_corr: (cp as {bank_corr_account?: string})?.bank_corr_account ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
