@@ -1227,7 +1227,7 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
           {/* Генерация */}
           {activeTab === 'generate' && (
             <div className="p-6">
-              <GenerateFromTemplate contract={contract} />
+              <GenerateFromTemplate contract={contract} onUploaded={loadAttachments} />
             </div>
           )}
 

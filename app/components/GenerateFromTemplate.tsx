@@ -43,6 +43,7 @@ interface Contract {
 
 interface GenerateFromTemplateProps {
   contract: Contract
+  onUploaded?: () => void
 }
 
 const baseUrl = 'https://epotos-ur-intel.vercel.app'
@@ -174,7 +175,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
 }
 
-export default function GenerateFromTemplate({ contract }: GenerateFromTemplateProps) {
+export default function GenerateFromTemplate({ contract, onUploaded }: GenerateFromTemplateProps) {
   const { user } = useBitrixAuth()
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
@@ -373,6 +374,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
       }
       router.refresh()
       router.refresh()
+      if (onUploaded) onUploaded()
       alert(category === 'main'
         ? '✅ Документ добавлен как основная версия'
         : '✅ Документ добавлен как дополнительный материал'

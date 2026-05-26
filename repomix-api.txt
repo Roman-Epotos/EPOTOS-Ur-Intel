@@ -822,6 +822,72 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/bitrix-users/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
+
+// Карта префикс компании → ID отделов Битрикс24
+const COMPANY_DEPARTMENTS: Record<string, number[]> = {
+  'ТХ':  [206, 38, 246, 260, 262, 264, 198, 188, 202, 18, 32, 22, 236, 28, 270, 272, 274, 230, 14, 184, 276, 278, 280, 3, 66, 240, 266, 268, 190, 282, 226],
+  'НПП': [208],
+  'СПТ': [5, 48, 64, 72, 62, 44, 54, 52, 50, 56, 58, 46, 42, 60, 160],
+  'ОС':  [26, 140, 146, 142, 144, 148, 150],
+  'Э-К': [10, 88, 98, 90, 222, 86, 284, 224, 102, 96, 94, 108, 164, 166, 162, 128, 172, 176, 174, 116, 250, 252, 254, 256],
+}
+
+export async function GET(request: NextRequest) {
+  const prefix = request.nextUrl.searchParams.get('prefix')
+
+  if (!prefix || !COMPANY_DEPARTMENTS[prefix]) {
+    return NextResponse.json({ error: 'Неверный префикс компании' }, { status: 400 })
+  }
+
+  const deptIds = COMPANY_DEPARTMENTS[prefix]
+
+  try {
+    // Загружаем активных пользователей по отделам
+    const url = `${WEBHOOK}user.get.json`
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filter: {
+          ACTIVE: true,
+          UF_DEPARTMENT: deptIds,
+        },
+        select: ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'WORK_POSITION'],
+        order: { 'LAST_NAME': 'ASC' },
+      }),
+    })
+
+    const data = await resp.json()
+
+    if (data.error) {
+      return NextResponse.json({ error: data.error_description }, { status: 400 })
+    }
+
+    const users = (data.result ?? []).map((u: {
+      ID: string
+      NAME: string
+      LAST_NAME: string
+      SECOND_NAME?: string
+      WORK_POSITION?: string
+    }) => ({
+      id: parseInt(u.ID),
+      name: `${u.LAST_NAME} ${u.NAME}${u.SECOND_NAME ? ' ' + u.SECOND_NAME : ''}`.trim(),
+      position: u.WORK_POSITION ?? '',
+    }))
+
+    return NextResponse.json({ users })
+
+  } catch (err) {
+    console.error('bitrix-users error:', err)
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/bitrix/auth/route.ts">
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -3173,72 +3239,6 @@ export async function GET() {
 }
 </file>
 
-<file path="app/api/bitrix-users/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
-
-// Карта префикс компании → ID отделов Битрикс24
-const COMPANY_DEPARTMENTS: Record<string, number[]> = {
-  'ТХ':  [206, 38, 246, 260, 262, 264, 198, 188, 202, 18, 32, 22, 236, 28, 270, 272, 274, 230, 14, 184, 276, 278, 280, 3, 66, 240, 266, 268, 190, 282, 226],
-  'НПП': [208],
-  'СПТ': [5, 48, 64, 72, 62, 44, 54, 52, 50, 56, 58, 46, 42, 60, 160],
-  'ОС':  [26, 140, 146, 142, 144, 148, 150],
-  'Э-К': [10, 88, 98, 90, 222, 86, 284, 224, 102, 96, 94, 108, 164, 166, 162, 128, 172, 176, 174, 116, 250, 252, 254, 256],
-}
-
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-
-  if (!prefix || !COMPANY_DEPARTMENTS[prefix]) {
-    return NextResponse.json({ error: 'Неверный префикс компании' }, { status: 400 })
-  }
-
-  const deptIds = COMPANY_DEPARTMENTS[prefix]
-
-  try {
-    // Загружаем активных пользователей по отделам
-    const url = `${WEBHOOK}user.get.json`
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filter: {
-          ACTIVE: true,
-          UF_DEPARTMENT: deptIds,
-        },
-        select: ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'WORK_POSITION'],
-        order: { 'LAST_NAME': 'ASC' },
-      }),
-    })
-
-    const data = await resp.json()
-
-    if (data.error) {
-      return NextResponse.json({ error: data.error_description }, { status: 400 })
-    }
-
-    const users = (data.result ?? []).map((u: {
-      ID: string
-      NAME: string
-      LAST_NAME: string
-      SECOND_NAME?: string
-      WORK_POSITION?: string
-    }) => ({
-      id: parseInt(u.ID),
-      name: `${u.LAST_NAME} ${u.NAME}${u.SECOND_NAME ? ' ' + u.SECOND_NAME : ''}`.trim(),
-      position: u.WORK_POSITION ?? '',
-    }))
-
-    return NextResponse.json({ users })
-
-  } catch (err) {
-    console.error('bitrix-users error:', err)
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/contracts-list/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3891,113 +3891,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/counterparties/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-// GET — список контрагентов или один по id
-export async function GET(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    const inn = request.nextUrl.searchParams.get('inn')
-    const search = request.nextUrl.searchParams.get('search')
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .select('*, contracts(id, number, title, status, created_at)')
-        .eq('id', id)
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data })
-    }
-
-    if (inn) {
-      const kpp = request.nextUrl.searchParams.get('kpp')
-      let query = supabase
-        .from('counterparties')
-        .select('*')
-        .eq('inn', inn)
-      if (kpp) query = query.eq('kpp', kpp)
-      const { data, error } = await query.single()
-      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data ?? null })
-    }
-
-    let query = supabase
-      .from('counterparties')
-      .select('id, inn, short_name, full_name, status, risk_level, director_name, phone, email, created_at')
-      .order('full_name', { ascending: true })
-
-    if (search) {
-      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ counterparties: data ?? [] })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// POST — создать или обновить контрагента
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, ...fields } = body
-
-    fields.updated_at = new Date().toISOString()
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ success: true, counterparty: data })
-    }
-
-    const { data, error } = await supabase
-      .from('counterparties')
-      .insert(fields)
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true, counterparty: data })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// DELETE — удалить контрагента
-export async function DELETE(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-
-    const { error } = await supabase
-      .from('counterparties')
-      .delete()
-      .eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/my-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4454,6 +4347,113 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/counterparties/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+// GET — список контрагентов или один по id
+export async function GET(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    const inn = request.nextUrl.searchParams.get('inn')
+    const search = request.nextUrl.searchParams.get('search')
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*, contracts(id, number, title, status, created_at)')
+        .eq('id', id)
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data })
+    }
+
+    if (inn) {
+      const kpp = request.nextUrl.searchParams.get('kpp')
+      let query = supabase
+        .from('counterparties')
+        .select('*')
+        .eq('inn', inn)
+      if (kpp) query = query.eq('kpp', kpp)
+      const { data, error } = await query.single()
+      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data ?? null })
+    }
+
+    let query = supabase
+      .from('counterparties')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at')
+      .order('full_name', { ascending: true })
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ counterparties: data ?? [] })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — создать или обновить контрагента
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, ...fields } = body
+
+    fields.updated_at = new Date().toISOString()
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .update(fields)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, counterparty: data })
+    }
+
+    const { data, error } = await supabase
+      .from('counterparties')
+      .insert(fields)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, counterparty: data })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить контрагента
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('counterparties')
+      .delete()
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
   }
 }
 </file>
@@ -5619,8 +5619,8 @@ export async function POST(request: NextRequest) {
     if (contract_id) {
       await supabase.from('contract_logs').insert({
         contract_id,
-        action: 'Документ сгенерирован из шаблона',
-        details: `Шаблон: ${template.name}`,
+        action: `Сгенерирован документ из шаблона: ${template.name}`,
+        details: `Файл: ${template.name}.docx`,
         user_name: body.user_name ?? 'Пользователь',
       })
     }
