@@ -372,6 +372,7 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
         throw new Error(errData.error ?? 'Ошибка загрузки')
       }
       router.refresh()
+      router.refresh()
       alert(category === 'main'
         ? '✅ Документ добавлен как основная версия'
         : '✅ Документ добавлен как дополнительный материал'
