@@ -12,6 +12,7 @@
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "docx": "^9.6.1",
+    "docx-templates": "^4.15.0",
     "docxtemplater": "^3.68.7",
     "emoji-picker-react": "^4.19.1",
     "jsonwebtoken": "^9.0.3",

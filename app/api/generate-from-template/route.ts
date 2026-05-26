@@ -38,56 +38,22 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await fileRes.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // 3. Подставляем поля через docxtemplater
-    const PizZip = (await import('pizzip')).default
-    const Docxtemplater = (await import('docxtemplater')).default
+    // 3. Подставляем поля через docx-templates
+    const { createReport } = await import('docx-templates')
 
-    const zip = new PizZip(buffer)
-
-    let doc
-    try {
-      doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        nullGetter: () => '____________',
-        errorLogging: false,
-      })
-    } catch (initError: unknown) {
-      const errObj = initError as { properties?: { errors?: unknown[] }; message?: string }
-      const errors = errObj?.properties?.errors
-      let details = ''
-      if (errors && Array.isArray(errors)) {
-        details = errors.map((e: unknown) => {
-          const err = e as { properties?: { explanation?: string; tag?: string } }
-          return `tag="${err?.properties?.tag}" explanation="${err?.properties?.explanation}"`
-        }).join('; ')
-      }
-      console.error('Docxtemplater INIT error:', details || errObj?.message)
-      console.error('Init error full:', JSON.stringify(errObj))
-      throw new Error('Ошибка инициализации шаблона: ' + (details || errObj?.message || 'неизвестная ошибка'))
+    // Заменяем undefined/null на подчёркивания
+    const safeFields: Record<string, string> = {}
+    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
     }
 
-    try {
-      doc.render(fields)
-    } catch (renderError: unknown) {
-      const errObj = renderError as { properties?: { errors?: unknown[] }; message?: string }
-      const errors = errObj?.properties?.errors
-      let errorDetails = ''
-      if (errors && Array.isArray(errors) && errors.length > 0) {
-        const details = errors.map((e: unknown) => {
-          const err = e as { properties?: { explanation?: string; tag?: string; xtag?: string } }
-          return `tag="${err?.properties?.tag ?? err?.properties?.xtag}" explanation="${err?.properties?.explanation}"`
-        })
-        errorDetails = details.join('; ')
-        console.error('Docxtemplater render errors:', errorDetails)
-      }
-      console.error('Full render error:', JSON.stringify(errObj))
-      throw new Error('Ошибка шаблона: ' + (errorDetails || errObj?.message || 'неизвестная ошибка'))
-    }
-
-    const output = doc.getZip().generate({
-      type: 'nodebuffer',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    const output = await createReport({
+      template: buffer,
+      data: safeFields,
+      cmdDelimiter: ['{{', '}}'],
+      literalXmlDelimiter: '||',
+      processLineBreaks: true,
+      failFast: false,
     })
 
     // 4. Логируем генерацию
