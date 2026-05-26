@@ -44,14 +44,28 @@ export async function POST(request: NextRequest) {
 
     const zip = new PizZip(buffer)
 
-    // Шаблоны предварительно обработаны скриптом fix_xml.py — дополнительный фикс не нужен
-
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      nullGetter: () => '____________',
-      errorLogging: false,
-    })
+    let doc
+    try {
+      doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        nullGetter: () => '____________',
+        errorLogging: false,
+      })
+    } catch (initError: unknown) {
+      const errObj = initError as { properties?: { errors?: unknown[] }; message?: string }
+      const errors = errObj?.properties?.errors
+      let details = ''
+      if (errors && Array.isArray(errors)) {
+        details = errors.map((e: unknown) => {
+          const err = e as { properties?: { explanation?: string; tag?: string } }
+          return `tag="${err?.properties?.tag}" explanation="${err?.properties?.explanation}"`
+        }).join('; ')
+      }
+      console.error('Docxtemplater INIT error:', details || errObj?.message)
+      console.error('Init error full:', JSON.stringify(errObj))
+      throw new Error('Ошибка инициализации шаблона: ' + (details || errObj?.message || 'неизвестная ошибка'))
+    }
 
     try {
       doc.render(fields)
