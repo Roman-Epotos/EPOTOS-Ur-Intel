@@ -357,8 +357,9 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
         formData.append('comment', 'Сгенерировано из шаблона')
         endpoint = `${baseUrl}/api/versions`
       } else {
-        formData.append('bitrix_user_id', user.id)
-        formData.append('category', 'attachment')
+        formData.append('attachment_type', 'Другое')
+        formData.append('title', generatedFileName)
+        formData.append('user_bitrix_id', user.id)
         endpoint = `${baseUrl}/api/attachments`
       }
 
