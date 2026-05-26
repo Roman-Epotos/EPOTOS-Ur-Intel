@@ -38,6 +38,52 @@ interface GenerateFromTemplateProps {
 
 const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
+// Конвертация числа в пропись (рубли)
+function numberToWords(num: number): string {
+  const ones = ['','один','два','три','четыре','пять','шесть','семь','восемь','девять',
+    'десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать',
+    'шестнадцать','семнадцать','восемнадцать','девятнадцать']
+  const tens = ['','','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто']
+  const hundreds = ['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот']
+  const millions = ['','один миллион','два миллиона','три миллиона','четыре миллиона',
+    'пять миллионов','шесть миллионов','семь миллионов','восемь миллионов','девять миллионов',
+    'десять миллионов','одиннадцать миллионов','двенадцать миллионов','тринадцать миллионов',
+    'четырнадцать миллионов','пятнадцать миллионов','шестнадцать миллионов',
+    'семнадцать миллионов','восемнадцать миллионов','девятнадцать миллионов']
+  const tenMillions = ['','','двадцать миллионов','тридцать миллионов','сорок миллионов',
+    'пятьдесят миллионов','шестьдесят миллионов','семьдесят миллионов',
+    'восемьдесят миллионов','девяносто миллионов']
+
+  if (num === 0) return 'ноль'
+  if (num >= 1000000000) return num.toString()
+
+  let result = ''
+  const m = Math.floor(num / 1000000)
+  const th = Math.floor((num % 1000000) / 1000)
+  const rest = num % 1000
+
+  if (m > 0 && m < 20) result += millions[m] + ' '
+  else if (m >= 20) result += tenMillions[Math.floor(m/10)] + (m%10 ? ' ' + millions[m%10] : '') + ' '
+
+  if (th > 0) {
+    const h = Math.floor(th/100)
+    const t = th % 100
+    if (h > 0) result += hundreds[h] + ' '
+    if (t < 20) result += (t > 0 ? ones[t] : '') + (t === 1 ? ' тысяча' : t >= 2 && t <= 4 ? ' тысячи' : t > 0 ? ' тысяч' : t === 0 && h > 0 ? ' тысяч' : '') + ' '
+    else result += tens[Math.floor(t/10)] + (t%10 ? ' ' + ones[t%10] : '') + ' тысяч '
+  }
+
+  if (rest > 0) {
+    const h = Math.floor(rest/100)
+    const t = rest % 100
+    if (h > 0) result += hundreds[h] + ' '
+    if (t < 20) result += ones[t] + ' '
+    else result += tens[Math.floor(t/10)] + (t%10 ? ' ' + ones[t%10] : '') + ' '
+  }
+
+  return result.trim()
+}
+
 const MONTH_NAMES = [
   'января','февраля','марта','апреля','мая','июня',
   'июля','августа','сентября','октября','ноября','декабря'
@@ -91,7 +137,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
   ],
   'nda': [
-    { key: 'nda_penalty_num', label: 'Штраф за разглашение (цифрами)', placeholder: '1 000 000' },
+    { key: 'nda_penalty_num', label: 'Штраф за разглашение (цифрами)', placeholder: '1000000' },
     { key: 'nda_penalty_kopecks', label: 'Копеек', placeholder: '00' },
   ],
   'edo': [
@@ -221,6 +267,10 @@ export default function GenerateFromTemplate({ contract }: GenerateFromTemplateP
       counterparty_basis: cp?.poa_number
         ? `доверенности № ${cp.poa_number} от ${cp.poa_date ?? ''}`
         : 'Устава',
+      // Автоконвертация суммы прописью
+      ...(extraFields.nda_penalty_num ? {
+        nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
       // Дополнительные поля
       ...extraFields,
     }
