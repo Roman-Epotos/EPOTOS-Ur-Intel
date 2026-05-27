@@ -107,6 +107,11 @@ const MONTH_NAMES = [
 
 // Поля которые пользователь вводит вручную — по типу шаблона
 const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: string }[]> = {
+  'дилерский': [
+    { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
+    { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+  ],
   'dealer_rf': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2 000 000' },
@@ -137,6 +142,12 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'transport_types', label: 'Типы транспортных средств', placeholder: 'грузовые автомобили' },
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
   ],
+  'поставка': [
+    { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+    { key: 'territory_country', label: 'Страна/территория (для СНГ)', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны (для СНГ)', placeholder: 'Казахстан' },
+  ],
   'supply_rf': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
@@ -155,10 +166,28 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'nda_penalty_num', label: 'Штраф за разглашение (цифрами)', placeholder: '1000000' },
     { key: 'nda_penalty_kopecks', label: 'Копеек', placeholder: '00' },
   ],
+  'эдо': [
+    { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
+    { key: 'referenced_contract_number', label: 'Номер основного договора', placeholder: 'ТХ-ДОГ-2026/05/1' },
+    { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026' },
+    { key: 'contract_end_date', label: 'Дата окончания соглашения', placeholder: '31.12.2026' },
+  ],
   'edo': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
     { key: 'referenced_contract_number', label: 'Номер основного договора', placeholder: 'ТХ-ДОГ-2026/05/1' },
     { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026' },
+  ],
+  'персданные': [
+    { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
+    { key: 'subject_birth_year', label: 'Год рождения', placeholder: '1985' },
+    { key: 'passport_series', label: 'Серия паспорта', placeholder: '4510' },
+    { key: 'passport_number', label: 'Номер паспорта', placeholder: '123456' },
+    { key: 'passport_issued_by', label: 'Кем выдан', placeholder: 'ОУФМС России' },
+    { key: 'passport_dept_code', label: 'Код подразделения', placeholder: '770-001' },
+    { key: 'subject_address', label: 'Адрес регистрации', placeholder: 'г. Москва, ул. ...' },
+    { key: 'subject_inn', label: 'ИНН физлица', placeholder: '770123456789' },
+    { key: 'subject_snils', label: 'СНИЛС', placeholder: '123-456-789 00' },
+    { key: 'pd_consent_years', label: 'Срок согласия (лет)', placeholder: '3' },
   ],
   'pd_consent': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
