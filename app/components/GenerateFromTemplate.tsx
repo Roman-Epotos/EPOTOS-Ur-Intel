@@ -122,9 +122,8 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'асц': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
-    { key: 'insurance_amount_num', label: 'Сумма страхования (цифрами)', placeholder: '5 000 000' },
-    { key: 'insurance_amount_text', label: 'Сумма страхования (прописью)', placeholder: 'пять миллионов' },
-    { key: 'transport_types', label: 'Типы транспортных средств', placeholder: 'грузовые автомобили' },
+    { key: 'insurance_amount_num', label: 'Сумма страхования (цифрами, если есть)', placeholder: '5 000 000' },
+    { key: 'transport_types', label: 'Типы транспортных средств (если есть)', placeholder: 'грузовые автомобили' },
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
   ],
   'asc_no_to': [
@@ -296,6 +295,12 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
+      ...(extraFields.insurance_amount_num ? {
+        insurance_amount_text: numberToWords(parseInt(extraFields.insurance_amount_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
+      ...(extraFields.min_monthly_purchase_num ? {
+        min_monthly_purchase_text: numberToWords(parseInt(extraFields.min_monthly_purchase_num.replace(/\s/g, '').replace(/,/g, ''), 10))
       } : {}),
       // Дополнительные поля
       ...extraFields,
