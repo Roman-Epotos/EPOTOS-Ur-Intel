@@ -279,7 +279,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       // Контрагент
       counterparty_full_name: cp?.full_name ?? '',
       counterparty_short_name: cp?.short_name ?? '',
-      counterparty_signatory: cp?.signatory_name ?? '',
+      counterparty_signatory: cp?.signatory_name ?? (cp as {director_name?: string})?.director_name ?? '',
       counterparty_signatory_title: 'Генерального директора',
       counterparty_basis: cp?.poa_number
         ? `доверенности № ${cp.poa_number} от ${cp.poa_date ?? ''}`
