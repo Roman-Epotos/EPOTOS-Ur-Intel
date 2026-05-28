@@ -168,9 +168,8 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'эдо': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
-    { key: 'referenced_contract_number', label: 'Номер основного договора', placeholder: 'ТХ-ДОГ-2026/05/1' },
-    { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026' },
-    { key: 'contract_end_date', label: 'Дата окончания соглашения', placeholder: '31.12.2026' },
+    { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026', type: 'date' },
+    { key: 'contract_end_date', label: 'Дата окончания соглашения', placeholder: '31.12.2026', type: 'date' },
   ],
   'edo': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
@@ -321,6 +320,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       counterparty_bank_account: (cp as {bank_account?: string})?.bank_account ?? '',
       counterparty_bank_bik: (cp as {bank_bik?: string})?.bank_bik ?? '',
       counterparty_bank_corr: (cp as {bank_corr_account?: string})?.bank_corr_account ?? '',
+      counterparty_email: (cp as {email?: string})?.email ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
@@ -330,6 +330,10 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       } : {}),
       ...(extraFields.min_monthly_purchase_num ? {
         min_monthly_purchase_text: numberToWords(parseInt(extraFields.min_monthly_purchase_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
+      // Для ЭДО — номер основного договора из карточки
+      ...(selectedTemplate?.type === 'эдо' ? {
+        referenced_contract_number: contract.number ?? '',
       } : {}),
       // Дополнительные поля
       ...extraFields,
