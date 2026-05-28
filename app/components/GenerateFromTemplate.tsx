@@ -455,14 +455,19 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
           <h3 className="text-sm font-semibold text-gray-900">{selectedTemplate.name}</h3>
         </div>
 
-        {/* Дата договора */}
+        {/* Дата документа */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Дата договора</label>
-          <input type="text" value={contractDate}
-            onChange={e => setContractDate(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
-            placeholder="1 января 2026" />
-          <p className="text-xs text-gray-400 mt-1">Формат: «1 января 2026»</p>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Дата документа</label>
+          <input type="date" 
+            onChange={e => {
+              if (!e.target.value) return
+              const d = new Date(e.target.value)
+              const months = ['января','февраля','марта','апреля','мая','июня',
+                'июля','августа','сентября','октября','ноября','декабря']
+              setContractDate(`${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`)
+            }}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+          <p className="text-xs text-gray-400 mt-1">Выбрано: {contractDate}</p>
         </div>
 
         {/* Контрагент — скрыт для согласия ПД */}
@@ -506,12 +511,11 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
               <div key={f.key}>
                 <label className="text-xs text-gray-600 block mb-1">{f.label}</label>
                 {f.type === 'date' ? (
-                  <input type="date" value={extraFields[f.key] ?? ''}
+                  <input type="date"
                     onChange={e => {
-                      const d = new Date(e.target.value)
-                      const formatted = e.target.value
-                        ? `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
-                        : ''
+                      if (!e.target.value) return
+                      const [year, month, day] = e.target.value.split('-')
+                      const formatted = `${day}.${month}.${year}`
                       setExtraFields(prev => ({ ...prev, [f.key]: formatted }))
                     }}
                     className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
