@@ -110,7 +110,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   'дилерский': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
-    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
   'dealer_rf': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
