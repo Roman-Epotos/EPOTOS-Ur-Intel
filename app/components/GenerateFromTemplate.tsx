@@ -112,6 +112,12 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
+  'дилерский регион': [
+    { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
+    { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
   'dealer_rf': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2 000 000' },
