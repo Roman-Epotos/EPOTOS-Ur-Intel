@@ -112,6 +112,12 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
+  'дилерский_снг': [
+    { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
+    { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
   'дилерский регион': [
     { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
     { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
@@ -456,7 +462,10 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
 
   // ШАГ 2 — Форма заполнения полей
   if (step === 'form' && selectedTemplate) {
-    const extraFieldsDef = EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
+    const templateKey = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
+      ? selectedTemplate.type + '_снг'
+      : selectedTemplate.type ?? ''
+    const extraFieldsDef = EXTRA_FIELDS[templateKey] ?? EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-2">
