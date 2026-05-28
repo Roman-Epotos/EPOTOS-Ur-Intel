@@ -442,6 +442,1176 @@ export default function DeleteContractButton({ contractId, contractNumber }: Pro
 }
 </file>
 
+<file path="app/components/ExecutionControl.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+
+interface ChecklistItem {
+  id: string
+  item_order: number
+  category: string
+  title: string
+  description: string | null
+  due_date: string | null
+  responsible: string | null
+  is_done: boolean
+  done_at: string | null
+  done_by_name: string | null
+  done_by_bitrix_id: number | null
+  source_document: string | null
+  created_at: string
+  bitrix_task_id: string | null
+}
+
+interface Version {
+  id: string
+  file_url: string
+  file_name: string
+  version_number: number
+}
+
+interface Attachment {
+  id: string
+  file_url: string
+  file_name: string
+  title: string
+  attachment_type: string
+}
+
+interface Props {
+  contractId: string
+  contractStatus: string
+  contractNumber: string
+  contractTitle: string
+  companyPrefix: string
+  authorBitrixId?: number
+  versions: Version[]
+  attachments: Attachment[]
+  userName?: string
+  userId?: number
+  sessionParticipantBitrixIds?: number[]
+  onStatusChange?: (newStatus: string) => void
+}
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+const CAT_COLORS: Record<string, string> = {
+  payment:    'bg-blue-50 border-blue-200 text-blue-700',
+  delivery:   'bg-orange-50 border-orange-200 text-orange-700',
+  deadline:   'bg-red-50 border-red-200 text-red-700',
+  document:   'bg-purple-50 border-purple-200 text-purple-700',
+  obligation: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+  other:      'bg-gray-50 border-gray-200 text-gray-600',
+}
+
+const CAT_LABELS: Record<string, string> = {
+  payment:    '💰 Оплата',
+  delivery:   '📦 Поставка',
+  deadline:   '⏰ Срок',
+  document:   '📄 Документы',
+  obligation: '📌 Обязательство',
+  other:      '📋 Прочее',
+}
+
+export default function ExecutionControl({
+  contractId, contractStatus, contractNumber, contractTitle, companyPrefix,
+  authorBitrixId,
+  versions, attachments,
+  userName, userId, sessionParticipantBitrixIds = [], onStatusChange,
+}: Props) {
+
+  const [items, setItems] = useState<ChecklistItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [addLoading, setAddLoading] = useState(false)
+  const [activeSection, setActiveSection] = useState<'checklist' | 'history'>('checklist')
+
+  // Форма нового пункта
+  const [newTitle, setNewTitle] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newCategory, setNewCategory] = useState('other')
+  const [newDueDate, setNewDueDate] = useState('')
+  const [newResponsible, setNewResponsible] = useState('')
+
+  const [hasArchive, setHasArchive] = useState(false)
+
+  // Модальное окно редактирования пункта
+  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState('other')
+  const [editDueDate, setEditDueDate] = useState('')
+  const [editResponsible, setEditResponsible] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+
+  // Модальное окно дат для относительных сроков
+  const [showDatesModal, setShowDatesModal] = useState(false)
+  const [signedDate, setSignedDate] = useState('')
+  const [effectiveDate, setEffectiveDate] = useState('')
+  const [customDate1Label, setCustomDate1Label] = useState('')
+  const [customDate1Value, setCustomDate1Value] = useState('')
+
+  // Права
+  const adminIds = [30, 1148]
+  const gcManagerIds = [1, 246, 504]
+  const canManage = userId
+    ? adminIds.includes(userId) || gcManagerIds.includes(userId) || sessionParticipantBitrixIds.includes(userId)
+    : false
+
+  const canGenerate = canManage && ['подписан', 'на_исполнении'].includes(contractStatus)
+
+  // Состояние для создания задач в Битрикс24
+  const [taskLoading, setTaskLoading] = useState<string | null>(null)
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null)
+  const [taskResponsibleId, setTaskResponsibleId] = useState<number>(authorBitrixId ?? 30)
+  const [taskResponsibleName, setTaskResponsibleName] = useState('')
+  // Список сотрудников для выбора исполнителя
+  const [companyUsers, setCompanyUsers] = useState<{id: number, name: string, position: string}[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
+
+  // Режим выбора пунктов для задачи Б24
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [showSelectedTaskModal, setShowSelectedTaskModal] = useState(false)
+  const [selectedTaskTitle, setSelectedTaskTitle] = useState('')
+
+  useEffect(() => {
+    loadItems()
+  }, [contractId])
+
+  const loadItems = async () => {
+    setLoading(true)
+    try {
+      const [itemsRes, archiveRes] = await Promise.all([
+        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}`),
+        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}&check_archive=true`),
+      ])
+      const itemsData = await itemsRes.json()
+      const archiveData = await archiveRes.json()
+      setItems(itemsData.items ?? [])
+      setHasArchive(archiveData.has_archive ?? false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Запускаем генерацию — показываем модал дат
+  const handleGenerateClick = () => {
+    if (items.length > 0) {
+      if (!confirm('Перегенерировать чек-лист?\n\nТекущая версия будет сохранена как предыдущая.')) return
+    }
+    setShowDatesModal(true)
+  }
+
+  // Генерируем чек-лист после ввода дат
+  const handleGenerate = async () => {
+    setShowDatesModal(false)
+    setGenerating(true)
+
+    // Собираем все файлы: последняя версия + все вложения
+    const latestVersion = versions[0] ?? null
+    const allFiles = []
+
+    if (latestVersion) {
+      allFiles.push({
+        file_url: latestVersion.file_url,
+        file_name: latestVersion.file_name,
+        source: 'Основной документ',
+      })
+    }
+
+    attachments.forEach(att => {
+      allFiles.push({
+        file_url: att.file_url,
+        file_name: att.file_name,
+        source: att.title || att.attachment_type,
+      })
+    })
+
+    if (allFiles.length === 0) {
+      alert('Нет загруженных файлов для анализа')
+      setGenerating(false)
+      return
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          files: allFiles,
+          user_name: userName ?? 'Система',
+          signed_date: signedDate || null,
+          effective_date: effectiveDate || null,
+          custom_date_label: customDate1Label || null,
+          custom_date_value: customDate1Value || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        onStatusChange?.('на_исполнении')
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // Загрузить сотрудников компании
+  const loadCompanyUsers = async () => {
+    if (companyUsers.length > 0) return // уже загружены
+    setUsersLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-users?prefix=${companyPrefix}`)
+      const data = await res.json()
+      setCompanyUsers(data.users ?? [])
+    } catch {
+      console.error('Ошибка загрузки сотрудников')
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  // Открыть модал для одного пункта
+  const openTaskModal = (item: ChecklistItem) => {
+    setTaskModalItem(item)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
+    setShowTaskModal(true)
+    loadCompanyUsers()
+  }
+
+  // Открыть модал для всех пунктов
+  const openBulkTaskModal = () => {
+    setTaskModalItem(null)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
+    setShowTaskModal(true)
+    loadCompanyUsers()
+  }
+
+  // Открыть модал для выбранных пунктов
+  const openSelectedTaskModal = () => {
+    if (selectedItemIds.size === 0) return
+    setTaskModalItem(null)
+    setTaskResponsibleId(authorBitrixId ?? 30)
+    setTaskResponsibleName('')
+    setUserSearch('')
+    setShowUserDropdown(false)
+    setShowSelectedTaskModal(true)
+    loadCompanyUsers()
+  }
+
+  // Создать задачу для одного пункта
+  const createSingleTask = async () => {
+    if (!taskModalItem) return
+    setTaskLoading(taskModalItem.id)
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          checklist_item_id: taskModalItem.id,
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          item_title: taskModalItem.title,
+          item_description: taskModalItem.description,
+          due_date: taskModalItem.due_date,
+          responsible_bitrix_id: taskResponsibleId,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+      } else {
+        alert('Ошибка создания задачи: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  // Создать одну задачу с чек-листом из всех пунктов
+  const createBulkTasks = async () => {
+    const allItems = items.filter(i => !i.is_done)
+    if (allItems.length === 0) {
+      alert('Нет активных пунктов для создания задачи')
+      setShowTaskModal(false)
+      return
+    }
+    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
+    setTaskLoading('all')
+    setShowTaskModal(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          responsible_bitrix_id: taskResponsibleId,
+          task_title: title,
+          mode: 'single_with_checklist',
+          items: allItems.map(i => ({
+            id: i.id,
+            title: i.title,
+            description: i.description,
+            due_date: i.due_date,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  // Создать одну задачу с чек-листом из выбранных пунктов
+  const createSelectedTask = async () => {
+    const selected = items.filter(i => selectedItemIds.has(i.id))
+    if (selected.length === 0) return
+    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
+    setShowSelectedTaskModal(false)
+    setTaskLoading('selected')
+    try {
+      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          contract_number: contractNumber,
+          contract_title: contractTitle,
+          company_prefix: companyPrefix,
+          responsible_bitrix_id: taskResponsibleId,
+          task_title: title,
+          mode: 'single_with_checklist',
+          items: selected.map(i => ({
+            id: i.id,
+            title: i.title,
+            description: i.description,
+            due_date: i.due_date,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+        setSelectionMode(false)
+        setSelectedItemIds(new Set())
+        setSelectedTaskTitle('')
+        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения с сервером')
+    } finally {
+      setTaskLoading(null)
+    }
+  }
+
+  const restoreArchive = async () => {
+    if (!confirm('Восстановить предыдущую версию чек-листа?\n\nТекущая версия будет сохранена как предыдущая.')) return
+    setGenerating(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restore_archive',
+          contract_id: contractId,
+          user_name: userName ?? 'Система',
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadItems()
+      } else {
+        alert('Ошибка: ' + data.error)
+      }
+    } catch {
+      alert('Ошибка соединения')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const openEdit = (item: ChecklistItem) => {
+    setEditingItem(item)
+    setEditTitle(item.title)
+    setEditDescription(item.description ?? '')
+    setEditCategory(item.category)
+    setEditDueDate(item.due_date ?? '')
+    setEditResponsible(item.responsible ?? '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingItem) return
+    if (!editTitle.trim()) { alert('Введите название пункта'); return }
+    setEditLoading(true)
+    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'edit_item',
+        item_id: editingItem.id,
+        contract_id: contractId,
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        category: editCategory,
+        due_date: editDueDate || null,
+        responsible: editResponsible || null,
+        user_name: userName ?? 'Система',
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setItems(prev => prev.map(i => i.id === editingItem.id
+        ? { ...i, title: editTitle.trim(), description: editDescription.trim() || null,
+            category: editCategory, due_date: editDueDate || null, responsible: editResponsible || null }
+        : i
+      ))
+      setEditingItem(null)
+    } else {
+      alert('Ошибка: ' + data.error)
+    }
+    setEditLoading(false)
+  }
+
+  const toggleItem = async (item: ChecklistItem) => {
+    if (!canManage) return
+    const newDone = !item.is_done
+    setItems(prev => prev.map(i =>
+      i.id === item.id
+        ? { ...i, is_done: newDone, done_by_name: newDone ? (userName ?? null) : null }
+        : i
+    ))
+    await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle',
+        item_id: item.id,
+        contract_id: contractId,
+        is_done: newDone,
+        title: item.title,
+        user_name: userName ?? 'Система',
+        bitrix_user_id: userId ?? null,
+      }),
+    })
+  }
+
+  const deleteItem = async (item: ChecklistItem) => {
+    if (!confirm(`Удалить пункт «${item.title}»?`)) return
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete_item',
+        item_id: item.id,
+        contract_id: contractId,
+        title: item.title,
+        user_name: userName ?? 'Система',
+      }),
+    })
+  }
+
+  const addItem = async () => {
+    if (!newTitle.trim()) { alert('Введите название пункта'); return }
+    setAddLoading(true)
+    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add_item',
+        contract_id: contractId,
+        title: newTitle.trim(),
+        description: newDescription.trim() || null,
+        category: newCategory,
+        due_date: newDueDate || null,
+        responsible: newResponsible || null,
+        user_name: userName ?? 'Система',
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      await loadItems()
+      setShowAddItem(false)
+      setNewTitle(''); setNewDescription(''); setNewCategory('other')
+      setNewDueDate(''); setNewResponsible('')
+    } else {
+      alert('Ошибка: ' + data.error)
+    }
+    setAddLoading(false)
+  }
+
+  const doneCount = items.filter(i => i.is_done).length
+  const progress = items.length > 0 ? Math.round(doneCount / items.length * 100) : 0
+
+  // Группировка по source_document
+  const grouped = items.reduce((acc, item) => {
+    const key = item.source_document ?? 'Основной документ'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(item)
+    return acc
+  }, {} as Record<string, ChecklistItem[]>)
+
+  return (
+    <div className="p-6">
+
+      {/* Шапка */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Контроль исполнения</h2>
+          {items.length > 0 && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              Выполнено {doneCount} из {items.length} пунктов
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {canGenerate && hasArchive && items.length > 0 && (
+            <button onClick={restoreArchive} disabled={generating}
+              className="text-xs font-medium border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+              ↩️ Предыдущая версия
+            </button>
+          )}
+          {canGenerate && (
+            <button onClick={handleGenerateClick} disabled={generating}
+              className="text-xs font-medium bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
+              📋 {generating ? 'AI анализирует...' : items.length > 0 ? 'Перегенерировать' : 'Сгенерировать чек-лист'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Прогресс-бар */}
+      {items.length > 0 && (
+        <div className="mb-4">
+          <div className="flex justify-between mb-1">
+            <span className="text-xs text-gray-500">Прогресс исполнения</span>
+            <span className="text-xs font-medium text-emerald-600">{progress}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2">
+            <div className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Под-вкладки */}
+      {items.length > 0 && (
+        <div className="flex gap-4 border-b border-gray-200 mb-4">
+          <button onClick={() => setActiveSection('checklist')}
+            className={`text-sm pb-2 font-medium border-b-2 transition-colors ${activeSection === 'checklist' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+            Чек-лист
+          </button>
+          <button onClick={() => setActiveSection('history')}
+            className={`text-sm pb-2 font-medium border-b-2 transition-colors ${activeSection === 'history' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+            История изменений
+          </button>
+        </div>
+      )}
+
+      {/* Состояние загрузки */}
+      {loading && (
+        <p className="text-sm text-gray-400 py-8 text-center">Загрузка...</p>
+      )}
+
+      {/* Пустое состояние */}
+      {!loading && items.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-2xl mb-2">📋</p>
+          {canGenerate
+            ? <p className="text-sm text-gray-500">Нажмите «Сгенерировать чек-лист» — AI проанализирует все документы и составит план исполнения</p>
+            : <p className="text-sm text-gray-400">Чек-лист будет доступен после загрузки подписанных документов</p>
+          }
+        </div>
+      )}
+
+      {/* Кнопки управления задачами Б24 */}
+      {!loading && items.length > 0 && canManage && activeSection === 'checklist' && (
+        <div className="flex flex-wrap justify-end gap-2 mb-3">
+          {/* Кнопка режима выбора */}
+          {!selectionMode ? (
+            <button
+              onClick={() => { setSelectionMode(true); setSelectedItemIds(new Set()) }}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+            >
+              <span>☑️</span> Выбрать пункты
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => { setSelectionMode(false); setSelectedItemIds(new Set()) }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                ✕ Отмена выбора
+              </button>
+              <button
+                onClick={openSelectedTaskModal}
+                disabled={selectedItemIds.size === 0}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 transition-colors"
+              >
+                📋 Создать задачу из выбранных ({selectedItemIds.size})
+              </button>
+            </>
+          )}
+          {/* Создать задачу из всех пунктов */}
+          <button
+            onClick={openBulkTaskModal}
+            disabled={taskLoading === 'all'}
+            className="flex items-center gap-2 text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+          >
+            {taskLoading === 'all' ? (
+              <><span className="animate-spin">⏳</span> Создаём...</>
+            ) : (
+              <><span>📋</span> Создать задачу из всех пунктов</>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Чек-лист */}
+      {!loading && items.length > 0 && activeSection === 'checklist' && (
+        <div>
+          {Object.entries(grouped).map(([source, groupItems]) => (
+            <div key={source} className="mb-5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                📁 {source}
+              </p>
+              <div className="space-y-2">
+                {groupItems.map(item => (
+                  <div key={item.id}
+                    className={`rounded-lg border border-gray-200 bg-white p-3 transition-opacity ${item.is_done ? 'opacity-60' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      {/* Синий чекбокс выбора (только в режиме selectionMode) */}
+                      {selectionMode && (
+                        <button
+                          onClick={() => {
+                            if (item.is_done) return
+                            setSelectedItemIds(prev => {
+                              const next = new Set(prev)
+                              next.has(item.id) ? next.delete(item.id) : next.add(item.id)
+                              return next
+                            })
+                          }}
+                          disabled={item.is_done}
+                          className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                            item.is_done
+                              ? 'border-gray-200 bg-gray-100 cursor-not-allowed'
+                              : selectedItemIds.has(item.id)
+                              ? 'bg-purple-500 border-purple-500 text-white'
+                              : 'border-purple-300 hover:border-purple-500'
+                          }`}
+                        >
+                          {selectedItemIds.has(item.id) && !item.is_done && (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                      {/* Чекбокс */}
+                      <button onClick={() => toggleItem(item)} disabled={!canManage || selectionMode}
+                        className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          item.is_done ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : canManage ? 'border-gray-300 hover:border-emerald-400'
+                          : 'border-gray-200 cursor-not-allowed'
+                        }`}>
+                        {item.is_done && (
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+                          </svg>
+                        )}
+                      </button>
+                      {/* Контент */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`text-sm font-medium ${item.is_done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${CAT_COLORS[item.category] ?? CAT_COLORS.other}`}>
+                              {CAT_LABELS[item.category] ?? item.category}
+                            </span>
+                            {canManage && (
+                              <>
+                                <button onClick={() => openEdit(item)}
+                                  className="text-gray-300 hover:text-blue-500 transition-colors p-0.5" title="Редактировать">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                  </svg>
+                                </button>
+                                <button onClick={() => deleteItem(item)}
+                                  className="text-gray-300 hover:text-red-500 transition-colors p-0.5" title="Удалить">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                                  </svg>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
+                        <div className="flex flex-wrap gap-3 mt-1">
+                          {item.due_date && (
+                            <span className="text-xs text-gray-400">📅 {new Date(item.due_date).toLocaleDateString('ru-RU')}</span>
+                          )}
+                          {item.responsible && (
+                            <span className="text-xs text-gray-400">👤 {item.responsible}</span>
+                          )}
+                          {item.is_done && item.done_by_name && (
+                            <span className="text-xs text-emerald-600">✓ {item.done_by_name}</span>
+                          )}
+                        </div>
+                        {/* Кнопка / ссылка Битрикс24 */}
+                        {item.bitrix_task_id ? (
+                          <a
+                            href={`https://gkepotos.bitrix24.ru/company/personal/user/30/tasks/task/view/${item.bitrix_task_id}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                          >
+                            ✅ Задача в Б24 #{item.bitrix_task_id}
+                          </a>
+                        ) : canManage && (
+                          <button
+                            onClick={() => openTaskModal(item)}
+                            disabled={taskLoading === item.id}
+                            className="mt-1 text-xs text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                          >
+                            {taskLoading === item.id ? '⏳ Создаём...' : '+ Создать задачу в Б24'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Добавить пункт */}
+          {canManage && (
+            <div className="mt-2">
+              {!showAddItem ? (
+                <button onClick={() => setShowAddItem(true)}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                  + Добавить пункт вручную
+                </button>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2 mt-2">
+                  <p className="text-xs font-medium text-emerald-800">Новый пункт</p>
+                  <input value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                    placeholder="Название *" maxLength={200}
+                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                  <textarea value={newDescription} onChange={e => setNewDescription(e.target.value)}
+                    placeholder="Описание (необязательно)" rows={2}
+                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={newCategory} onChange={e => setNewCategory(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white">
+                      <option value="payment">💰 Оплата</option>
+                      <option value="delivery">📦 Поставка</option>
+                      <option value="deadline">⏰ Срок</option>
+                      <option value="document">📄 Документы</option>
+                      <option value="obligation">📌 Обязательство</option>
+                      <option value="other">📋 Прочее</option>
+                    </select>
+                    <input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white" />
+                    <select value={newResponsible} onChange={e => setNewResponsible(e.target.value)}
+                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white">
+                      <option value="">Ответственный...</option>
+                      <option value="наша сторона">Наша сторона</option>
+                      <option value="контрагент">Контрагент</option>
+                      <option value="обе стороны">Обе стороны</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={addItem} disabled={addLoading}
+                      className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                      {addLoading ? 'Сохранение...' : 'Добавить'}
+                    </button>
+                    <button onClick={() => setShowAddItem(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* История изменений */}
+      {activeSection === 'history' && (
+        <HistorySection contractId={contractId} />
+      )}
+
+      {/* Модальное окно редактирования пункта */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Редактировать пункт</h3>
+              <button onClick={() => setEditingItem(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Название *</label>
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  maxLength={200}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Описание</label>
+                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)}
+                  rows={3} placeholder="Необязательно"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Категория</label>
+                  <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                    <option value="payment">💰 Оплата</option>
+                    <option value="delivery">📦 Поставка</option>
+                    <option value="deadline">⏰ Срок</option>
+                    <option value="document">📄 Документы</option>
+                    <option value="obligation">📌 Обязательство</option>
+                    <option value="other">📋 Прочее</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Срок исполнения</label>
+                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ответственный</label>
+                <select value={editResponsible} onChange={e => setEditResponsible(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                  <option value="">Не указан</option>
+                  <option value="наша сторона">Наша сторона</option>
+                  <option value="контрагент">Контрагент</option>
+                  <option value="обе стороны">Обе стороны</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={saveEdit} disabled={editLoading}
+                className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                {editLoading ? 'Сохранение...' : 'Сохранить'}
+              </button>
+              <button onClick={() => setEditingItem(null)}
+                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал создания задачи из выбранных пунктов */}
+      {showSelectedTaskModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              📋 Создать задачу из выбранных пунктов
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Выбрано пунктов: <b>{selectedItemIds.size}</b> — они станут чек-листом внутри задачи
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Название задачи
+              </label>
+              <input
+                type="text"
+                value={selectedTaskTitle}
+                onChange={e => setSelectedTaskTitle(e.target.value)}
+                placeholder={`Контроль договора № ${contractNumber}`}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Если не заполнить — будет использовано название по умолчанию
+              </p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Исполнитель
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={e => { setUserSearch(e.target.value); setShowUserDropdown(true) }}
+                  onFocus={() => setShowUserDropdown(true)}
+                  placeholder={usersLoading ? 'Загрузка...' : 'Начните вводить фамилию...'}
+                  disabled={usersLoading}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                />
+                {taskResponsibleId && taskResponsibleName && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-purple-700 bg-purple-50 rounded px-2 py-1">
+                    <span>✓ {taskResponsibleName}</span>
+                    <button
+                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
+                      className="text-gray-400 hover:text-red-500 ml-auto"
+                    >✕</button>
+                  </div>
+                )}
+                {showUserDropdown && userSearch.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                    {companyUsers
+                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
+                      .map(u => (
+                        <button key={u.id}
+                          onClick={() => { setTaskResponsibleId(u.id); setTaskResponsibleName(u.name); setUserSearch(u.name); setShowUserDropdown(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-medium">{u.name}</span>
+                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
+                        </button>
+                      ))}
+                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-400">Не найден</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowSelectedTaskModal(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={createSelectedTask}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              >
+                Создать задачу
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал выбора исполнителя задачи Битрикс24 */}
+      {showTaskModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              {taskModalItem ? '📋 Создать задачу в Битрикс24' : '📋 Создать все задачи в Битрикс24'}
+            </h3>
+            {taskModalItem && (
+              <p className="text-sm text-gray-500 mb-4 line-clamp-2">{taskModalItem.title}</p>
+            )}
+            {!taskModalItem && (
+              <p className="text-sm text-gray-500 mb-4">
+                Будет создано <b>{items.filter(i => !i.bitrix_task_id).length}</b> задач
+                {items.filter(i => i.bitrix_task_id).length > 0 && (
+                  <span className="text-gray-400"> (уже созданы: {items.filter(i => i.bitrix_task_id).length})</span>
+                )}
+              </p>
+            )}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Исполнитель <span className="text-gray-400 font-normal">(по умолчанию — автор документа)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={e => {
+                    setUserSearch(e.target.value)
+                    setShowUserDropdown(true)
+                  }}
+                  onFocus={() => setShowUserDropdown(true)}
+                  placeholder={usersLoading ? 'Загрузка сотрудников...' : 'Начните вводить фамилию...'}
+                  disabled={usersLoading}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+                {/* Выбранный пользователь */}
+                {taskResponsibleId && taskResponsibleName && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1">
+                    <span>✓ {taskResponsibleName}</span>
+                    <button
+                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
+                      className="text-gray-400 hover:text-red-500 ml-auto"
+                    >✕</button>
+                  </div>
+                )}
+                {/* Выпадающий список */}
+                {showUserDropdown && userSearch.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {companyUsers
+                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
+                      .map(u => (
+                        <button
+                          key={u.id}
+                          onClick={() => {
+                            setTaskResponsibleId(u.id)
+                            setTaskResponsibleName(u.name)
+                            setUserSearch(u.name)
+                            setShowUserDropdown(false)
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-medium">{u.name}</span>
+                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
+                        </button>
+                      ))
+                    }
+                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-400">Сотрудник не найден</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Постановщик — ГД компании {companyPrefix}. Исполнитель выбирается выше.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowTaskModal(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={taskModalItem ? createSingleTask : createBulkTasks}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Создать задач{taskModalItem ? 'у' : 'и'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно дат */}
+      {showDatesModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Ключевые даты</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              AI использует эти даты для расчёта относительных сроков из документов
+              (например: «в течение 5 дней после подписания»).
+              Если дата неизвестна — оставьте поле пустым.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Дата подписания договора</label>
+                <input type="date" value={signedDate} onChange={e => setSignedDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Дата вступления в силу</label>
+                <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Дополнительная дата (необязательно)</label>
+                <div className="flex gap-2">
+                  <input value={customDate1Label} onChange={e => setCustomDate1Label(e.target.value)}
+                    placeholder="Название (напр. Дата поставки)"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                  <input type="date" value={customDate1Value} onChange={e => setCustomDate1Value(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={handleGenerate}
+                className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-emerald-700">
+                Сгенерировать чек-лист
+              </button>
+              <button onClick={() => setShowDatesModal(false)}
+                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
+// Компонент истории изменений
+function HistorySection({ contractId }: { contractId: string }) {
+  const [logs, setLogs] = useState<Array<{id: string, action: string, details: string, user_name: string, created_at: string}>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      const res = await fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}&history=true`)
+      const data = await res.json()
+      setLogs(data.logs ?? [])
+      setLoading(false)
+    }
+    load()
+  }, [contractId])
+
+  if (loading) return <p className="text-sm text-gray-400 py-4 text-center">Загрузка...</p>
+  if (logs.length === 0) return <p className="text-sm text-gray-400 py-4 text-center">История пуста</p>
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="flex gap-3 py-2 border-b border-gray-100 last:border-0">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-gray-800">{log.action}</p>
+            {log.details && <p className="text-xs text-gray-500 mt-0.5">{log.details}</p>}
+            <p className="text-xs text-gray-400 mt-0.5">
+              {log.user_name} · {new Date(log.created_at).toLocaleString('ru-RU')}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+</file>
+
 <file path="app/components/MyDocuments.tsx">
 'use client'
 
@@ -1960,1176 +3130,6 @@ export default function AIAnalysis({ contractId, versions, attachments = [], use
           </div>
         </div>
       )}
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/ExecutionControl.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-
-interface ChecklistItem {
-  id: string
-  item_order: number
-  category: string
-  title: string
-  description: string | null
-  due_date: string | null
-  responsible: string | null
-  is_done: boolean
-  done_at: string | null
-  done_by_name: string | null
-  done_by_bitrix_id: number | null
-  source_document: string | null
-  created_at: string
-  bitrix_task_id: string | null
-}
-
-interface Version {
-  id: string
-  file_url: string
-  file_name: string
-  version_number: number
-}
-
-interface Attachment {
-  id: string
-  file_url: string
-  file_name: string
-  title: string
-  attachment_type: string
-}
-
-interface Props {
-  contractId: string
-  contractStatus: string
-  contractNumber: string
-  contractTitle: string
-  companyPrefix: string
-  authorBitrixId?: number
-  versions: Version[]
-  attachments: Attachment[]
-  userName?: string
-  userId?: number
-  sessionParticipantBitrixIds?: number[]
-  onStatusChange?: (newStatus: string) => void
-}
-
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-const CAT_COLORS: Record<string, string> = {
-  payment:    'bg-blue-50 border-blue-200 text-blue-700',
-  delivery:   'bg-orange-50 border-orange-200 text-orange-700',
-  deadline:   'bg-red-50 border-red-200 text-red-700',
-  document:   'bg-purple-50 border-purple-200 text-purple-700',
-  obligation: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-  other:      'bg-gray-50 border-gray-200 text-gray-600',
-}
-
-const CAT_LABELS: Record<string, string> = {
-  payment:    '💰 Оплата',
-  delivery:   '📦 Поставка',
-  deadline:   '⏰ Срок',
-  document:   '📄 Документы',
-  obligation: '📌 Обязательство',
-  other:      '📋 Прочее',
-}
-
-export default function ExecutionControl({
-  contractId, contractStatus, contractNumber, contractTitle, companyPrefix,
-  authorBitrixId,
-  versions, attachments,
-  userName, userId, sessionParticipantBitrixIds = [], onStatusChange,
-}: Props) {
-
-  const [items, setItems] = useState<ChecklistItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [showAddItem, setShowAddItem] = useState(false)
-  const [addLoading, setAddLoading] = useState(false)
-  const [activeSection, setActiveSection] = useState<'checklist' | 'history'>('checklist')
-
-  // Форма нового пункта
-  const [newTitle, setNewTitle] = useState('')
-  const [newDescription, setNewDescription] = useState('')
-  const [newCategory, setNewCategory] = useState('other')
-  const [newDueDate, setNewDueDate] = useState('')
-  const [newResponsible, setNewResponsible] = useState('')
-
-  const [hasArchive, setHasArchive] = useState(false)
-
-  // Модальное окно редактирования пункта
-  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editDescription, setEditDescription] = useState('')
-  const [editCategory, setEditCategory] = useState('other')
-  const [editDueDate, setEditDueDate] = useState('')
-  const [editResponsible, setEditResponsible] = useState('')
-  const [editLoading, setEditLoading] = useState(false)
-
-  // Модальное окно дат для относительных сроков
-  const [showDatesModal, setShowDatesModal] = useState(false)
-  const [signedDate, setSignedDate] = useState('')
-  const [effectiveDate, setEffectiveDate] = useState('')
-  const [customDate1Label, setCustomDate1Label] = useState('')
-  const [customDate1Value, setCustomDate1Value] = useState('')
-
-  // Права
-  const adminIds = [30, 1148]
-  const gcManagerIds = [1, 246, 504]
-  const canManage = userId
-    ? adminIds.includes(userId) || gcManagerIds.includes(userId) || sessionParticipantBitrixIds.includes(userId)
-    : false
-
-  const canGenerate = canManage && ['подписан', 'на_исполнении'].includes(contractStatus)
-
-  // Состояние для создания задач в Битрикс24
-  const [taskLoading, setTaskLoading] = useState<string | null>(null)
-  const [showTaskModal, setShowTaskModal] = useState(false)
-  const [taskModalItem, setTaskModalItem] = useState<ChecklistItem | null>(null)
-  const [taskResponsibleId, setTaskResponsibleId] = useState<number>(authorBitrixId ?? 30)
-  const [taskResponsibleName, setTaskResponsibleName] = useState('')
-  // Список сотрудников для выбора исполнителя
-  const [companyUsers, setCompanyUsers] = useState<{id: number, name: string, position: string}[]>([])
-  const [usersLoading, setUsersLoading] = useState(false)
-  const [userSearch, setUserSearch] = useState('')
-  const [showUserDropdown, setShowUserDropdown] = useState(false)
-
-  // Режим выбора пунктов для задачи Б24
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
-  const [showSelectedTaskModal, setShowSelectedTaskModal] = useState(false)
-  const [selectedTaskTitle, setSelectedTaskTitle] = useState('')
-
-  useEffect(() => {
-    loadItems()
-  }, [contractId])
-
-  const loadItems = async () => {
-    setLoading(true)
-    try {
-      const [itemsRes, archiveRes] = await Promise.all([
-        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}`),
-        fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}&check_archive=true`),
-      ])
-      const itemsData = await itemsRes.json()
-      const archiveData = await archiveRes.json()
-      setItems(itemsData.items ?? [])
-      setHasArchive(archiveData.has_archive ?? false)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Запускаем генерацию — показываем модал дат
-  const handleGenerateClick = () => {
-    if (items.length > 0) {
-      if (!confirm('Перегенерировать чек-лист?\n\nТекущая версия будет сохранена как предыдущая.')) return
-    }
-    setShowDatesModal(true)
-  }
-
-  // Генерируем чек-лист после ввода дат
-  const handleGenerate = async () => {
-    setShowDatesModal(false)
-    setGenerating(true)
-
-    // Собираем все файлы: последняя версия + все вложения
-    const latestVersion = versions[0] ?? null
-    const allFiles = []
-
-    if (latestVersion) {
-      allFiles.push({
-        file_url: latestVersion.file_url,
-        file_name: latestVersion.file_name,
-        source: 'Основной документ',
-      })
-    }
-
-    attachments.forEach(att => {
-      allFiles.push({
-        file_url: att.file_url,
-        file_name: att.file_name,
-        source: att.title || att.attachment_type,
-      })
-    })
-
-    if (allFiles.length === 0) {
-      alert('Нет загруженных файлов для анализа')
-      setGenerating(false)
-      return
-    }
-
-    try {
-      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contract_id: contractId,
-          files: allFiles,
-          user_name: userName ?? 'Система',
-          signed_date: signedDate || null,
-          effective_date: effectiveDate || null,
-          custom_date_label: customDate1Label || null,
-          custom_date_value: customDate1Value || null,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        await loadItems()
-        onStatusChange?.('на_исполнении')
-      } else {
-        alert('Ошибка: ' + data.error)
-      }
-    } catch {
-      alert('Ошибка соединения')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  // Загрузить сотрудников компании
-  const loadCompanyUsers = async () => {
-    if (companyUsers.length > 0) return // уже загружены
-    setUsersLoading(true)
-    try {
-      const res = await fetch(`${baseUrl}/api/bitrix-users?prefix=${companyPrefix}`)
-      const data = await res.json()
-      setCompanyUsers(data.users ?? [])
-    } catch {
-      console.error('Ошибка загрузки сотрудников')
-    } finally {
-      setUsersLoading(false)
-    }
-  }
-
-  // Открыть модал для одного пункта
-  const openTaskModal = (item: ChecklistItem) => {
-    setTaskModalItem(item)
-    setTaskResponsibleId(authorBitrixId ?? 30)
-    setTaskResponsibleName('')
-    setUserSearch('')
-    setShowUserDropdown(false)
-    setShowTaskModal(true)
-    loadCompanyUsers()
-  }
-
-  // Открыть модал для всех пунктов
-  const openBulkTaskModal = () => {
-    setTaskModalItem(null)
-    setTaskResponsibleId(authorBitrixId ?? 30)
-    setTaskResponsibleName('')
-    setUserSearch('')
-    setShowUserDropdown(false)
-    setShowTaskModal(true)
-    loadCompanyUsers()
-  }
-
-  // Открыть модал для выбранных пунктов
-  const openSelectedTaskModal = () => {
-    if (selectedItemIds.size === 0) return
-    setTaskModalItem(null)
-    setTaskResponsibleId(authorBitrixId ?? 30)
-    setTaskResponsibleName('')
-    setUserSearch('')
-    setShowUserDropdown(false)
-    setShowSelectedTaskModal(true)
-    loadCompanyUsers()
-  }
-
-  // Создать задачу для одного пункта
-  const createSingleTask = async () => {
-    if (!taskModalItem) return
-    setTaskLoading(taskModalItem.id)
-    setShowTaskModal(false)
-    try {
-      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          checklist_item_id: taskModalItem.id,
-          contract_id: contractId,
-          contract_number: contractNumber,
-          contract_title: contractTitle,
-          company_prefix: companyPrefix,
-          item_title: taskModalItem.title,
-          item_description: taskModalItem.description,
-          due_date: taskModalItem.due_date,
-          responsible_bitrix_id: taskResponsibleId,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        await loadItems()
-      } else {
-        alert('Ошибка создания задачи: ' + data.error)
-      }
-    } catch {
-      alert('Ошибка соединения с сервером')
-    } finally {
-      setTaskLoading(null)
-    }
-  }
-
-  // Создать одну задачу с чек-листом из всех пунктов
-  const createBulkTasks = async () => {
-    const allItems = items.filter(i => !i.is_done)
-    if (allItems.length === 0) {
-      alert('Нет активных пунктов для создания задачи')
-      setShowTaskModal(false)
-      return
-    }
-    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
-    setTaskLoading('all')
-    setShowTaskModal(false)
-    try {
-      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contract_id: contractId,
-          contract_number: contractNumber,
-          contract_title: contractTitle,
-          company_prefix: companyPrefix,
-          responsible_bitrix_id: taskResponsibleId,
-          task_title: title,
-          mode: 'single_with_checklist',
-          items: allItems.map(i => ({
-            id: i.id,
-            title: i.title,
-            description: i.description,
-            due_date: i.due_date,
-          })),
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        await loadItems()
-        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
-      } else {
-        alert('Ошибка: ' + data.error)
-      }
-    } catch {
-      alert('Ошибка соединения с сервером')
-    } finally {
-      setTaskLoading(null)
-    }
-  }
-
-  // Создать одну задачу с чек-листом из выбранных пунктов
-  const createSelectedTask = async () => {
-    const selected = items.filter(i => selectedItemIds.has(i.id))
-    if (selected.length === 0) return
-    const title = selectedTaskTitle.trim() || `Контроль договора № ${contractNumber}`
-    setShowSelectedTaskModal(false)
-    setTaskLoading('selected')
-    try {
-      const res = await fetch(`${baseUrl}/api/bitrix-tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contract_id: contractId,
-          contract_number: contractNumber,
-          contract_title: contractTitle,
-          company_prefix: companyPrefix,
-          responsible_bitrix_id: taskResponsibleId,
-          task_title: title,
-          mode: 'single_with_checklist',
-          items: selected.map(i => ({
-            id: i.id,
-            title: i.title,
-            description: i.description,
-            due_date: i.due_date,
-          })),
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        await loadItems()
-        setSelectionMode(false)
-        setSelectedItemIds(new Set())
-        setSelectedTaskTitle('')
-        alert(`✅ Задача создана в Битрикс24 (ID: ${data.bitrix_task_id})`)
-      } else {
-        alert('Ошибка: ' + data.error)
-      }
-    } catch {
-      alert('Ошибка соединения с сервером')
-    } finally {
-      setTaskLoading(null)
-    }
-  }
-
-  const restoreArchive = async () => {
-    if (!confirm('Восстановить предыдущую версию чек-листа?\n\nТекущая версия будет сохранена как предыдущая.')) return
-    setGenerating(true)
-    try {
-      const res = await fetch(`${baseUrl}/api/contract-checklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'restore_archive',
-          contract_id: contractId,
-          user_name: userName ?? 'Система',
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        await loadItems()
-      } else {
-        alert('Ошибка: ' + data.error)
-      }
-    } catch {
-      alert('Ошибка соединения')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const openEdit = (item: ChecklistItem) => {
-    setEditingItem(item)
-    setEditTitle(item.title)
-    setEditDescription(item.description ?? '')
-    setEditCategory(item.category)
-    setEditDueDate(item.due_date ?? '')
-    setEditResponsible(item.responsible ?? '')
-  }
-
-  const saveEdit = async () => {
-    if (!editingItem) return
-    if (!editTitle.trim()) { alert('Введите название пункта'); return }
-    setEditLoading(true)
-    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'edit_item',
-        item_id: editingItem.id,
-        contract_id: contractId,
-        title: editTitle.trim(),
-        description: editDescription.trim() || null,
-        category: editCategory,
-        due_date: editDueDate || null,
-        responsible: editResponsible || null,
-        user_name: userName ?? 'Система',
-      }),
-    })
-    const data = await res.json()
-    if (data.success) {
-      setItems(prev => prev.map(i => i.id === editingItem.id
-        ? { ...i, title: editTitle.trim(), description: editDescription.trim() || null,
-            category: editCategory, due_date: editDueDate || null, responsible: editResponsible || null }
-        : i
-      ))
-      setEditingItem(null)
-    } else {
-      alert('Ошибка: ' + data.error)
-    }
-    setEditLoading(false)
-  }
-
-  const toggleItem = async (item: ChecklistItem) => {
-    if (!canManage) return
-    const newDone = !item.is_done
-    setItems(prev => prev.map(i =>
-      i.id === item.id
-        ? { ...i, is_done: newDone, done_by_name: newDone ? (userName ?? null) : null }
-        : i
-    ))
-    await fetch(`${baseUrl}/api/contract-checklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'toggle',
-        item_id: item.id,
-        contract_id: contractId,
-        is_done: newDone,
-        title: item.title,
-        user_name: userName ?? 'Система',
-        bitrix_user_id: userId ?? null,
-      }),
-    })
-  }
-
-  const deleteItem = async (item: ChecklistItem) => {
-    if (!confirm(`Удалить пункт «${item.title}»?`)) return
-    setItems(prev => prev.filter(i => i.id !== item.id))
-    await fetch(`${baseUrl}/api/contract-checklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'delete_item',
-        item_id: item.id,
-        contract_id: contractId,
-        title: item.title,
-        user_name: userName ?? 'Система',
-      }),
-    })
-  }
-
-  const addItem = async () => {
-    if (!newTitle.trim()) { alert('Введите название пункта'); return }
-    setAddLoading(true)
-    const res = await fetch(`${baseUrl}/api/contract-checklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add_item',
-        contract_id: contractId,
-        title: newTitle.trim(),
-        description: newDescription.trim() || null,
-        category: newCategory,
-        due_date: newDueDate || null,
-        responsible: newResponsible || null,
-        user_name: userName ?? 'Система',
-      }),
-    })
-    const data = await res.json()
-    if (data.success) {
-      await loadItems()
-      setShowAddItem(false)
-      setNewTitle(''); setNewDescription(''); setNewCategory('other')
-      setNewDueDate(''); setNewResponsible('')
-    } else {
-      alert('Ошибка: ' + data.error)
-    }
-    setAddLoading(false)
-  }
-
-  const doneCount = items.filter(i => i.is_done).length
-  const progress = items.length > 0 ? Math.round(doneCount / items.length * 100) : 0
-
-  // Группировка по source_document
-  const grouped = items.reduce((acc, item) => {
-    const key = item.source_document ?? 'Основной документ'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(item)
-    return acc
-  }, {} as Record<string, ChecklistItem[]>)
-
-  return (
-    <div className="p-6">
-
-      {/* Шапка */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Контроль исполнения</h2>
-          {items.length > 0 && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              Выполнено {doneCount} из {items.length} пунктов
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {canGenerate && hasArchive && items.length > 0 && (
-            <button onClick={restoreArchive} disabled={generating}
-              className="text-xs font-medium border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
-              ↩️ Предыдущая версия
-            </button>
-          )}
-          {canGenerate && (
-            <button onClick={handleGenerateClick} disabled={generating}
-              className="text-xs font-medium bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
-              📋 {generating ? 'AI анализирует...' : items.length > 0 ? 'Перегенерировать' : 'Сгенерировать чек-лист'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Прогресс-бар */}
-      {items.length > 0 && (
-        <div className="mb-4">
-          <div className="flex justify-between mb-1">
-            <span className="text-xs text-gray-500">Прогресс исполнения</span>
-            <span className="text-xs font-medium text-emerald-600">{progress}%</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* Под-вкладки */}
-      {items.length > 0 && (
-        <div className="flex gap-4 border-b border-gray-200 mb-4">
-          <button onClick={() => setActiveSection('checklist')}
-            className={`text-sm pb-2 font-medium border-b-2 transition-colors ${activeSection === 'checklist' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-            Чек-лист
-          </button>
-          <button onClick={() => setActiveSection('history')}
-            className={`text-sm pb-2 font-medium border-b-2 transition-colors ${activeSection === 'history' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-            История изменений
-          </button>
-        </div>
-      )}
-
-      {/* Состояние загрузки */}
-      {loading && (
-        <p className="text-sm text-gray-400 py-8 text-center">Загрузка...</p>
-      )}
-
-      {/* Пустое состояние */}
-      {!loading && items.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-2xl mb-2">📋</p>
-          {canGenerate
-            ? <p className="text-sm text-gray-500">Нажмите «Сгенерировать чек-лист» — AI проанализирует все документы и составит план исполнения</p>
-            : <p className="text-sm text-gray-400">Чек-лист будет доступен после загрузки подписанных документов</p>
-          }
-        </div>
-      )}
-
-      {/* Кнопки управления задачами Б24 */}
-      {!loading && items.length > 0 && canManage && activeSection === 'checklist' && (
-        <div className="flex flex-wrap justify-end gap-2 mb-3">
-          {/* Кнопка режима выбора */}
-          {!selectionMode ? (
-            <button
-              onClick={() => { setSelectionMode(true); setSelectedItemIds(new Set()) }}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
-            >
-              <span>☑️</span> Выбрать пункты
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => { setSelectionMode(false); setSelectedItemIds(new Set()) }}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                ✕ Отмена выбора
-              </button>
-              <button
-                onClick={openSelectedTaskModal}
-                disabled={selectedItemIds.size === 0}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 transition-colors"
-              >
-                📋 Создать задачу из выбранных ({selectedItemIds.size})
-              </button>
-            </>
-          )}
-          {/* Создать задачу из всех пунктов */}
-          <button
-            onClick={openBulkTaskModal}
-            disabled={taskLoading === 'all'}
-            className="flex items-center gap-2 text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
-          >
-            {taskLoading === 'all' ? (
-              <><span className="animate-spin">⏳</span> Создаём...</>
-            ) : (
-              <><span>📋</span> Создать задачу из всех пунктов</>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Чек-лист */}
-      {!loading && items.length > 0 && activeSection === 'checklist' && (
-        <div>
-          {Object.entries(grouped).map(([source, groupItems]) => (
-            <div key={source} className="mb-5">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                📁 {source}
-              </p>
-              <div className="space-y-2">
-                {groupItems.map(item => (
-                  <div key={item.id}
-                    className={`rounded-lg border border-gray-200 bg-white p-3 transition-opacity ${item.is_done ? 'opacity-60' : ''}`}>
-                    <div className="flex items-start gap-3">
-                      {/* Синий чекбокс выбора (только в режиме selectionMode) */}
-                      {selectionMode && (
-                        <button
-                          onClick={() => {
-                            if (item.is_done) return
-                            setSelectedItemIds(prev => {
-                              const next = new Set(prev)
-                              next.has(item.id) ? next.delete(item.id) : next.add(item.id)
-                              return next
-                            })
-                          }}
-                          disabled={item.is_done}
-                          className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                            item.is_done
-                              ? 'border-gray-200 bg-gray-100 cursor-not-allowed'
-                              : selectedItemIds.has(item.id)
-                              ? 'bg-purple-500 border-purple-500 text-white'
-                              : 'border-purple-300 hover:border-purple-500'
-                          }`}
-                        >
-                          {selectedItemIds.has(item.id) && !item.is_done && (
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
-                            </svg>
-                          )}
-                        </button>
-                      )}
-                      {/* Чекбокс */}
-                      <button onClick={() => toggleItem(item)} disabled={!canManage || selectionMode}
-                        className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                          item.is_done ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : canManage ? 'border-gray-300 hover:border-emerald-400'
-                          : 'border-gray-200 cursor-not-allowed'
-                        }`}>
-                        {item.is_done && (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
-                          </svg>
-                        )}
-                      </button>
-                      {/* Контент */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm font-medium ${item.is_done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                            {item.title}
-                          </p>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${CAT_COLORS[item.category] ?? CAT_COLORS.other}`}>
-                              {CAT_LABELS[item.category] ?? item.category}
-                            </span>
-                            {canManage && (
-                              <>
-                                <button onClick={() => openEdit(item)}
-                                  className="text-gray-300 hover:text-blue-500 transition-colors p-0.5" title="Редактировать">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                  </svg>
-                                </button>
-                                <button onClick={() => deleteItem(item)}
-                                  className="text-gray-300 hover:text-red-500 transition-colors p-0.5" title="Удалить">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-                                  </svg>
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
-                        <div className="flex flex-wrap gap-3 mt-1">
-                          {item.due_date && (
-                            <span className="text-xs text-gray-400">📅 {new Date(item.due_date).toLocaleDateString('ru-RU')}</span>
-                          )}
-                          {item.responsible && (
-                            <span className="text-xs text-gray-400">👤 {item.responsible}</span>
-                          )}
-                          {item.is_done && item.done_by_name && (
-                            <span className="text-xs text-emerald-600">✓ {item.done_by_name}</span>
-                          )}
-                        </div>
-                        {/* Кнопка / ссылка Битрикс24 */}
-                        {item.bitrix_task_id ? (
-                          <a
-                            href={`https://gkepotos.bitrix24.ru/company/personal/user/30/tasks/task/view/${item.bitrix_task_id}/`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
-                          >
-                            ✅ Задача в Б24 #{item.bitrix_task_id}
-                          </a>
-                        ) : canManage && (
-                          <button
-                            onClick={() => openTaskModal(item)}
-                            disabled={taskLoading === item.id}
-                            className="mt-1 text-xs text-blue-500 hover:text-blue-700 disabled:opacity-50"
-                          >
-                            {taskLoading === item.id ? '⏳ Создаём...' : '+ Создать задачу в Б24'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {/* Добавить пункт */}
-          {canManage && (
-            <div className="mt-2">
-              {!showAddItem ? (
-                <button onClick={() => setShowAddItem(true)}
-                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                  + Добавить пункт вручную
-                </button>
-              ) : (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2 mt-2">
-                  <p className="text-xs font-medium text-emerald-800">Новый пункт</p>
-                  <input value={newTitle} onChange={e => setNewTitle(e.target.value)}
-                    placeholder="Название *" maxLength={200}
-                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                  <textarea value={newDescription} onChange={e => setNewDescription(e.target.value)}
-                    placeholder="Описание (необязательно)" rows={2}
-                    className="w-full text-sm border border-emerald-200 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
-                  <div className="grid grid-cols-3 gap-2">
-                    <select value={newCategory} onChange={e => setNewCategory(e.target.value)}
-                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white">
-                      <option value="payment">💰 Оплата</option>
-                      <option value="delivery">📦 Поставка</option>
-                      <option value="deadline">⏰ Срок</option>
-                      <option value="document">📄 Документы</option>
-                      <option value="obligation">📌 Обязательство</option>
-                      <option value="other">📋 Прочее</option>
-                    </select>
-                    <input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)}
-                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white" />
-                    <select value={newResponsible} onChange={e => setNewResponsible(e.target.value)}
-                      className="text-xs border border-emerald-200 rounded-lg px-2 py-2 bg-white">
-                      <option value="">Ответственный...</option>
-                      <option value="наша сторона">Наша сторона</option>
-                      <option value="контрагент">Контрагент</option>
-                      <option value="обе стороны">Обе стороны</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={addItem} disabled={addLoading}
-                      className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50">
-                      {addLoading ? 'Сохранение...' : 'Добавить'}
-                    </button>
-                    <button onClick={() => setShowAddItem(false)}
-                      className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">
-                      Отмена
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* История изменений */}
-      {activeSection === 'history' && (
-        <HistorySection contractId={contractId} />
-      )}
-
-      {/* Модальное окно редактирования пункта */}
-      {editingItem && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">Редактировать пункт</h3>
-              <button onClick={() => setEditingItem(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Название *</label>
-                <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                  maxLength={200}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Описание</label>
-                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)}
-                  rows={3} placeholder="Необязательно"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Категория</label>
-                  <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
-                    <option value="payment">💰 Оплата</option>
-                    <option value="delivery">📦 Поставка</option>
-                    <option value="deadline">⏰ Срок</option>
-                    <option value="document">📄 Документы</option>
-                    <option value="obligation">📌 Обязательство</option>
-                    <option value="other">📋 Прочее</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Срок исполнения</label>
-                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Ответственный</label>
-                <select value={editResponsible} onChange={e => setEditResponsible(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
-                  <option value="">Не указан</option>
-                  <option value="наша сторона">Наша сторона</option>
-                  <option value="контрагент">Контрагент</option>
-                  <option value="обе стороны">Обе стороны</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={saveEdit} disabled={editLoading}
-                className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
-                {editLoading ? 'Сохранение...' : 'Сохранить'}
-              </button>
-              <button onClick={() => setEditingItem(null)}
-                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модал создания задачи из выбранных пунктов */}
-      {showSelectedTaskModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-1">
-              📋 Создать задачу из выбранных пунктов
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Выбрано пунктов: <b>{selectedItemIds.size}</b> — они станут чек-листом внутри задачи
-            </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Название задачи
-              </label>
-              <input
-                type="text"
-                value={selectedTaskTitle}
-                onChange={e => setSelectedTaskTitle(e.target.value)}
-                placeholder={`Контроль договора № ${contractNumber}`}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Если не заполнить — будет использовано название по умолчанию
-              </p>
-            </div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Исполнитель
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={e => { setUserSearch(e.target.value); setShowUserDropdown(true) }}
-                  onFocus={() => setShowUserDropdown(true)}
-                  placeholder={usersLoading ? 'Загрузка...' : 'Начните вводить фамилию...'}
-                  disabled={usersLoading}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
-                />
-                {taskResponsibleId && taskResponsibleName && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-purple-700 bg-purple-50 rounded px-2 py-1">
-                    <span>✓ {taskResponsibleName}</span>
-                    <button
-                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
-                      className="text-gray-400 hover:text-red-500 ml-auto"
-                    >✕</button>
-                  </div>
-                )}
-                {showUserDropdown && userSearch.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                    {companyUsers
-                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
-                      .map(u => (
-                        <button key={u.id}
-                          onClick={() => { setTaskResponsibleId(u.id); setTaskResponsibleName(u.name); setUserSearch(u.name); setShowUserDropdown(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0"
-                        >
-                          <span className="font-medium">{u.name}</span>
-                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
-                        </button>
-                      ))}
-                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
-                      <p className="px-3 py-2 text-sm text-gray-400">Не найден</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowSelectedTaskModal(false)}
-                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={createSelectedTask}
-                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-              >
-                Создать задачу
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модал выбора исполнителя задачи Битрикс24 */}
-      {showTaskModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-1">
-              {taskModalItem ? '📋 Создать задачу в Битрикс24' : '📋 Создать все задачи в Битрикс24'}
-            </h3>
-            {taskModalItem && (
-              <p className="text-sm text-gray-500 mb-4 line-clamp-2">{taskModalItem.title}</p>
-            )}
-            {!taskModalItem && (
-              <p className="text-sm text-gray-500 mb-4">
-                Будет создано <b>{items.filter(i => !i.bitrix_task_id).length}</b> задач
-                {items.filter(i => i.bitrix_task_id).length > 0 && (
-                  <span className="text-gray-400"> (уже созданы: {items.filter(i => i.bitrix_task_id).length})</span>
-                )}
-              </p>
-            )}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Исполнитель <span className="text-gray-400 font-normal">(по умолчанию — автор документа)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={e => {
-                    setUserSearch(e.target.value)
-                    setShowUserDropdown(true)
-                  }}
-                  onFocus={() => setShowUserDropdown(true)}
-                  placeholder={usersLoading ? 'Загрузка сотрудников...' : 'Начните вводить фамилию...'}
-                  disabled={usersLoading}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-                {/* Выбранный пользователь */}
-                {taskResponsibleId && taskResponsibleName && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1">
-                    <span>✓ {taskResponsibleName}</span>
-                    <button
-                      onClick={() => { setTaskResponsibleName(''); setUserSearch(''); setTaskResponsibleId(authorBitrixId ?? 30) }}
-                      className="text-gray-400 hover:text-red-500 ml-auto"
-                    >✕</button>
-                  </div>
-                )}
-                {/* Выпадающий список */}
-                {showUserDropdown && userSearch.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                    {companyUsers
-                      .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
-                      .map(u => (
-                        <button
-                          key={u.id}
-                          onClick={() => {
-                            setTaskResponsibleId(u.id)
-                            setTaskResponsibleName(u.name)
-                            setUserSearch(u.name)
-                            setShowUserDropdown(false)
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
-                        >
-                          <span className="font-medium">{u.name}</span>
-                          {u.position && <span className="text-xs text-gray-400 ml-2">{u.position}</span>}
-                        </button>
-                      ))
-                    }
-                    {companyUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
-                      <p className="px-3 py-2 text-sm text-gray-400">Сотрудник не найден</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Постановщик — ГД компании {companyPrefix}. Исполнитель выбирается выше.
-              </p>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowTaskModal(false)}
-                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={taskModalItem ? createSingleTask : createBulkTasks}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Создать задач{taskModalItem ? 'у' : 'и'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модальное окно дат */}
-      {showDatesModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-1">Ключевые даты</h3>
-            <p className="text-xs text-gray-500 mb-4">
-              AI использует эти даты для расчёта относительных сроков из документов
-              (например: «в течение 5 дней после подписания»).
-              Если дата неизвестна — оставьте поле пустым.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Дата подписания договора</label>
-                <input type="date" value={signedDate} onChange={e => setSignedDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Дата вступления в силу</label>
-                <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Дополнительная дата (необязательно)</label>
-                <div className="flex gap-2">
-                  <input value={customDate1Label} onChange={e => setCustomDate1Label(e.target.value)}
-                    placeholder="Название (напр. Дата поставки)"
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                  <input type="date" value={customDate1Value} onChange={e => setCustomDate1Value(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={handleGenerate}
-                className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-emerald-700">
-                Сгенерировать чек-лист
-              </button>
-              <button onClick={() => setShowDatesModal(false)}
-                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  )
-}
-
-// Компонент истории изменений
-function HistorySection({ contractId }: { contractId: string }) {
-  const [logs, setLogs] = useState<Array<{id: string, action: string, details: string, user_name: string, created_at: string}>>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const load = async () => {
-      const res = await fetch(`${baseUrl}/api/contract-checklist?contract_id=${contractId}&history=true`)
-      const data = await res.json()
-      setLogs(data.logs ?? [])
-      setLoading(false)
-    }
-    load()
-  }, [contractId])
-
-  if (loading) return <p className="text-sm text-gray-400 py-4 text-center">Загрузка...</p>
-  if (logs.length === 0) return <p className="text-sm text-gray-400 py-4 text-center">История пуста</p>
-
-  return (
-    <div className="space-y-2">
-      {logs.map(log => (
-        <div key={log.id} className="flex gap-3 py-2 border-b border-gray-100 last:border-0">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-800">{log.action}</p>
-            {log.details && <p className="text-xs text-gray-500 mt-0.5">{log.details}</p>}
-            <p className="text-xs text-gray-400 mt-0.5">
-              {log.user_name} · {new Date(log.created_at).toLocaleString('ru-RU')}
-            </p>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -4903,11 +4903,23 @@ const MONTH_NAMES = [
 ]
 
 // Поля которые пользователь вводит вручную — по типу шаблона
-const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: string }[]> = {
+const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: string; type?: string }[]> = {
   'дилерский': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
-    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
+  'дилерский_снг': [
+    { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
+    { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
+  'дилерский регион': [
+    { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
+    { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
   'dealer_rf': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
@@ -4965,9 +4977,8 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'эдо': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
-    { key: 'referenced_contract_number', label: 'Номер основного договора', placeholder: 'ТХ-ДОГ-2026/05/1' },
-    { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026' },
-    { key: 'contract_end_date', label: 'Дата окончания соглашения', placeholder: '31.12.2026' },
+    { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026', type: 'date' },
+    { key: 'contract_end_date', label: 'Дата окончания соглашения', placeholder: '31.12.2026', type: 'date' },
   ],
   'edo': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
@@ -4984,7 +4995,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'subject_address', label: 'Адрес регистрации', placeholder: 'г. Москва, ул. ...' },
     { key: 'subject_inn', label: 'ИНН физлица', placeholder: '770123456789' },
     { key: 'subject_snils', label: 'СНИЛС', placeholder: '123-456-789 00' },
-    { key: 'pd_consent_years', label: 'Срок согласия (лет)', placeholder: '3' },
+    { key: 'pd_consent_date', label: 'Согласие действует до', placeholder: '31.12.2029', type: 'date' },
   ],
   'pd_consent': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
@@ -5118,6 +5129,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       counterparty_bank_account: (cp as {bank_account?: string})?.bank_account ?? '',
       counterparty_bank_bik: (cp as {bank_bik?: string})?.bank_bik ?? '',
       counterparty_bank_corr: (cp as {bank_corr_account?: string})?.bank_corr_account ?? '',
+      counterparty_email: (cp as {email?: string})?.email ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
@@ -5127,6 +5139,10 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       } : {}),
       ...(extraFields.min_monthly_purchase_num ? {
         min_monthly_purchase_text: numberToWords(parseInt(extraFields.min_monthly_purchase_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
+      // Для ЭДО — номер основного договора из карточки
+      ...(selectedTemplate?.type === 'эдо' ? {
+        referenced_contract_number: contract.number ?? '',
       } : {}),
       // Дополнительные поля
       ...extraFields,
@@ -5243,7 +5259,10 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
 
   // ШАГ 2 — Форма заполнения полей
   if (step === 'form' && selectedTemplate) {
-    const extraFieldsDef = EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
+    const templateKey = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
+      ? selectedTemplate.type + '_снг'
+      : selectedTemplate.type ?? ''
+    const extraFieldsDef = EXTRA_FIELDS[templateKey] ?? EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-2">
@@ -5252,18 +5271,23 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
           <h3 className="text-sm font-semibold text-gray-900">{selectedTemplate.name}</h3>
         </div>
 
-        {/* Дата договора */}
+        {/* Дата документа */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Дата договора</label>
-          <input type="text" value={contractDate}
-            onChange={e => setContractDate(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
-            placeholder="1 января 2026" />
-          <p className="text-xs text-gray-400 mt-1">Формат: «1 января 2026»</p>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Дата документа</label>
+          <input type="date" 
+            onChange={e => {
+              if (!e.target.value) return
+              const d = new Date(e.target.value)
+              const months = ['января','февраля','марта','апреля','мая','июня',
+                'июля','августа','сентября','октября','ноября','декабря']
+              setContractDate(`${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`)
+            }}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+          <p className="text-xs text-gray-400 mt-1">Выбрано: {contractDate}</p>
         </div>
 
-        {/* Контрагент */}
-        <div className="space-y-2">
+        {/* Контрагент — скрыт для согласия ПД */}
+        {selectedTemplate.type !== 'персданные' && <div className="space-y-2">
           <label className="text-xs font-medium text-gray-700 block">Контрагент</label>
           <div className="flex gap-2">
             <button onClick={() => setCounterpartyMode('select')}
@@ -5293,7 +5317,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
           {counterpartyMode === 'empty' && (
             <p className="text-xs text-gray-400">Поля контрагента будут заполнены подчёркиваниями</p>
           )}
-        </div>
+        </div>}
 
         {/* Дополнительные поля */}
         {extraFieldsDef.length > 0 && (
@@ -5302,10 +5326,21 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
             {extraFieldsDef.map(f => (
               <div key={f.key}>
                 <label className="text-xs text-gray-600 block mb-1">{f.label}</label>
-                <input type="text" value={extraFields[f.key] ?? ''}
-                  onChange={e => setExtraFields(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  placeholder={f.placeholder}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                {f.type === 'date' ? (
+                  <input type="date"
+                    onChange={e => {
+                      if (!e.target.value) return
+                      const [year, month, day] = e.target.value.split('-')
+                      const formatted = `${day}.${month}.${year}`
+                      setExtraFields(prev => ({ ...prev, [f.key]: formatted }))
+                    }}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                ) : (
+                  <input type="text" value={extraFields[f.key] ?? ''}
+                    onChange={e => setExtraFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                )}
               </div>
             ))}
           </div>

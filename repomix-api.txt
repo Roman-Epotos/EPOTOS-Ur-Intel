@@ -822,6 +822,215 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/bitrix-tasks/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
+
+// Постановщик = ГД компании по префиксу
+const COMPANY_DIRECTORS: Record<string, number> = {
+  'ТХ':  1,    // Чащина Елена — Ген. директор ООО Техно
+  'НПП': 592,  // директор НПП
+  'СПТ': 6,    // Валюк Андрей — ГД СПТ/ОС
+  'ОС':  6,
+  'Э-К': 954,  // директор Э-К
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      checklist_item_id,   // id пункта чек-листа (или null при создании всех)
+      contract_id,
+      contract_number,
+      contract_title,
+      company_prefix,
+      item_title,
+      item_description,
+      due_date,
+      responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
+      // Для создания всех задач сразу
+      items,  // массив {id, title, description, due_date} если bulk
+      mode,   // 'single_with_checklist' для одной задачи с чек-листом
+      task_title, // название задачи для single_with_checklist
+    } = body
+
+    if (!contract_id || !company_prefix) {
+      return NextResponse.json({ error: 'Не переданы обязательные поля' }, { status: 400 })
+    }
+
+    const directorId = COMPANY_DIRECTORS[company_prefix] ?? 1
+
+    // Функция создания одной задачи в Битрикс24
+    const createBitrixTask = async (
+      title: string,
+      description: string | null,
+      deadline: string | null,
+      responsibleId: number,
+      itemId: string
+    ): Promise<{ bitrix_task_id: string | null; error?: string }> => {
+      
+      // Формируем описание задачи
+      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const noDeadlineNote = !deadline 
+        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 
+        : ''
+      const fullDescription = `${description || title}\n\n${contractRef}${noDeadlineNote}`
+
+      const fields: Record<string, unknown> = {
+        TITLE: title,
+        DESCRIPTION: fullDescription,
+        DESCRIPTION_IN_BBCODE: 'Y',
+        RESPONSIBLE_ID: String(responsibleId),
+        CREATED_BY: String(directorId),  // постановщик = ГД компании
+        PRIORITY: '1',
+      }
+
+      if (deadline) {
+        // Конвертируем дату в формат Битрикс (ISO 8601)
+        fields.DEADLINE = new Date(deadline).toISOString()
+      }
+
+      const url = `${WEBHOOK}tasks.task.add.json`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      })
+
+      const data = await resp.json()
+
+      if (data.error) {
+        return { bitrix_task_id: null, error: data.error_description ?? data.error }
+      }
+
+      const taskId = String(data.result?.task?.id)
+
+      // Сохраняем bitrix_task_id в Supabase
+      await supabase
+        .from('contract_checklist')
+        .update({ bitrix_task_id: taskId })
+        .eq('id', itemId)
+
+      return { bitrix_task_id: taskId }
+    }
+
+    // === SINGLE WITH CHECKLIST: одна задача с чек-листом ===
+    if (mode === 'single_with_checklist' && items && Array.isArray(items)) {
+      const taskTitle = task_title || `Контроль договора № ${contract_number}`
+
+      // Дедлайн = максимальная дата из пунктов
+      const dates = items
+        .map((i: { due_date?: string }) => i.due_date)
+        .filter(Boolean)
+        .map((d: string | undefined) => new Date(d!).getTime())
+      const maxDeadline = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null
+
+      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const noDeadlineNote = !maxDeadline
+        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!'
+        : ''
+
+      const fields: Record<string, unknown> = {
+        TITLE: taskTitle,
+        DESCRIPTION: `${contractRef}${noDeadlineNote}`,
+        DESCRIPTION_IN_BBCODE: 'Y',
+        RESPONSIBLE_ID: String(responsible_bitrix_id),
+        CREATED_BY: String(directorId),
+        PRIORITY: '1',
+      }
+      if (maxDeadline) fields.DEADLINE = maxDeadline
+
+      // Создаём задачу
+      const taskResp = await fetch(`${WEBHOOK}tasks.task.add.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      })
+      const taskData = await taskResp.json()
+
+      if (taskData.error) {
+        return NextResponse.json(
+          { error: taskData.error_description ?? taskData.error },
+          { status: 400 }
+        )
+      }
+
+      const taskId = String(taskData.result?.task?.id)
+
+      // Добавляем пункты как чек-лист задачи
+      for (const item of items) {
+        const checkResp = await fetch(`${WEBHOOK}task.checklistitem.add.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            TASKID: taskId,
+            fields: { TITLE: item.title },
+          }),
+        })
+        const checkData = await checkResp.json()
+        console.log(`checklistitem.add taskId=${taskId} title="${item.title}":`, JSON.stringify(checkData))
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      return NextResponse.json({ success: true, bitrix_task_id: taskId })
+    }
+
+    // === BULK: создать все задачи ===
+    if (items && Array.isArray(items)) {
+      const results = []
+      for (const item of items) {
+        // Пропускаем уже созданные
+        if (item.bitrix_task_id) {
+          results.push({ id: item.id, skipped: true, bitrix_task_id: item.bitrix_task_id })
+          continue
+        }
+        const result = await createBitrixTask(
+          item.title,
+          item.description,
+          item.due_date,
+          responsible_bitrix_id,
+          item.id
+        )
+        results.push({ id: item.id, ...result })
+        // Пауза между запросами чтобы не превысить лимит Битрикс
+        await new Promise(r => setTimeout(r, 300))
+      }
+      return NextResponse.json({ success: true, results })
+    }
+
+    // === SINGLE: создать одну задачу ===
+    if (!checklist_item_id || !item_title) {
+      return NextResponse.json({ error: 'Не переданы item данные' }, { status: 400 })
+    }
+
+    const result = await createBitrixTask(
+      item_title,
+      item_description,
+      due_date,
+      responsible_bitrix_id,
+      checklist_item_id
+    )
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, bitrix_task_id: result.bitrix_task_id })
+
+  } catch (err) {
+    console.error('bitrix-tasks error:', err)
+    return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/bitrix-users/route.ts">
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -3604,598 +3813,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/system-roles/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const DEVELOPER_ID = 30
-const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
-
-// GET — список ролей ГК
-export async function GET() {
-  try {
-    const { data, error } = await supabase
-      .from('system_roles')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ roles: data ?? [] })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// POST — назначить роль
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { bitrix_user_id, user_name, role, admin_bitrix_id } = body
-
-    if (!bitrix_user_id || !user_name || !role) {
-      return NextResponse.json({ error: 'Заполните все поля' }, { status: 400 })
-    }
-
-    if (!ALLOWED_ROLES.includes(role)) {
-      return NextResponse.json({ error: 'Недопустимая роль' }, { status: 400 })
-    }
-
-    // Только разработчик может назначать admin
-    if (role === 'admin' && admin_bitrix_id !== DEVELOPER_ID) {
-      return NextResponse.json({ error: 'Только разработчик может назначать администраторов' }, { status: 403 })
-    }
-
-    // Проверяем права: разработчик или admin
-    const isDeveloper = admin_bitrix_id === DEVELOPER_ID
-    if (!isDeveloper) {
-      const { data: adminRole } = await supabase
-        .from('system_roles')
-        .select('role')
-        .eq('bitrix_user_id', admin_bitrix_id)
-        .single()
-      if (!adminRole || adminRole.role !== 'admin') {
-        return NextResponse.json({ error: 'Нет прав для назначения ролей' }, { status: 403 })
-      }
-    }
-
-    // Upsert — обновляем если уже есть
-    const { error } = await supabase
-      .from('system_roles')
-      .upsert({ bitrix_user_id, user_name, role, created_by: admin_bitrix_id },
-        { onConflict: 'bitrix_user_id' })
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// DELETE — удалить роль
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, admin_bitrix_id } = body
-
-    // Только разработчик может удалять роли
-    if (admin_bitrix_id !== DEVELOPER_ID) {
-      return NextResponse.json({ error: 'Только разработчик может удалять роли' }, { status: 403 })
-    }
-
-    const { error } = await supabase
-      .from('system_roles')
-      .delete()
-      .eq('id', id)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/bitrix-tasks/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
-
-// Постановщик = ГД компании по префиксу
-const COMPANY_DIRECTORS: Record<string, number> = {
-  'ТХ':  1,    // Чащина Елена — Ген. директор ООО Техно
-  'НПП': 592,  // директор НПП
-  'СПТ': 6,    // Валюк Андрей — ГД СПТ/ОС
-  'ОС':  6,
-  'Э-К': 954,  // директор Э-К
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const {
-      checklist_item_id,   // id пункта чек-листа (или null при создании всех)
-      contract_id,
-      contract_number,
-      contract_title,
-      company_prefix,
-      item_title,
-      item_description,
-      due_date,
-      responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
-      // Для создания всех задач сразу
-      items,  // массив {id, title, description, due_date} если bulk
-      mode,   // 'single_with_checklist' для одной задачи с чек-листом
-      task_title, // название задачи для single_with_checklist
-    } = body
-
-    if (!contract_id || !company_prefix) {
-      return NextResponse.json({ error: 'Не переданы обязательные поля' }, { status: 400 })
-    }
-
-    const directorId = COMPANY_DIRECTORS[company_prefix] ?? 1
-
-    // Функция создания одной задачи в Битрикс24
-    const createBitrixTask = async (
-      title: string,
-      description: string | null,
-      deadline: string | null,
-      responsibleId: number,
-      itemId: string
-    ): Promise<{ bitrix_task_id: string | null; error?: string }> => {
-      
-      // Формируем описание задачи
-      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
-      const noDeadlineNote = !deadline 
-        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 
-        : ''
-      const fullDescription = `${description || title}\n\n${contractRef}${noDeadlineNote}`
-
-      const fields: Record<string, unknown> = {
-        TITLE: title,
-        DESCRIPTION: fullDescription,
-        DESCRIPTION_IN_BBCODE: 'Y',
-        RESPONSIBLE_ID: String(responsibleId),
-        CREATED_BY: String(directorId),  // постановщик = ГД компании
-        PRIORITY: '1',
-      }
-
-      if (deadline) {
-        // Конвертируем дату в формат Битрикс (ISO 8601)
-        fields.DEADLINE = new Date(deadline).toISOString()
-      }
-
-      const url = `${WEBHOOK}tasks.task.add.json`
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
-      })
-
-      const data = await resp.json()
-
-      if (data.error) {
-        return { bitrix_task_id: null, error: data.error_description ?? data.error }
-      }
-
-      const taskId = String(data.result?.task?.id)
-
-      // Сохраняем bitrix_task_id в Supabase
-      await supabase
-        .from('contract_checklist')
-        .update({ bitrix_task_id: taskId })
-        .eq('id', itemId)
-
-      return { bitrix_task_id: taskId }
-    }
-
-    // === SINGLE WITH CHECKLIST: одна задача с чек-листом ===
-    if (mode === 'single_with_checklist' && items && Array.isArray(items)) {
-      const taskTitle = task_title || `Контроль договора № ${contract_number}`
-
-      // Дедлайн = максимальная дата из пунктов
-      const dates = items
-        .map((i: { due_date?: string }) => i.due_date)
-        .filter(Boolean)
-        .map((d: string | undefined) => new Date(d!).getTime())
-      const maxDeadline = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null
-
-      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
-      const noDeadlineNote = !maxDeadline
-        ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!'
-        : ''
-
-      const fields: Record<string, unknown> = {
-        TITLE: taskTitle,
-        DESCRIPTION: `${contractRef}${noDeadlineNote}`,
-        DESCRIPTION_IN_BBCODE: 'Y',
-        RESPONSIBLE_ID: String(responsible_bitrix_id),
-        CREATED_BY: String(directorId),
-        PRIORITY: '1',
-      }
-      if (maxDeadline) fields.DEADLINE = maxDeadline
-
-      // Создаём задачу
-      const taskResp = await fetch(`${WEBHOOK}tasks.task.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
-      })
-      const taskData = await taskResp.json()
-
-      if (taskData.error) {
-        return NextResponse.json(
-          { error: taskData.error_description ?? taskData.error },
-          { status: 400 }
-        )
-      }
-
-      const taskId = String(taskData.result?.task?.id)
-
-      // Добавляем пункты как чек-лист задачи
-      for (const item of items) {
-        const checkResp = await fetch(`${WEBHOOK}task.checklistitem.add.json`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            TASKID: taskId,
-            fields: { TITLE: item.title },
-          }),
-        })
-        const checkData = await checkResp.json()
-        console.log(`checklistitem.add taskId=${taskId} title="${item.title}":`, JSON.stringify(checkData))
-        await new Promise(r => setTimeout(r, 200))
-      }
-
-      return NextResponse.json({ success: true, bitrix_task_id: taskId })
-    }
-
-    // === BULK: создать все задачи ===
-    if (items && Array.isArray(items)) {
-      const results = []
-      for (const item of items) {
-        // Пропускаем уже созданные
-        if (item.bitrix_task_id) {
-          results.push({ id: item.id, skipped: true, bitrix_task_id: item.bitrix_task_id })
-          continue
-        }
-        const result = await createBitrixTask(
-          item.title,
-          item.description,
-          item.due_date,
-          responsible_bitrix_id,
-          item.id
-        )
-        results.push({ id: item.id, ...result })
-        // Пауза между запросами чтобы не превысить лимит Битрикс
-        await new Promise(r => setTimeout(r, 300))
-      }
-      return NextResponse.json({ success: true, results })
-    }
-
-    // === SINGLE: создать одну задачу ===
-    if (!checklist_item_id || !item_title) {
-      return NextResponse.json({ error: 'Не переданы item данные' }, { status: 400 })
-    }
-
-    const result = await createBitrixTask(
-      item_title,
-      item_description,
-      due_date,
-      responsible_bitrix_id,
-      checklist_item_id
-    )
-
-    if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true, bitrix_task_id: result.bitrix_task_id })
-
-  } catch (err) {
-    console.error('bitrix-tasks error:', err)
-    return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/contracts/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
-
-const TYPE_CODES: Record<string, string> = {
-  'поставка': 'ДОГ',
-  'услуги': 'ДОГ',
-  'аренда': 'ДОГ',
-  'подряд': 'ДОГ',
-  'купля-продажа': 'ДОГ',
-  'агентский': 'ДОГ',
-  'дилерский': 'ДОГ',
-  'лицензионный': 'ДОГ',
-  'сервисный': 'ДОГ',
-  'доп-соглашение': 'ДОП',
-  'nda': 'КОНФ',
-  'эдо': 'ЭДО',
-  'протокол-разногласий': 'ПРТ',
-  'претензия': 'ПРЗ',
-  'исковое': 'ИСК',
-  'ответ-претензию': 'ПРЗ',
-  'положение': 'ОРД',
-  'инструкция': 'ОРД',
-  'служебная-записка': 'ОРД',
-  'доверенность': 'ДОВ',
-  'персданные': 'СПД',
-  'акт': 'АКТ',
-  'заключение': 'ПРВ',
-  'справка': 'СПР',
-  'устав': 'УСТ',
-  'учредительный': 'ДОГ',
-  'письмо': 'ПСМ',
-  'счет': 'СЧТ',
-  'другое': 'ДОК',
-}
-
-// Генерация номера договора
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-  const type = request.nextUrl.searchParams.get('type') ?? ''
-  if (!prefix) {
-    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
-  }
-
-  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
-  const fullPrefix = `${prefix}-${typeCode}`
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const data = await res.json()
-  let maxNum = 0
-  if (data && data.length > 0) {
-    const lastNumber = data[0].number as string
-    const parts = lastNumber.split('/')
-    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
-    if (!isNaN(lastSeq)) maxNum = lastSeq
-  }
-  const nextNum = String(maxNum + 1)
-  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
-
-  return NextResponse.json({ number })
-}
-
-// Сохранение договора
-export async function POST(request: NextRequest) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-  try {
-    const body = await request.json()
-    const userName = body.user_name ?? 'Система'
-
-    // Сохраняем договор
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .insert({
-        number: body.number,
-        title: body.title,
-        counterparty: body.counterparty,
-        counterparty_id: body.counterparty_id ?? null,
-        type: body.type,
-        amount: body.amount ? parseFloat(body.amount) : null,
-        start_date: body.start_date || null,
-        end_date: body.end_date || null,
-        status: 'черновик',
-        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
-        document_category: body.document_category ?? 'contract',
-      })
-      .select('id')
-      .single()
-
-    if (contractError) {
-      return NextResponse.json({ error: contractError.message }, { status: 400 })
-    }
-
-    // Записываем в лог с именем пользователя
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contract.id,
-        action: 'Документ создан',
-        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
-        user_name: userName,
-      })
-
-    return NextResponse.json({ success: true, id: contract.id })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/counterparties/check-inn/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-export async function GET(request: NextRequest) {
-  try {
-    const inn = request.nextUrl.searchParams.get('inn')
-    if (!inn) return NextResponse.json({ error: 'ИНН обязателен' }, { status: 400 })
-
-    if (!/^\d{10}$|^\d{12}$/.test(inn)) {
-      return NextResponse.json({ error: 'ИНН должен содержать 10 или 12 цифр' }, { status: 400 })
-    }
-
-    const apiKey = process.env.DADATA_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'DADATA_API_KEY не задан' }, { status: 500 })
-
-    const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Token ${apiKey}`,
-      },
-      body: JSON.stringify({ query: inn, count: 1 }),
-    })
-
-    if (!response.ok) {
-      return NextResponse.json({ error: 'Ошибка обращения к DaData' }, { status: 502 })
-    }
-
-    const data = await response.json()
-
-    if (!data.suggestions || data.suggestions.length === 0) {
-      return NextResponse.json({ found: false, message: 'Организация не найдена' })
-    }
-
-    const org = data.suggestions[0]
-    const d = org.data
-
-    return NextResponse.json({
-      found: true,
-      data: {
-        inn: d.inn ?? inn,
-        kpp: d.kpp ?? null,
-        ogrn: d.ogrn ?? null,
-        full_name: d.name?.full_with_opf ?? org.value ?? null,
-        short_name: d.name?.short_with_opf ?? null,
-        legal_address: d.address?.value ?? null,
-        status: d.state?.status === 'ACTIVE' ? 'активный'
-          : d.state?.status === 'LIQUIDATED' ? 'ликвидирован'
-          : d.state?.status === 'REORGANIZING' ? 'в_реорганизации'
-          : 'приостановлен',
-        director_name: d.management?.name ?? null,
-        director_title: d.management?.post ?? 'Генеральный директор',
-      }
-    })
-
-  } catch (err) {
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Ошибка проверки ИНН'
-    }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/my-documents/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  try {
-    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
-      .select(`
-        id,
-        role,
-        status,
-        stage,
-        session_id,
-        approval_sessions!inner (
-          id,
-          contract_id,
-          deadline,
-          initiated_by_name,
-          contracts!inner (
-            id,
-            number,
-            title,
-            counterparty,
-            status,
-            amount
-          )
-        )
-      `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-
-    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
-    const { data: myDrafts } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
-      .in('document_category', ['contract', 'document'])
-      .order('created_at', { ascending: false })
-
-    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id,
-        deadline,
-        status,
-        created_at,
-        contracts!inner (
-          id,
-          number,
-          title,
-          counterparty,
-          status,
-          amount
-        )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-// Фильтруем — только основные документы (не вложения)
-    const filteredApprovals = (myApprovals ?? []).filter(p => {
-      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
-      const category = sessions?.contracts?.document_category
-      return category !== 'attachment'
-    })
-    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
-    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
-    return NextResponse.json({
-      required_approvals: requiredApprovals,
-      optional_approvals: optionalApprovals,
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/signed-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4555,6 +4172,663 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/system-roles/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DEVELOPER_ID = 30
+const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
+
+// GET — список ролей ГК
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('system_roles')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ roles: data ?? [] })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — назначить роль
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { bitrix_user_id, user_name, role, admin_bitrix_id } = body
+
+    if (!bitrix_user_id || !user_name || !role) {
+      return NextResponse.json({ error: 'Заполните все поля' }, { status: 400 })
+    }
+
+    if (!ALLOWED_ROLES.includes(role)) {
+      return NextResponse.json({ error: 'Недопустимая роль' }, { status: 400 })
+    }
+
+    // Только разработчик может назначать admin
+    if (role === 'admin' && admin_bitrix_id !== DEVELOPER_ID) {
+      return NextResponse.json({ error: 'Только разработчик может назначать администраторов' }, { status: 403 })
+    }
+
+    // Проверяем права: разработчик или admin
+    const isDeveloper = admin_bitrix_id === DEVELOPER_ID
+    if (!isDeveloper) {
+      const { data: adminRole } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('bitrix_user_id', admin_bitrix_id)
+        .single()
+      if (!adminRole || adminRole.role !== 'admin') {
+        return NextResponse.json({ error: 'Нет прав для назначения ролей' }, { status: 403 })
+      }
+    }
+
+    // Upsert — обновляем если уже есть
+    const { error } = await supabase
+      .from('system_roles')
+      .upsert({ bitrix_user_id, user_name, role, created_by: admin_bitrix_id },
+        { onConflict: 'bitrix_user_id' })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить роль
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, admin_bitrix_id } = body
+
+    // Только разработчик может удалять роли
+    if (admin_bitrix_id !== DEVELOPER_ID) {
+      return NextResponse.json({ error: 'Только разработчик может удалять роли' }, { status: 403 })
+    }
+
+    const { error } = await supabase
+      .from('system_roles')
+      .delete()
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/approvals/[sessionId]/approve/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify, sendBitrixMessage, sendBitrixChatMessage } from '@/app/lib/notify'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { participant_id, comment, user_name, contract_id } = body
+    const isAcknowledge = body.is_acknowledge === true
+    const isRejected = body.is_rejected === true
+
+    // Обновляем статус участника
+    const { error: updateError } = await supabase
+      .from('approval_participants')
+      .update({
+        status: isAcknowledge ? 'acknowledged' : isRejected ? 'rejected' : 'approved',
+        comment: comment || null,
+        decided_at: new Date().toISOString(),
+      })
+      .eq('id', participant_id)
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 400 })
+    }
+
+    // При отклонении — меняем статус контракта и сессии
+    if (isRejected) {
+      const { data: sessionData } = await supabase
+        .from('approval_sessions')
+        .select('contract_id')
+        .eq('id', sessionId)
+        .single()
+
+      const actualContractId = sessionData?.contract_id ?? contract_id
+
+      await supabase.from('contracts').update({ status: 'отклонён' }).eq('id', actualContractId)
+      await supabase.from('approval_sessions').update({ status: 'cancelled' }).eq('id', sessionId)
+
+      // Уведомляем автора
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', actualContractId)
+        .single()
+
+      if (contractData) {
+        const { data: participantsData } = await supabase
+          .from('approval_participants')
+          .select('bitrix_user_id')
+          .eq('session_id', sessionId)
+          .not('bitrix_user_id', 'is', null)
+
+        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        const rejectedRecipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...participantIds,
+        ])]
+
+        await sendBitrixNotify({
+          recipients: rejectedRecipients,
+          type: 'document_rejected',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+          extra: comment ?? undefined,
+        })
+        
+
+        // Сообщение в групповой чат Битрикс24
+        const { data: sessionInfo } = await supabase
+          .from('approval_sessions')
+          .select('bitrix_chat_id')
+          .eq('id', sessionId)
+          .single()
+        if (sessionInfo?.bitrix_chat_id) {
+          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
+          await sendBitrixChatMessage(
+            sessionInfo.bitrix_chat_id,
+            `❌ Документ отклонён: ${contractData.number} — ${contractData.title} [${link}]${comment ? `\nПричина: ${comment}` : ''}`
+          )
+        }
+      }
+    }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: isAcknowledge ? 'Ознакомлен' : isRejected ? 'Отклонено' : 'Согласовано',
+        details: isAcknowledge
+          ? 'Участник ознакомился(ась) с документом'
+          : comment ? `Комментарий: ${comment}` : 'Без комментария',
+        user_name: user_name ?? 'Система',
+      })
+
+    // Записываем сообщение в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: isAcknowledge
+          ? `👁 ${user_name} ознакомлен с документом`
+          : isRejected
+            ? `❌ ${user_name} отклонил(а) документ${comment ? `. Причина: «${comment}»` : ''}`
+            : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Проверяем все ли обязательные согласовали
+    const { data: participants } = await supabase
+      .from('approval_participants')
+      .select('status, role')
+      .eq('session_id', sessionId)
+
+    const required = participants?.filter(p => p.role === 'required') ?? []
+    const allDone = required.every(p =>
+      p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator'
+    )
+
+    if (allDone && required.length > 0) {
+      // Получаем contract_id из сессии напрямую для надёжности
+      const { data: sessionData } = await supabase
+        .from('approval_sessions')
+        .select('contract_id')
+        .eq('id', sessionId)
+        .single()
+
+      const actualContractId = sessionData?.contract_id ?? contract_id
+
+      const { error: contractUpdateError } = await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', actualContractId)
+
+      if (contractUpdateError) {
+        console.error('Contract status update error:', contractUpdateError)
+      }
+
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
+
+      await supabase
+        .from('contract_logs')
+        .insert({
+          contract_id: actualContractId,
+          action: 'Согласование завершено',
+          details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
+          user_name: 'Система',
+        })
+
+      // Уведомляем автора + всех участников о полном согласовании
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', actualContractId)
+        .single()
+
+      if (contractData) {
+        const { data: participantsData } = await supabase
+          .from('approval_participants')
+          .select('bitrix_user_id')
+          .eq('session_id', sessionId)
+          .not('bitrix_user_id', 'is', null)
+
+        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        const gcManagerIds = [1, 246, 504]
+
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+          ...participantIds,
+        ])]
+
+        await sendBitrixNotify({
+          recipients,
+          type: 'document_approved',
+          document_id: actualContractId,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+        
+
+        // Сообщение в групповой чат Битрикс24
+        const { data: approvedSessionInfo } = await supabase
+          .from('approval_sessions')
+          .select('bitrix_chat_id')
+          .eq('id', sessionId)
+          .single()
+        if (approvedSessionInfo?.bitrix_chat_id) {
+          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
+          await sendBitrixChatMessage(
+            approvedSessionInfo.bitrix_chat_id,
+            `✅ Документ согласован: ${contractData.number} — ${contractData.title} [${link}]`
+          )
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, all_approved: allDone })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { reason, user_name, contract_id } = body
+
+    if (!reason?.trim()) {
+      return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
+    }
+
+    const { error: sessionError } = await supabase
+      .from('approval_sessions')
+      .update({ status: 'cancelled', cancel_reason: reason })
+      .eq('id', sessionId)
+
+    if (sessionError) {
+      return NextResponse.json({ error: sessionError.message }, { status: 400 })
+    }
+
+    await supabase
+      .from('contracts')
+      .update({ status: 'архив' })
+      .eq('id', contract_id)
+
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `🚫 Согласование прервано инициатором. Причина: «${reason}»`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Согласование прервано',
+        details: `Причина: ${reason}`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/contracts/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
+
+const TYPE_CODES: Record<string, string> = {
+  'поставка': 'ДОГ',
+  'услуги': 'ДОГ',
+  'аренда': 'ДОГ',
+  'подряд': 'ДОГ',
+  'купля-продажа': 'ДОГ',
+  'агентский': 'ДОГ',
+  'дилерский': 'ДОГ',
+  'лицензионный': 'ДОГ',
+  'сервисный': 'ДОГ',
+  'доп-соглашение': 'ДОП',
+  'nda': 'КОНФ',
+  'эдо': 'ЭДО',
+  'протокол-разногласий': 'ПРТ',
+  'претензия': 'ПРЗ',
+  'исковое': 'ИСК',
+  'ответ-претензию': 'ПРЗ',
+  'положение': 'ОРД',
+  'инструкция': 'ОРД',
+  'служебная-записка': 'ОРД',
+  'доверенность': 'ДОВ',
+  'персданные': 'СПД',
+  'акт': 'АКТ',
+  'заключение': 'ПРВ',
+  'справка': 'СПР',
+  'устав': 'УСТ',
+  'учредительный': 'ДОГ',
+  'письмо': 'ПСМ',
+  'счет': 'СЧТ',
+  'другое': 'ДОК',
+}
+
+// Генерация номера договора
+export async function GET(request: NextRequest) {
+  const prefix = request.nextUrl.searchParams.get('prefix')
+  const type = request.nextUrl.searchParams.get('type') ?? ''
+  if (!prefix) {
+    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
+  }
+
+  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
+  const fullPrefix = `${prefix}-${typeCode}`
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
+    {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
+
+  const data = await res.json()
+  let maxNum = 0
+  if (data && data.length > 0) {
+    const lastNumber = data[0].number as string
+    const parts = lastNumber.split('/')
+    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
+    if (!isNaN(lastSeq)) maxNum = lastSeq
+  }
+  const nextNum = String(maxNum + 1)
+  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
+
+  return NextResponse.json({ number })
+}
+
+// Сохранение договора
+export async function POST(request: NextRequest) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  try {
+    const body = await request.json()
+    const userName = body.user_name ?? 'Система'
+
+    // Сохраняем договор
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .insert({
+        number: body.number,
+        title: body.title,
+        counterparty: body.counterparty,
+        counterparty_id: body.counterparty_id ?? null,
+        type: body.type,
+        amount: body.amount ? parseFloat(body.amount) : null,
+        start_date: body.start_date || null,
+        end_date: body.end_date || null,
+        status: 'черновик',
+        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
+        document_category: body.document_category ?? 'contract',
+      })
+      .select('id')
+      .single()
+
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
+    }
+
+    // Записываем в лог с именем пользователя
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contract.id,
+        action: 'Документ создан',
+        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
+        user_name: userName,
+      })
+
+    return NextResponse.json({ success: true, id: contract.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/counterparties/check-inn/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  try {
+    const inn = request.nextUrl.searchParams.get('inn')
+    if (!inn) return NextResponse.json({ error: 'ИНН обязателен' }, { status: 400 })
+
+    if (!/^\d{10}$|^\d{12}$/.test(inn)) {
+      return NextResponse.json({ error: 'ИНН должен содержать 10 или 12 цифр' }, { status: 400 })
+    }
+
+    const apiKey = process.env.DADATA_API_KEY
+    if (!apiKey) return NextResponse.json({ error: 'DADATA_API_KEY не задан' }, { status: 500 })
+
+    const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Token ${apiKey}`,
+      },
+      body: JSON.stringify({ query: inn, count: 1 }),
+    })
+
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Ошибка обращения к DaData' }, { status: 502 })
+    }
+
+    const data = await response.json()
+
+    if (!data.suggestions || data.suggestions.length === 0) {
+      return NextResponse.json({ found: false, message: 'Организация не найдена' })
+    }
+
+    const org = data.suggestions[0]
+    const d = org.data
+
+    return NextResponse.json({
+      found: true,
+      data: {
+        inn: d.inn ?? inn,
+        kpp: d.kpp ?? null,
+        ogrn: d.ogrn ?? null,
+        full_name: d.name?.full_with_opf ?? org.value ?? null,
+        short_name: d.name?.short_with_opf ?? null,
+        legal_address: d.address?.value ?? null,
+        status: d.state?.status === 'ACTIVE' ? 'активный'
+          : d.state?.status === 'LIQUIDATED' ? 'ликвидирован'
+          : d.state?.status === 'REORGANIZING' ? 'в_реорганизации'
+          : 'приостановлен',
+        director_name: d.management?.name ?? null,
+        director_title: d.management?.post ?? 'Генеральный директор',
+      }
+    })
+
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : 'Ошибка проверки ИНН'
+    }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/my-documents/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
+      .select(`
+        id,
+        role,
+        status,
+        stage,
+        session_id,
+        approval_sessions!inner (
+          id,
+          contract_id,
+          deadline,
+          initiated_by_name,
+          contracts!inner (
+            id,
+            number,
+            title,
+            counterparty,
+            status,
+            amount
+          )
+        )
+      `)
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+
+    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
+    const { data: myDrafts } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
+      .in('document_category', ['contract', 'document'])
+      .order('created_at', { ascending: false })
+
+    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id,
+        deadline,
+        status,
+        created_at,
+        contracts!inner (
+          id,
+          number,
+          title,
+          counterparty,
+          status,
+          amount
+        )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+// Фильтруем — только основные документы (не вложения)
+    const filteredApprovals = (myApprovals ?? []).filter(p => {
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const category = sessions?.contracts?.document_category
+      return category !== 'attachment'
+    })
+    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
+    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    return NextResponse.json({
+      required_approvals: requiredApprovals,
+      optional_approvals: optionalApprovals,
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -4945,280 +5219,6 @@ export async function GET(request: NextRequest) {
     companies: allCompanies,
     all_roles: approvalRoles,
   })
-}
-</file>
-
-<file path="app/api/approvals/[sessionId]/approve/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify, sendBitrixMessage, sendBitrixChatMessage } from '@/app/lib/notify'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { participant_id, comment, user_name, contract_id } = body
-    const isAcknowledge = body.is_acknowledge === true
-    const isRejected = body.is_rejected === true
-
-    // Обновляем статус участника
-    const { error: updateError } = await supabase
-      .from('approval_participants')
-      .update({
-        status: isAcknowledge ? 'acknowledged' : isRejected ? 'rejected' : 'approved',
-        comment: comment || null,
-        decided_at: new Date().toISOString(),
-      })
-      .eq('id', participant_id)
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 })
-    }
-
-    // При отклонении — меняем статус контракта и сессии
-    if (isRejected) {
-      const { data: sessionData } = await supabase
-        .from('approval_sessions')
-        .select('contract_id')
-        .eq('id', sessionId)
-        .single()
-
-      const actualContractId = sessionData?.contract_id ?? contract_id
-
-      await supabase.from('contracts').update({ status: 'отклонён' }).eq('id', actualContractId)
-      await supabase.from('approval_sessions').update({ status: 'cancelled' }).eq('id', sessionId)
-
-      // Уведомляем автора
-      const { data: contractData } = await supabase
-        .from('contracts')
-        .select('title, number, author_bitrix_id')
-        .eq('id', actualContractId)
-        .single()
-
-      if (contractData) {
-        const { data: participantsData } = await supabase
-          .from('approval_participants')
-          .select('bitrix_user_id')
-          .eq('session_id', sessionId)
-          .not('bitrix_user_id', 'is', null)
-
-        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
-        const rejectedRecipients = [...new Set([
-          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
-          ...participantIds,
-        ])]
-
-        await sendBitrixNotify({
-          recipients: rejectedRecipients,
-          type: 'document_rejected',
-          document_id: actualContractId,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-          extra: comment ?? undefined,
-        })
-        
-
-        // Сообщение в групповой чат Битрикс24
-        const { data: sessionInfo } = await supabase
-          .from('approval_sessions')
-          .select('bitrix_chat_id')
-          .eq('id', sessionId)
-          .single()
-        if (sessionInfo?.bitrix_chat_id) {
-          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
-          await sendBitrixChatMessage(
-            sessionInfo.bitrix_chat_id,
-            `❌ Документ отклонён: ${contractData.number} — ${contractData.title} [${link}]${comment ? `\nПричина: ${comment}` : ''}`
-          )
-        }
-      }
-    }
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: isAcknowledge ? 'Ознакомлен' : isRejected ? 'Отклонено' : 'Согласовано',
-        details: isAcknowledge
-          ? 'Участник ознакомился(ась) с документом'
-          : comment ? `Комментарий: ${comment}` : 'Без комментария',
-        user_name: user_name ?? 'Система',
-      })
-
-    // Записываем сообщение в чат
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: isAcknowledge
-          ? `👁 ${user_name} ознакомлен с документом`
-          : isRejected
-            ? `❌ ${user_name} отклонил(а) документ${comment ? `. Причина: «${comment}»` : ''}`
-            : `✅ ${user_name} согласовал(а) документ${comment ? `. Комментарий: «${comment}»` : ''}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    // Проверяем все ли обязательные согласовали
-    const { data: participants } = await supabase
-      .from('approval_participants')
-      .select('status, role')
-      .eq('session_id', sessionId)
-
-    const required = participants?.filter(p => p.role === 'required') ?? []
-    const allDone = required.every(p =>
-      p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator'
-    )
-
-    if (allDone && required.length > 0) {
-      // Получаем contract_id из сессии напрямую для надёжности
-      const { data: sessionData } = await supabase
-        .from('approval_sessions')
-        .select('contract_id')
-        .eq('id', sessionId)
-        .single()
-
-      const actualContractId = sessionData?.contract_id ?? contract_id
-
-      const { error: contractUpdateError } = await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', actualContractId)
-
-      if (contractUpdateError) {
-        console.error('Contract status update error:', contractUpdateError)
-      }
-
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'completed' })
-        .eq('id', sessionId)
-
-      await supabase
-        .from('contract_logs')
-        .insert({
-          contract_id: actualContractId,
-          action: 'Согласование завершено',
-          details: 'Все обязательные участники согласовали документ. Договор готов к подписанию.',
-          user_name: 'Система',
-        })
-
-      // Уведомляем автора + всех участников о полном согласовании
-      const { data: contractData } = await supabase
-        .from('contracts')
-        .select('title, number, author_bitrix_id')
-        .eq('id', actualContractId)
-        .single()
-
-      if (contractData) {
-        const { data: participantsData } = await supabase
-          .from('approval_participants')
-          .select('bitrix_user_id')
-          .eq('session_id', sessionId)
-          .not('bitrix_user_id', 'is', null)
-
-        const participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
-        const gcManagerIds = [1, 246, 504]
-
-        const recipients = [...new Set([
-          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
-          ...gcManagerIds,
-          ...participantIds,
-        ])]
-
-        await sendBitrixNotify({
-          recipients,
-          type: 'document_approved',
-          document_id: actualContractId,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
-        
-
-        // Сообщение в групповой чат Битрикс24
-        const { data: approvedSessionInfo } = await supabase
-          .from('approval_sessions')
-          .select('bitrix_chat_id')
-          .eq('id', sessionId)
-          .single()
-        if (approvedSessionInfo?.bitrix_chat_id) {
-          const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-          const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${actualContractId}`
-          await sendBitrixChatMessage(
-            approvedSessionInfo.bitrix_chat_id,
-            `✅ Документ согласован: ${contractData.number} — ${contractData.title} [${link}]`
-          )
-        }
-      }
-    }
-
-    return NextResponse.json({ success: true, all_approved: allDone })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { reason, user_name, contract_id } = body
-
-    if (!reason?.trim()) {
-      return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
-    }
-
-    const { error: sessionError } = await supabase
-      .from('approval_sessions')
-      .update({ status: 'cancelled', cancel_reason: reason })
-      .eq('id', sessionId)
-
-    if (sessionError) {
-      return NextResponse.json({ error: sessionError.message }, { status: 400 })
-    }
-
-    await supabase
-      .from('contracts')
-      .update({ status: 'архив' })
-      .eq('id', contract_id)
-
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: `🚫 Согласование прервано инициатором. Причина: «${reason}»`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Согласование прервано',
-        details: `Причина: ${reason}`,
-        user_name: user_name ?? 'Система',
-      })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
 }
 </file>
 
