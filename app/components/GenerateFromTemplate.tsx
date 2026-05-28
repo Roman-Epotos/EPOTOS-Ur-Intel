@@ -106,7 +106,7 @@ const MONTH_NAMES = [
 ]
 
 // Поля которые пользователь вводит вручную — по типу шаблона
-const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: string }[]> = {
+const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: string; type?: string }[]> = {
   'дилерский': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'min_monthly_purchase_num', label: 'Минимальный объём закупки (цифрами)', placeholder: '2000000' },
@@ -187,7 +187,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'subject_address', label: 'Адрес регистрации', placeholder: 'г. Москва, ул. ...' },
     { key: 'subject_inn', label: 'ИНН физлица', placeholder: '770123456789' },
     { key: 'subject_snils', label: 'СНИЛС', placeholder: '123-456-789 00' },
-    { key: 'pd_consent_years', label: 'Срок согласия (лет)', placeholder: '3' },
+    { key: 'pd_consent_date', label: 'Согласие действует до', placeholder: '31.12.2029', type: 'date' },
   ],
   'pd_consent': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
@@ -465,8 +465,8 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
           <p className="text-xs text-gray-400 mt-1">Формат: «1 января 2026»</p>
         </div>
 
-        {/* Контрагент */}
-        <div className="space-y-2">
+        {/* Контрагент — скрыт для согласия ПД */}
+        {selectedTemplate.type !== 'персданные' && <div className="space-y-2">
           <label className="text-xs font-medium text-gray-700 block">Контрагент</label>
           <div className="flex gap-2">
             <button onClick={() => setCounterpartyMode('select')}
@@ -496,7 +496,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
           {counterpartyMode === 'empty' && (
             <p className="text-xs text-gray-400">Поля контрагента будут заполнены подчёркиваниями</p>
           )}
-        </div>
+        </div>}
 
         {/* Дополнительные поля */}
         {extraFieldsDef.length > 0 && (
@@ -505,10 +505,22 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
             {extraFieldsDef.map(f => (
               <div key={f.key}>
                 <label className="text-xs text-gray-600 block mb-1">{f.label}</label>
-                <input type="text" value={extraFields[f.key] ?? ''}
-                  onChange={e => setExtraFields(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  placeholder={f.placeholder}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                {f.type === 'date' ? (
+                  <input type="date" value={extraFields[f.key] ?? ''}
+                    onChange={e => {
+                      const d = new Date(e.target.value)
+                      const formatted = e.target.value
+                        ? `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+                        : ''
+                      setExtraFields(prev => ({ ...prev, [f.key]: formatted }))
+                    }}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                ) : (
+                  <input type="text" value={extraFields[f.key] ?? ''}
+                    onChange={e => setExtraFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400" />
+                )}
               </div>
             ))}
           </div>
