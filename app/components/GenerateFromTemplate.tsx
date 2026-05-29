@@ -301,7 +301,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       supplier_short_name: req.short_name ?? '',
       supplier_director_title: req.director_title ?? 'Генерального директора',
       supplier_director_name: req.director_name ?? '',
-      supplier_director_short_name: req.director_short_name ?? '',
+      supplier_director_short_name: req.director_short_name ?? req.director_name ?? '',
       supplier_basis: req.basis ?? 'Устава',
       supplier_ogrn: req.ogrn ?? '',
       supplier_inn: req.inn ?? '',
