@@ -157,12 +157,14 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   'поставка': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+    { key: 'liability_limit_num', label: 'Лимит ответственности (руб.)', placeholder: '1000000' },
   ],
   'поставка_снг': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
     { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
     { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
+    { key: 'liability_limit_num', label: 'Лимит ответственности (руб.)', placeholder: '1000000' },
   ],
   'supply_rf': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
@@ -347,6 +349,9 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       } : {}),
       ...(extraFields.min_monthly_purchase_num ? {
         min_monthly_purchase_text: numberToWords(parseInt(extraFields.min_monthly_purchase_num.replace(/\s/g, '').replace(/,/g, ''), 10))
+      } : {}),
+      ...(extraFields.liability_limit_num ? {
+        liability_limit_text: numberToWords(parseInt(extraFields.liability_limit_num.replace(/\s/g, '').replace(/,/g, ''), 10))
       } : {}),
       // Для ЭДО — номер основного договора из карточки
       ...(selectedTemplate?.type === 'эдо' ? {
