@@ -287,7 +287,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
     )
     const reqJson = await reqRes.json()
     const req = reqJson.requisites?.[0] ?? reqJson.requisite ?? {}
-    console.log('Requisites fields:', Object.keys(req))
+    console.log('legal_address value:', req.legal_address)
 
     // Данные контрагента
     const cp = counterpartyMode === 'select' && selectedCounterparty
