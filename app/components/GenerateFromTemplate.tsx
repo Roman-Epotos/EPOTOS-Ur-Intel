@@ -289,7 +289,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
     )
     const reqJson = await reqRes.json()
     const req = reqJson.requisites?.[0] ?? reqJson.requisite ?? {}
-    console.log('legal_address value:', req.legal_address)
+    
 
     // Данные контрагента
     const cp = counterpartyMode === 'select' && selectedCounterparty
@@ -369,7 +369,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
     setGenerating(true)
     try {
       const fields = await buildFields()
-      console.log('Sending fields:', JSON.stringify(fields).slice(0, 500))
+      
       const res = await fetch(`${baseUrl}/api/generate-from-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -432,7 +432,6 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error ?? 'Ошибка загрузки')
       }
-      router.refresh()
       router.refresh()
       if (onUploaded) onUploaded()
       alert(category === 'main'
