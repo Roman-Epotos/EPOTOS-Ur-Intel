@@ -141,7 +141,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
     { key: 'insurance_amount_num', label: 'Сумма страхования (цифрами, если есть)', placeholder: '5 000 000' },
     { key: 'transport_types', label: 'Типы транспортных средств (если есть)', placeholder: 'грузовые автомобили' },
-    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
   'asc_no_to': [
     { key: 'territory', label: 'Территория', placeholder: 'Московская область' },
@@ -156,7 +156,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'поставка': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
-    { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
     { key: 'territory_country', label: 'Страна/территория (для СНГ)', placeholder: 'Республика Казахстан' },
     { key: 'tax_authority_country', label: 'Налоговый орган страны (для СНГ)', placeholder: 'Казахстан' },
   ],
