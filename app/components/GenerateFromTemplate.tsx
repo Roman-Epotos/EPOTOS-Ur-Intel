@@ -157,8 +157,12 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   'поставка': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
-    { key: 'territory_country', label: 'Страна/территория (для СНГ)', placeholder: 'Республика Казахстан' },
-    { key: 'tax_authority_country', label: 'Налоговый орган страны (для СНГ)', placeholder: 'Казахстан' },
+  ],
+  'поставка_снг': [
+    { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+    { key: 'territory_country', label: 'Страна/территория', placeholder: 'Республика Казахстан' },
+    { key: 'tax_authority_country', label: 'Налоговый орган страны', placeholder: 'Казахстан' },
   ],
   'supply_rf': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
@@ -282,7 +286,8 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       `${baseUrl}/api/company-requisites?prefix=${effectivePrefix}`
     )
     const reqJson = await reqRes.json()
-    const req = reqJson.requisites?.[0] ?? {}
+    const req = reqJson.requisites?.[0] ?? reqJson.requisite ?? {}
+    console.log('Requisites fields:', Object.keys(req))
 
     // Данные контрагента
     const cp = counterpartyMode === 'select' && selectedCounterparty
@@ -462,9 +467,8 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
 
   // ШАГ 2 — Форма заполнения полей
   if (step === 'form' && selectedTemplate) {
-    const templateKey = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
-      ? selectedTemplate.type + '_снг'
-      : selectedTemplate.type ?? ''
+    const isSng = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
+    const templateKey = isSng ? selectedTemplate.type + '_снг' : selectedTemplate.type ?? ''
     const extraFieldsDef = EXTRA_FIELDS[templateKey] ?? EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
     return (
       <div className="space-y-5">
