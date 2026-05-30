@@ -152,7 +152,7 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) }],
         max_tokens: 4000,
         temperature: 0.2,
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         attachment_id: attachment_id ?? null,
         type: analysis_type,
         status: 'processing',
-        model_used: 'google/gemini-2.0-flash-001',
+        model_used: 'google/google/gemini-2.5-flash',
       })
       .select('id')
       .single()
