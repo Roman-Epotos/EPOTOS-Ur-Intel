@@ -137,6 +137,10 @@ export default function HelpPage() {
   const handleReply = async (requestId: string, userBitrixId: number) => {
     const reply = replyText[requestId]
     if (!reply?.trim()) return
+    const status = replyStatus[requestId] ?? 'in_progress'
+    if (status === 'resolved') {
+      if (!confirm('Отметить обращение как «Решено»?\n\nЧат по данному вопросу будет закрыт — дальнейшая переписка невозможна.')) return
+    }
     const res = await fetch(`${baseUrl}/api/support-requests`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -144,7 +148,7 @@ export default function HelpPage() {
         request_id: requestId,
         admin_bitrix_id: parseInt(user?.id ?? '0'),
         admin_reply: reply.trim(),
-        status: replyStatus[requestId] ?? 'resolved',
+        status,
       }),
     })
     const data = await res.json()
@@ -323,33 +327,64 @@ export default function HelpPage() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{r.message}</p>
-                {r.admin_reply ? (
+                {r.admin_reply && (
                   <div className="border-l-4 border-green-400 pl-3">
-                    <p className="text-xs text-gray-500 mb-1">Ваш ответ · {new Date(r.replied_at).toLocaleString('ru-RU')}</p>
+                    <p className="text-xs text-gray-500 mb-1">Ответ · {new Date(r.replied_at).toLocaleString('ru-RU')}</p>
                     <p className="text-sm text-gray-700">{r.admin_reply}</p>
                   </div>
-                ) : (
+                )}
+                {r.status !== 'resolved' && (
                   <div className="space-y-2">
                     <textarea
                       value={replyText[r.id] ?? ''}
                       onChange={e => setReplyText(prev => ({ ...prev, [r.id]: e.target.value }))}
-                      placeholder="Напишите ответ..."
+                      placeholder="Напишите ответ или уточняющий вопрос..."
                       rows={3}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
                     <div className="flex gap-2">
                       <select
-                        value={replyStatus[r.id] ?? 'resolved'}
+                        value={replyStatus[r.id] ?? 'in_progress'}
                         onChange={e => setReplyStatus(prev => ({ ...prev, [r.id]: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
-                        <option value="resolved">🟢 Решено</option>
                         <option value="in_progress">🟡 В работе</option>
+                        <option value="resolved">🟢 Решено</option>
                       </select>
                       <button onClick={() => handleReply(r.id, r.user_bitrix_id)}
                         disabled={!replyText[r.id]?.trim()}
                         className="flex-1 bg-gray-900 text-white py-1.5 rounded-lg text-xs font-medium hover:bg-gray-700 disabled:opacity-50">
-                        Отправить ответ
+                        Отправить
+                      </button>
+                      <button onClick={async () => {
+                        if (!confirm(`Удалить обращение безвозвратно?`)) return
+                        const res = await fetch(`${baseUrl}/api/support-requests`, {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ request_id: r.id, admin_bitrix_id: parseInt(user?.id ?? '0') }),
+                        })
+                        const data = await res.json()
+                        if (data.success) setAdminRequests(prev => prev.filter(x => x.id !== r.id))
+                      }}
+                        className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">
+                        🗑
                       </button>
                     </div>
+                  </div>
+                )}
+                {r.status === 'resolved' && (
+                  <div className="flex justify-end">
+                    <button onClick={async () => {
+                      if (!confirm(`Удалить обращение безвозвратно?`)) return
+                      const res = await fetch(`${baseUrl}/api/support-requests`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ request_id: r.id, admin_bitrix_id: parseInt(user?.id ?? '0') }),
+                      })
+                      const data = await res.json()
+                      if (data.success) setAdminRequests(prev => prev.filter(x => x.id !== r.id))
+                    }}
+                      className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">
+                      🗑 Удалить
+                    </button>
                   </div>
                 )}
               </div>

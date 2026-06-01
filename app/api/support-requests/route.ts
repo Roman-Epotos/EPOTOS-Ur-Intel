@@ -92,6 +92,29 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE — удалить обращение безвозвратно (только администратор)
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { request_id, admin_bitrix_id } = body
+
+    if (!ADMIN_IDS.includes(parseInt(admin_bitrix_id))) {
+      return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
+    }
+
+    const { error } = await supabase
+      .from('support_requests')
+      .delete()
+      .eq('id', request_id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
 // PATCH — ответить на обращение (только администратор)
 export async function PATCH(request: NextRequest) {
   try {
