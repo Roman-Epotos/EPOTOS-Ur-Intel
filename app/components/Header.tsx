@@ -3,34 +3,59 @@
 import { useState, useEffect } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
 
 export default function Header() {
   const { user, loading } = useBitrixAuth()
   const [helpUnread, setHelpUnread] = useState(0)
 
+  const checkUnread = async (userId: string) => {
+    const baseUrl = 'https://epotos-ur-intel.vercel.app'
+    const isAdminUser = [30, 1148].includes(parseInt(userId))
+    const url = isAdminUser
+      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
+      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
+    const r = await fetch(url)
+    const d = await r.json()
+    const reqs = d.requests ?? []
+    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
+      if (req.status === 'resolved') return false
+      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
+      if (!lastSeen) return true
+      const msgs = req.support_messages ?? []
+      if (msgs.length === 0) return false
+      const lastMsgAt = msgs[msgs.length - 1].created_at
+      return new Date(lastMsgAt) > new Date(lastSeen)
+    }).length
+    setHelpUnread(unread)
+  }
+
   useEffect(() => {
     if (!user) return
-    const baseUrl = 'https://epotos-ur-intel.vercel.app'
-    const isAdmin = [30, 1148].includes(parseInt(user.id))
-    const url = isAdmin
-      ? `${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`
-      : `${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`
-    fetch(url)
-      .then(r => r.json())
-      .then(d => {
-        const reqs = d.requests ?? []
-        const unread = reqs.filter((r: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
-          if (r.status === 'resolved') return false
-          const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
-          if (!lastSeen) return true
-          const msgs = r.support_messages ?? []
-          if (msgs.length === 0) return false
-          const lastMsgAt = msgs[msgs.length - 1].created_at
-          return new Date(lastMsgAt) > new Date(lastSeen)
-        }).length
-        setHelpUnread(unread)
+    checkUnread(user.id)
+
+    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
+    const channel = supabaseClient
+      .channel('header_support_unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_messages',
+      }, (payload) => {
+        const msg = payload.new as { author_bitrix_id: number }
+        // Показываем только если сообщение от другого пользователя
+        if (msg.author_bitrix_id !== parseInt(user.id)) {
+          checkUnread(user.id)
+        }
       })
-      .catch(() => {})
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
   }, [user])
 
   return (
