@@ -89,7 +89,17 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
     // Отмечаем как просмотренный
     localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
     setHasNew(false)
-    onStatusChange(request.id, request.status)
+    // Администратор открыл новое обращение — меняем статус на "в работе"
+    if (isAdmin && request.status === 'new') {
+      await fetch(`${baseUrl}/api/support-requests`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId, status: 'in_progress' }),
+      })
+      onStatusChange(request.id, 'in_progress')
+    } else {
+      onStatusChange(request.id, request.status)
+    }
   }
 
   useEffect(() => {
@@ -107,6 +117,8 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
         const newMsg = payload.new as SupportMessage
         if (newMsg.author_bitrix_id !== currentUserId) {
           setHasNew(true)
+          // Сбрасываем last_seen чтобы счётчик обновился
+          localStorage.removeItem(`support_seen_${request.id}`)
         }
         setMessages(prev => {
           const exists = prev.some(m => m.id === newMsg.id)

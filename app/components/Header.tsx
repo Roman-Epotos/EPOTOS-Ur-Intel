@@ -1,10 +1,33 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import Link from 'next/link'
 
 export default function Header() {
   const { user, loading } = useBitrixAuth()
+  const [helpUnread, setHelpUnread] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    const baseUrl = 'https://epotos-ur-intel.vercel.app'
+    const isAdmin = [30, 1148].includes(parseInt(user.id))
+    const url = isAdmin
+      ? `${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`
+      : `${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`
+    fetch(url)
+      .then(r => r.json())
+      .then(d => {
+        const reqs = d.requests ?? []
+        const unread = reqs.filter((r: { id: string; status: string }) => {
+          if (r.status === 'resolved') return false
+          const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
+          return !lastSeen
+        }).length
+        setHelpUnread(unread)
+      })
+      .catch(() => {})
+  }, [user])
 
   return (
     <div className="flex items-center justify-between mb-8">
@@ -36,8 +59,13 @@ export default function Header() {
         {/* Профиль пользователя */}
         
         <Link href="/help"
-          className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+          className="relative text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
           ❓ Помощь
+          {helpUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+              {helpUnread}
+            </span>
+          )}
         </Link>
         {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
           <Link href="/admin"
