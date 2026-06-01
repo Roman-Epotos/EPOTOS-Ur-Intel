@@ -26,6 +26,7 @@ const ADMIN_TABS = [
   { id: 'templates', label: 'Шаблоны документов' },
   { id: 'requisites', label: 'Реквизиты компаний' },
   { id: 'gc_roles', label: 'Роли ГК' },
+  { id: 'deleted', label: '🗑 Удалённые документы' },
 ]
 
 interface Participant {
@@ -127,6 +128,10 @@ export default function AdminPage() {
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateSuccess, setTemplateSuccess] = useState('')
   const [templateError, setTemplateError] = useState('')
+  const [deletedContracts, setDeletedContracts] = useState<{id: string, number: string, title: string, company_prefix: string, deleted_at: string, deleted_by_name: string, delete_reason: string}[]>([])
+  const [deletedLoading, setDeletedLoading] = useState(false)
+  const [deletedError, setDeletedError] = useState('')
+  const [deletedSuccess, setDeletedSuccess] = useState('')
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -181,6 +186,12 @@ useEffect(() => {
       setTemplates(data.templates ?? [])
     }
     if (adminTab === 'templates') loadTemplates()
+    if (adminTab === 'deleted') {
+      setDeletedLoading(true)
+      fetch(`${baseUrl}/api/deleted-contracts?bitrix_user_id=${user?.id}`)
+        .then(r => r.json())
+        .then(d => { setDeletedContracts(d.contracts ?? []); setDeletedLoading(false) })
+    }
   }, [adminTab])
 
   // Загружаем реквизиты при смене компании
@@ -954,6 +965,77 @@ useEffect(() => {
         )}
 
         {/* Вкладка — Шаблоны */}
+        {adminTab === 'deleted' && (
+          <div className="space-y-4">
+            {deletedError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{deletedError}</div>}
+            {deletedSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{deletedSuccess}</div>}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Удалённые документы</h2>
+              {deletedLoading ? (
+                <p className="text-sm text-gray-400">Загрузка...</p>
+              ) : deletedContracts.length === 0 ? (
+                <p className="text-sm text-gray-400">Удалённых документов нет</p>
+              ) : (
+                <div className="space-y-3">
+                  {deletedContracts.map(c => (
+                    <div key={c.id} className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{c.number} — {c.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Компания: {c.company_prefix}</p>
+                        <p className="text-xs text-gray-500">Удалил: {c.deleted_by_name} · {new Date(c.deleted_at).toLocaleString('ru-RU')}</p>
+                        <p className="text-xs text-red-600 mt-0.5">Причина: {c.delete_reason}</p>
+                      </div>
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button
+                          onClick={async () => {
+                            setDeletedError('')
+                            setDeletedSuccess('')
+                            const res = await fetch(`${baseUrl}/api/deleted-contracts`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ contract_id: c.id, bitrix_user_id: parseInt(user?.id ?? '0'), user_name: user?.name }),
+                            })
+                            const data = await res.json()
+                            if (data.success) {
+                              setDeletedContracts(prev => prev.filter(x => x.id !== c.id))
+                              setDeletedSuccess(`Документ ${c.number} восстановлен`)
+                            } else {
+                              setDeletedError(data.error ?? 'Ошибка восстановления')
+                            }
+                          }}
+                          className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">
+                          ↩ Восстановить
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Удалить безвозвратно документ ${c.number}?\n\nЭто действие НЕЛЬЗЯ отменить — все файлы и данные будут уничтожены.`)) return
+                            setDeletedError('')
+                            setDeletedSuccess('')
+                            const res = await fetch(`${baseUrl}/api/deleted-contracts`, {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ contract_id: c.id, bitrix_user_id: parseInt(user?.id ?? '0') }),
+                            })
+                            const data = await res.json()
+                            if (data.success) {
+                              setDeletedContracts(prev => prev.filter(x => x.id !== c.id))
+                              setDeletedSuccess(`Документ ${c.number} удалён безвозвратно`)
+                            } else {
+                              setDeletedError(data.error ?? 'Ошибка удаления')
+                            }
+                          }}
+                          className="text-xs text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">
+                          🗑 Удалить безвозвратно
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {adminTab === 'templates' && (
           <div className="space-y-6">
             {templateError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{templateError}</div>}
