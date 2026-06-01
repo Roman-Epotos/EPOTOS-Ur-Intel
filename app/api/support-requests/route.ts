@@ -137,7 +137,7 @@ export async function PATCH(request: NextRequest) {
       .from('support_requests')
       .update({
         admin_reply,
-        status: status ?? 'resolved',
+        status: status ?? 'in_progress',
         replied_at: new Date().toISOString(),
         replied_by: adminName,
       })
