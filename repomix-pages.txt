@@ -2268,6 +2268,26 @@ export async function sendBitrixChatMessage(chatId: number, message: string): Pr
 }
 </file>
 
+<file path="app/page.tsx">
+import Header from '@/app/components/Header'
+import MyDocuments from '@/app/components/MyDocuments'
+import ContractsList from '@/app/components/ContractsList'
+import PersonalStats from '@/app/components/PersonalStats'
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <Header />
+        <MyDocuments />
+        <PersonalStats />
+        <ContractsList />
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="utils/chatPrint.ts">
 export function buildChatHtml(
   contract: { number: string; title: string },
@@ -2650,26 +2670,6 @@ export default function CounterpartyPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/page.tsx">
-import Header from '@/app/components/Header'
-import MyDocuments from '@/app/components/MyDocuments'
-import ContractsList from '@/app/components/ContractsList'
-import PersonalStats from '@/app/components/PersonalStats'
-
-export default function HomePage() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <Header />
-        <MyDocuments />
-        <PersonalStats />
-        <ContractsList />
       </div>
     </div>
   )
@@ -5008,8 +5008,6 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
     const msgs = data.messages ?? []
     setMessages(msgs)
     setLoading(false)
-    // Отмечаем как просмотренный
-    localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
     setHasNew(false)
     // Администратор открыл новое обращение — меняем статус на "в работе"
     if (isAdmin && request.status === 'new') {
@@ -5055,6 +5053,14 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Если чат открыт и пришли новые сообщения от другого — отмечаем как прочитанные
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.author_bitrix_id === currentUserId) {
+        // Последнее сообщение моё — отмечаем сразу
+        localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+      }
+    }
   }, [messages])
 
   const handleSend = async () => {
@@ -5160,6 +5166,11 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
         <div className="px-5 py-3 border-t border-gray-100 flex gap-2">
           <input
             value={text}
+            onFocus={() => {
+              localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+              setHasNew(false)
+              onStatusChange(request.id, request.status)
+            }}
             onChange={e => { setText(e.target.value); setHasNew(false) }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder="Напишите сообщение..."
