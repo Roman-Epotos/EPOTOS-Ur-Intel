@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from('contracts')
-    .select('id, number, title, status, company_prefix, deleted_at, deleted_by_name, delete_reason, created_at, author_bitrix_id')
+    .select('*')
     .not('deleted_at', 'is', null)
     .order('deleted_at', { ascending: false })
 
