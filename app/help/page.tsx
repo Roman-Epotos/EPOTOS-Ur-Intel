@@ -333,7 +333,7 @@ export default function HelpPage() {
                     <p className="text-sm text-gray-700">{r.admin_reply}</p>
                   </div>
                 )}
-                {r.status !== 'resolved' && (
+                {r.status !== 'resolved' && isAdmin && (
                   <div className="space-y-2">
                     <textarea
                       value={replyText[r.id] ?? ''}
@@ -343,7 +343,7 @@ export default function HelpPage() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
                     <div className="flex gap-2">
                       <select
-                        value={replyStatus[r.id] ?? 'in_progress'}
+                        value={replyStatus[r.id] !== undefined ? replyStatus[r.id] : 'in_progress'}
                         onChange={e => setReplyStatus(prev => ({ ...prev, [r.id]: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
                         <option value="in_progress">🟡 В работе</option>
