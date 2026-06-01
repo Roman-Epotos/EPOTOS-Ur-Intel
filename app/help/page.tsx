@@ -155,10 +155,11 @@ export default function HelpPage() {
     const data = await res.json()
     if (data.success) {
       setAdminRequests(prev => prev.map(r => r.id === requestId
-        ? { ...r, admin_reply: reply.trim(), status: replyStatus[requestId] ?? 'resolved', replied_by: user?.name }
+        ? { ...r, admin_reply: reply.trim(), status, replied_by: user?.name, replied_at: new Date().toISOString() }
         : r
       ))
       setReplyText(prev => ({ ...prev, [requestId]: '' }))
+      setReplyStatus(prev => ({ ...prev, [requestId]: status }))
     }
   }
 
