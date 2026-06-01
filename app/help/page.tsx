@@ -289,10 +289,14 @@ export default function HelpPage() {
       .then(r => r.json())
       .then(d => {
         const reqs = d.requests ?? []
-        setMyUnread(reqs.filter((r: SupportRequest) => {
+        setMyUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
           if (r.status === 'resolved') return false
           const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
-          return !lastSeen
+          if (!lastSeen) return true
+          const msgs = r.support_messages ?? []
+          if (msgs.length === 0) return false
+          const lastMsgAt = msgs[msgs.length - 1].created_at
+          return new Date(lastMsgAt) > new Date(lastSeen)
         }).length)
       })
     if (isAdmin) {
@@ -300,10 +304,14 @@ export default function HelpPage() {
         .then(r => r.json())
         .then(d => {
           const reqs = d.requests ?? []
-          setAdminUnread(reqs.filter((r: SupportRequest) => {
+          setAdminUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
             if (r.status === 'resolved') return false
             const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
-            return !lastSeen
+            if (!lastSeen) return true
+            const msgs = r.support_messages ?? []
+            if (msgs.length === 0) return false
+            const lastMsgAt = msgs[msgs.length - 1].created_at
+            return new Date(lastMsgAt) > new Date(lastSeen)
           }).length)
         })
     }

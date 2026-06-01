@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('support_requests')
-      .select('*')
+      .select('*, support_messages(created_at)')
       .order('created_at', { ascending: false })
 
     if (myRequests === 'true') {
