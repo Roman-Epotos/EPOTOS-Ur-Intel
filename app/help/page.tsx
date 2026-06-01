@@ -77,13 +77,19 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
   const [loading, setLoading] = useState(true)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [hasNew, setHasNew] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const loadMessages = async () => {
     const res = await fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${currentUserId}&request_id=${request.id}`)
     const data = await res.json()
-    setMessages(data.messages ?? [])
+    const msgs = data.messages ?? []
+    setMessages(msgs)
     setLoading(false)
+    // Отмечаем как просмотренный
+    localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+    setHasNew(false)
+    onStatusChange(request.id, request.status)
   }
 
   useEffect(() => {
@@ -98,10 +104,14 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
         table: 'support_messages',
         filter: `request_id=eq.${request.id}`,
       }, (payload) => {
+        const newMsg = payload.new as SupportMessage
+        if (newMsg.author_bitrix_id !== currentUserId) {
+          setHasNew(true)
+        }
         setMessages(prev => {
-          const exists = prev.some(m => m.id === payload.new.id)
+          const exists = prev.some(m => m.id === newMsg.id)
           if (exists) return prev
-          return [...prev, payload.new as SupportMessage]
+          return [...prev, newMsg]
         })
       })
       .subscribe()
@@ -149,7 +159,14 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
       {/* Шапка чата */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-gray-900">{request.subject}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-900">{request.subject}</p>
+            {hasNew && (
+              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium animate-pulse">
+                новое сообщение
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">
             {isAdmin ? `От: ${request.user_name}` : `Администратор: ${request.admin_name}`}
             {' · '}{new Date(request.created_at).toLocaleString('ru-RU')}
@@ -209,7 +226,7 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
         <div className="px-5 py-3 border-t border-gray-100 flex gap-2">
           <input
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => { setText(e.target.value); setHasNew(false) }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder="Напишите сообщение..."
             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
@@ -260,14 +277,22 @@ export default function HelpPage() {
       .then(r => r.json())
       .then(d => {
         const reqs = d.requests ?? []
-        setMyUnread(reqs.filter((r: SupportRequest) => r.status === 'in_progress').length)
+        setMyUnread(reqs.filter((r: SupportRequest) => {
+          if (r.status === 'resolved') return false
+          const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
+          return !lastSeen
+        }).length)
       })
     if (isAdmin) {
       fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`)
         .then(r => r.json())
         .then(d => {
           const reqs = d.requests ?? []
-          setAdminUnread(reqs.filter((r: SupportRequest) => r.status === 'new' || r.status === 'in_progress').length)
+          setAdminUnread(reqs.filter((r: SupportRequest) => {
+            if (r.status === 'resolved') return false
+            const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
+            return !lastSeen
+          }).length)
         })
     }
   }, [user])
