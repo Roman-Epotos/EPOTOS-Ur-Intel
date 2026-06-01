@@ -6,19 +6,38 @@ import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 interface Props {
   contractId: string
   contractNumber: string
+  contractCompanyPrefix: string
+  authorBitrixId?: number | null
+  userRole?: string
+  userCompanies?: string[]
 }
 
-export default function DeleteContractButton({ contractId, contractNumber }: Props) {
+export default function DeleteContractButton({
+  contractId,
+  contractNumber,
+  contractCompanyPrefix,
+  authorBitrixId,
+  userRole,
+  userCompanies,
+}: Props) {
   const { user } = useBitrixAuth()
   const [showModal, setShowModal] = useState(false)
   const [reason, setReason] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
+  const userId = parseInt(user?.id ?? '0')
   const adminIds = [30, 1148]
-  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAdmin = adminIds.includes(userId)
+  const isInitiator = authorBitrixId ? userId === authorBitrixId : false
 
-  if (!isAdmin) return null
+  // Юрист или директор — могут удалять по своим компаниям
+  const isLegalOrDirector = (userRole === 'legal_gc' || userRole === 'director' || userRole === 'legal') &&
+    (userCompanies?.includes(contractCompanyPrefix) ?? false)
+
+  const canDelete = isAdmin || isInitiator || isLegalOrDirector
+
+  if (!canDelete) return null
 
   const handleDelete = async () => {
     setDeleting(true)

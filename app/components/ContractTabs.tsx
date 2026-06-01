@@ -160,7 +160,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed_by_initiator: 'bg-gray-200 text-gray-600',
 }
 
-export default function ContractTabs({ contract, versions, logs }: Props) {
+export default function ContractTabs({ contract, versions, logs, userRole, userCompanies }: Props & { userRole?: string, userCompanies?: string[] }) {
   const { user } = useBitrixAuth()
   const ADMIN_IDS = [30, 1148]
   const GC_MANAGER_IDS = [1, 246, 504]
@@ -221,7 +221,19 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
   const [contractStatus, setContractStatus] = useState(contract.status)
   const [approving, setApproving] = useState(false)
   const [acknowledging, setAcknowledging] = useState(false)
+  const [currentUserRole, setCurrentUserRole] = useState<string>('user')
+  const [currentUserCompanies, setCurrentUserCompanies] = useState<string[]>([])
   const chatEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!user) return
+    fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+      .then(r => r.json())
+      .then(data => {
+        setCurrentUserRole(data.role ?? 'user')
+        setCurrentUserCompanies(data.companies ?? [])
+      })
+  }, [user])
 
   const loadAttachments = async () => {
     const res = await fetch(`${baseUrl}/api/attachments?contract_id=${contract.id}`)
@@ -618,7 +630,14 @@ export default function ContractTabs({ contract, versions, logs }: Props) {
               {statusLabel[contractStatus] ?? contractStatus}
             </span>
           </div>
-          <DeleteContractButton contractId={contract.id} contractNumber={contract.number} />
+          <DeleteContractButton
+            contractId={contract.id}
+            contractNumber={contract.number}
+            contractCompanyPrefix={contract.company_prefix ?? ''}
+            authorBitrixId={contract.author_bitrix_id}
+            userRole={currentUserRole}
+            userCompanies={currentUserCompanies}
+          />
         </div>
 
         {/* Вкладки */}
