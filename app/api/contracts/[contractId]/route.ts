@@ -49,25 +49,35 @@ export async function DELETE(
       return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
     }
 
-    // Записываем в лог перед удалением
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contractId,
-        action: 'Договор удалён администратором',
-        details: reason ? `Причина: ${reason}` : 'Причина не указана',
-        user_name: body.user_name ?? 'Администратор',
-      })
+    // Проверяем что причина указана (обязательно)
+    if (!reason || !reason.trim()) {
+      return NextResponse.json({ error: 'Необходимо указать причину удаления' }, { status: 400 })
+    }
 
-    // Удаляем договор (каскадно удалятся все связанные записи)
+    // Мягкое удаление — помечаем документ как удалённый
     const { error } = await supabase
       .from('contracts')
-      .delete()
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_bitrix_id: admin_bitrix_id,
+        deleted_by_name: body.user_name ?? 'Администратор',
+        delete_reason: reason.trim(),
+      })
       .eq('id', contractId)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contractId,
+        action: 'Документ удалён',
+        details: `Причина: ${reason.trim()}`,
+        user_name: body.user_name ?? 'Администратор',
+      })
 
     return NextResponse.json({ success: true })
   } catch (err) {

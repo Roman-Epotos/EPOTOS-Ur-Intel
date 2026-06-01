@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('contracts')
       .select('*')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
