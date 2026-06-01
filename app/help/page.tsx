@@ -86,8 +86,6 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
     const msgs = data.messages ?? []
     setMessages(msgs)
     setLoading(false)
-    // Отмечаем как просмотренный
-    localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
     setHasNew(false)
     // Администратор открыл новое обращение — меняем статус на "в работе"
     if (isAdmin && request.status === 'new') {
@@ -133,6 +131,14 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Если чат открыт и пришли новые сообщения от другого — отмечаем как прочитанные
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.author_bitrix_id === currentUserId) {
+        // Последнее сообщение моё — отмечаем сразу
+        localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+      }
+    }
   }, [messages])
 
   const handleSend = async () => {
@@ -238,6 +244,11 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
         <div className="px-5 py-3 border-t border-gray-100 flex gap-2">
           <input
             value={text}
+            onFocus={() => {
+              localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+              setHasNew(false)
+              onStatusChange(request.id, request.status)
+            }}
             onChange={e => { setText(e.target.value); setHasNew(false) }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder="Напишите сообщение..."
