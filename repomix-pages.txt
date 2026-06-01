@@ -1211,6 +1211,359 @@ export default function UploadVersionPage() {
 }
 </file>
 
+<file path="app/contracts/new/page.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { DOCUMENT_TYPES, REGIONS, CONTRACT_DOCUMENT_TYPES } from '@/app/lib/documentTypes'
+
+const COMPANIES = [
+  { id: 'ТХ',  name: 'ООО Техно' },
+  { id: 'НПП', name: 'ООО НПП ЭПОТОС' },
+  { id: 'СПТ', name: 'ООО СПТ' },
+  { id: 'ОС',  name: 'ООО ОС' },
+  { id: 'Э-К', name: 'ООО Эпотос-К' },
+]
+
+export default function NewContractPage() {
+  const { user } = useBitrixAuth()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [autoNumber, setAutoNumber] = useState('')
+  const [editingNumber, setEditingNumber] = useState(false)
+  const [manualNumber, setManualNumber] = useState('')
+  const [numberChanged, setNumberChanged] = useState(false)
+  const [form, setForm] = useState({
+    company_prefix: '',
+    title: '',
+    counterparty: '',
+    type: '',
+    amount: '',
+    start_date: '',
+    end_date: '',
+    document_category: 'contract',
+    region: '',
+  })
+  const [counterpartyId, setCounterpartyId] = useState<string | null>(null)
+  const [counterpartySearch, setCounterpartySearch] = useState('')
+  const [counterpartySuggestions, setCounterpartySuggestions] = useState<{id: string, short_name: string | null, full_name: string, inn: string}[]>([])
+  const [showCounterpartySuggestions, setShowCounterpartySuggestions] = useState(false)
+  const [counterpartySearchLoading, setCounterpartySearchLoading] = useState(false)
+
+  useEffect(() => {
+    if (!form.company_prefix || !form.type) {
+      setAutoNumber('')
+      setManualNumber('')
+      setNumberChanged(false)
+      setEditingNumber(false)
+      return
+    }
+    const generate = async () => {
+      try {
+        const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
+        const data = await res.json()
+        if (data.number) {
+          setAutoNumber(data.number)
+          setManualNumber(data.number)
+          setNumberChanged(false)
+          setEditingNumber(false)
+        }
+      } catch {
+        console.error('Ошибка генерации номера')
+      }
+    }
+    generate()
+  }, [form.company_prefix, form.type])
+
+  const searchCounterparties = async (q: string) => {
+    if (q.length < 2) { setCounterpartySuggestions([]); return }
+    setCounterpartySearchLoading(true)
+    try {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setCounterpartySuggestions(data.counterparties ?? [])
+      setShowCounterpartySuggestions(true)
+    } finally {
+      setCounterpartySearchLoading(false)
+    }
+  }
+
+  const selectCounterparty = (c: {id: string, short_name: string | null, full_name: string, inn: string}) => {
+    setForm(p => ({ ...p, counterparty: c.short_name ?? c.full_name }))
+    setCounterpartyId(c.id)
+    setCounterpartySearch(c.short_name ?? c.full_name)
+    setShowCounterpartySuggestions(false)
+  }
+
+  const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const newForm = { ...form, [e.target.name]: e.target.value }
+    if (e.target.name === 'type') {
+      newForm.document_category = CONTRACT_TYPES.includes(e.target.value) ? 'contract' : 'document'
+    }
+    setForm(newForm)
+    setError('')
+  }
+
+  const finalNumber = manualNumber || autoNumber
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.company_prefix) { setError('Выберите компанию'); return }
+    if (!form.type) { setError('Выберите тип документа'); return }
+    if (!finalNumber) { setError('Номер не сгенерирован'); return }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 3000)
+
+      try {
+        const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const response = await fetch(`${baseUrl}/api/contracts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            number: finalNumber,
+            title: form.title,
+            counterparty: form.counterparty,
+            counterparty_id: counterpartyId ?? null,
+            type: form.type,
+            amount: form.amount,
+            start_date: form.start_date,
+            end_date: form.end_date,
+            document_category: form.document_category,
+            user_name: user?.name ?? 'Система',
+            user_bitrix_id: user?.id ?? null,
+          }),
+        })
+        clearTimeout(timeout)
+
+        if (!response.ok) {
+          const data = await response.json()
+          setError(data.error?.includes('duplicate key')
+            ? 'Договор с таким номером уже существует. Нажмите "Изменить номер".'
+            : 'Ошибка: ' + data.error)
+          setLoading(false)
+          return
+        }
+      } catch {
+        // Таймаут или ошибка сети — данные уже сохранены, просто переходим
+        clearTimeout(timeout)
+      }
+
+      setLoading(false)
+      window.location.replace('https://epotos-ur-intel.vercel.app')
+    } catch {
+      setError('Ошибка соединения. Попробуйте ещё раз.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+
+        <div className="flex items-center gap-3 mb-8">
+          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            ← Назад
+          </Link>
+          <span className="text-gray-300">/</span>
+          <h1 className="text-xl font-semibold text-gray-900">Новый документ</h1>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Компания ГК ЭПОТОС <span className="text-red-500">*</span>
+              </label>
+              <select name="company_prefix" value={form.company_prefix}
+                onChange={handleChange} required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                <option value="">— Выберите компанию —</option>
+                {COMPANIES.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {finalNumber && (
+              <div className={`rounded-lg border px-4 py-3 ${numberChanged ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-gray-500">
+                    Номер документа
+                    {numberChanged && <span className="ml-2 text-yellow-700 font-medium">изменён вручную</span>}
+                  </p>
+                  <div className="flex gap-2">
+                    {numberChanged && !editingNumber && (
+                      <button type="button"
+                        onClick={() => { setManualNumber(autoNumber); setNumberChanged(false); setEditingNumber(false) }}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline">
+                        Сбросить
+                      </button>
+                    )}
+                    {!editingNumber && (
+                      <button type="button" onClick={() => setEditingNumber(true)}
+                        className="text-xs text-gray-900 hover:text-gray-600 underline font-medium">
+                        Изменить номер
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {editingNumber ? (
+                  <div className="flex gap-2 items-center mt-1">
+                    <input value={manualNumber} onChange={(e) => setManualNumber(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    <button type="button"
+                      onClick={() => { setEditingNumber(false); setNumberChanged(manualNumber !== autoNumber) }}
+                      className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700">
+                      Сохранить
+                    </button>
+                    <button type="button"
+                      onClick={() => { setManualNumber(autoNumber); setNumberChanged(false); setEditingNumber(false) }}
+                      className="text-xs text-gray-500 hover:text-gray-700">
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm font-mono font-semibold text-gray-900">{finalNumber}</p>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Название документа <span className="text-red-500">*</span>
+              </label>
+              <input name="title" value={form.title} onChange={handleChange} required
+                placeholder="Поставка противопожарного оборудования"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Контрагент <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={counterpartySearch}
+                  onChange={e => {
+                    setCounterpartySearch(e.target.value)
+                    setForm(p => ({ ...p, counterparty: e.target.value }))
+                    setCounterpartyId(null)
+                    searchCounterparties(e.target.value)
+                  }}
+                  onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}
+                  placeholder="Начните вводить название или ИНН..."
+                  required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+                {counterpartyId && (
+                  <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
+                )}
+                {counterpartySearchLoading && (
+                  <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
+                )}
+                {showCounterpartySuggestions && counterpartySuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {counterpartySuggestions.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={() => selectCounterparty(c)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
+                        <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
+                      </button>
+                    ))}
+                    <button type="button"
+                      onMouseDown={() => setShowCounterpartySuggestions(false)}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50">
+                      + Ввести вручную
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Тип документа <span className="text-red-500">*</span>
+              </label>
+              <select name="type" value={form.type} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                <option value="">— Выберите тип —</option>
+                {DOCUMENT_TYPES.map(group => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.types.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Регион</label>
+              <select name="region" value={form.region} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Сумма (₽)</label>
+              <input name="amount" value={form.amount} onChange={handleChange}
+                type="number" placeholder="450000"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Дата начала</label>
+                <input name="start_date" value={form.start_date} onChange={handleChange} type="date"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Дата окончания</label>
+                <input name="end_date" value={form.end_date} onChange={handleChange} type="date"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={loading || !finalNumber}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
+                {loading ? 'Сохранение...' : 'Создать документ'}
+              </button>
+              <Link href="/"
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                Отмена
+              </Link>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/counterparties/page.tsx">
 'use client'
 
@@ -2007,359 +2360,6 @@ export async function createClient() {
 }
 </file>
 
-<file path="app/contracts/new/page.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { DOCUMENT_TYPES, REGIONS, CONTRACT_DOCUMENT_TYPES } from '@/app/lib/documentTypes'
-
-const COMPANIES = [
-  { id: 'ТХ',  name: 'ООО Техно' },
-  { id: 'НПП', name: 'ООО НПП ЭПОТОС' },
-  { id: 'СПТ', name: 'ООО СПТ' },
-  { id: 'ОС',  name: 'ООО ОС' },
-  { id: 'Э-К', name: 'ООО Эпотос-К' },
-]
-
-export default function NewContractPage() {
-  const { user } = useBitrixAuth()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [autoNumber, setAutoNumber] = useState('')
-  const [editingNumber, setEditingNumber] = useState(false)
-  const [manualNumber, setManualNumber] = useState('')
-  const [numberChanged, setNumberChanged] = useState(false)
-  const [form, setForm] = useState({
-    company_prefix: '',
-    title: '',
-    counterparty: '',
-    type: '',
-    amount: '',
-    start_date: '',
-    end_date: '',
-    document_category: 'contract',
-    region: '',
-  })
-  const [counterpartyId, setCounterpartyId] = useState<string | null>(null)
-  const [counterpartySearch, setCounterpartySearch] = useState('')
-  const [counterpartySuggestions, setCounterpartySuggestions] = useState<{id: string, short_name: string | null, full_name: string, inn: string}[]>([])
-  const [showCounterpartySuggestions, setShowCounterpartySuggestions] = useState(false)
-  const [counterpartySearchLoading, setCounterpartySearchLoading] = useState(false)
-
-  useEffect(() => {
-    if (!form.company_prefix || !form.type) {
-      setAutoNumber('')
-      setManualNumber('')
-      setNumberChanged(false)
-      setEditingNumber(false)
-      return
-    }
-    const generate = async () => {
-      try {
-        const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
-        const data = await res.json()
-        if (data.number) {
-          setAutoNumber(data.number)
-          setManualNumber(data.number)
-          setNumberChanged(false)
-          setEditingNumber(false)
-        }
-      } catch {
-        console.error('Ошибка генерации номера')
-      }
-    }
-    generate()
-  }, [form.company_prefix, form.type])
-
-  const searchCounterparties = async (q: string) => {
-    if (q.length < 2) { setCounterpartySuggestions([]); return }
-    setCounterpartySearchLoading(true)
-    try {
-      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}`)
-      const data = await res.json()
-      setCounterpartySuggestions(data.counterparties ?? [])
-      setShowCounterpartySuggestions(true)
-    } finally {
-      setCounterpartySearchLoading(false)
-    }
-  }
-
-  const selectCounterparty = (c: {id: string, short_name: string | null, full_name: string, inn: string}) => {
-    setForm(p => ({ ...p, counterparty: c.short_name ?? c.full_name }))
-    setCounterpartyId(c.id)
-    setCounterpartySearch(c.short_name ?? c.full_name)
-    setShowCounterpartySuggestions(false)
-  }
-
-  const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const newForm = { ...form, [e.target.name]: e.target.value }
-    if (e.target.name === 'type') {
-      newForm.document_category = CONTRACT_TYPES.includes(e.target.value) ? 'contract' : 'document'
-    }
-    setForm(newForm)
-    setError('')
-  }
-
-  const finalNumber = manualNumber || autoNumber
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.company_prefix) { setError('Выберите компанию'); return }
-    if (!form.type) { setError('Выберите тип документа'); return }
-    if (!finalNumber) { setError('Номер не сгенерирован'); return }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 3000)
-
-      try {
-        const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const response = await fetch(`${baseUrl}/api/contracts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            number: finalNumber,
-            title: form.title,
-            counterparty: form.counterparty,
-            counterparty_id: counterpartyId ?? null,
-            type: form.type,
-            amount: form.amount,
-            start_date: form.start_date,
-            end_date: form.end_date,
-            document_category: form.document_category,
-            user_name: user?.name ?? 'Система',
-            user_bitrix_id: user?.id ?? null,
-          }),
-        })
-        clearTimeout(timeout)
-
-        if (!response.ok) {
-          const data = await response.json()
-          setError(data.error?.includes('duplicate key')
-            ? 'Договор с таким номером уже существует. Нажмите "Изменить номер".'
-            : 'Ошибка: ' + data.error)
-          setLoading(false)
-          return
-        }
-      } catch {
-        // Таймаут или ошибка сети — данные уже сохранены, просто переходим
-        clearTimeout(timeout)
-      }
-
-      setLoading(false)
-      window.location.replace('https://epotos-ur-intel.vercel.app')
-    } catch {
-      setError('Ошибка соединения. Попробуйте ещё раз.')
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-
-        <div className="flex items-center gap-3 mb-8">
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-            ← Назад
-          </Link>
-          <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Новый документ</h1>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <form onSubmit={handleSubmit} className="space-y-5">
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Компания ГК ЭПОТОС <span className="text-red-500">*</span>
-              </label>
-              <select name="company_prefix" value={form.company_prefix}
-                onChange={handleChange} required
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                <option value="">— Выберите компанию —</option>
-                {COMPANIES.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {finalNumber && (
-              <div className={`rounded-lg border px-4 py-3 ${numberChanged ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs text-gray-500">
-                    Номер документа
-                    {numberChanged && <span className="ml-2 text-yellow-700 font-medium">изменён вручную</span>}
-                  </p>
-                  <div className="flex gap-2">
-                    {numberChanged && !editingNumber && (
-                      <button type="button"
-                        onClick={() => { setManualNumber(autoNumber); setNumberChanged(false); setEditingNumber(false) }}
-                        className="text-xs text-gray-500 hover:text-gray-700 underline">
-                        Сбросить
-                      </button>
-                    )}
-                    {!editingNumber && (
-                      <button type="button" onClick={() => setEditingNumber(true)}
-                        className="text-xs text-gray-900 hover:text-gray-600 underline font-medium">
-                        Изменить номер
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {editingNumber ? (
-                  <div className="flex gap-2 items-center mt-1">
-                    <input value={manualNumber} onChange={(e) => setManualNumber(e.target.value)}
-                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                    <button type="button"
-                      onClick={() => { setEditingNumber(false); setNumberChanged(manualNumber !== autoNumber) }}
-                      className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700">
-                      Сохранить
-                    </button>
-                    <button type="button"
-                      onClick={() => { setManualNumber(autoNumber); setNumberChanged(false); setEditingNumber(false) }}
-                      className="text-xs text-gray-500 hover:text-gray-700">
-                      Отмена
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-sm font-mono font-semibold text-gray-900">{finalNumber}</p>
-                )}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Название документа <span className="text-red-500">*</span>
-              </label>
-              <input name="title" value={form.title} onChange={handleChange} required
-                placeholder="Поставка противопожарного оборудования"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Контрагент <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={counterpartySearch}
-                  onChange={e => {
-                    setCounterpartySearch(e.target.value)
-                    setForm(p => ({ ...p, counterparty: e.target.value }))
-                    setCounterpartyId(null)
-                    searchCounterparties(e.target.value)
-                  }}
-                  onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}
-                  placeholder="Начните вводить название или ИНН..."
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
-                {counterpartyId && (
-                  <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
-                )}
-                {counterpartySearchLoading && (
-                  <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
-                )}
-                {showCounterpartySuggestions && counterpartySuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                    {counterpartySuggestions.map(c => (
-                      <button key={c.id} type="button"
-                        onMouseDown={() => selectCounterparty(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                        <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
-                        <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
-                      </button>
-                    ))}
-                    <button type="button"
-                      onMouseDown={() => setShowCounterpartySuggestions(false)}
-                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50">
-                      + Ввести вручную
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Тип документа <span className="text-red-500">*</span>
-              </label>
-              <select name="type" value={form.type} onChange={handleChange}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                <option value="">— Выберите тип —</option>
-                {DOCUMENT_TYPES.map(group => (
-                  <optgroup key={group.group} label={group.group}>
-                    {group.types.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Регион</label>
-              <select name="region" value={form.region} onChange={handleChange}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Сумма (₽)</label>
-              <input name="amount" value={form.amount} onChange={handleChange}
-                type="number" placeholder="450000"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Дата начала</label>
-                <input name="start_date" value={form.start_date} onChange={handleChange} type="date"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Дата окончания</label>
-                <input name="end_date" value={form.end_date} onChange={handleChange} type="date"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={loading || !finalNumber}
-                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
-                {loading ? 'Сохранение...' : 'Создать документ'}
-              </button>
-              <Link href="/"
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Отмена
-              </Link>
-            </div>
-
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/counterparties/[id]/page.tsx">
 'use client'
 
@@ -2650,6 +2650,136 @@ export default function CounterpartyPage() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/lib/documentTypes.ts">
+export const DOCUMENT_TYPES = [
+  {
+    group: 'Договоры',
+    types: [
+      { value: 'поставка', label: 'Договор поставки' },
+      { value: 'услуги', label: 'Договор услуг' },
+      { value: 'аренда', label: 'Договор аренды' },
+      { value: 'подряд', label: 'Договор подряда' },
+      { value: 'купля-продажа', label: 'Договор купли-продажи' },
+      { value: 'агентский', label: 'Агентский договор' },
+      { value: 'дилерский', label: 'Дилерский договор' },
+      { value: 'лицензионный', label: 'Лицензионный договор' },
+      { value: 'сервисный', label: 'Сервисный договор' },
+      { value: 'асц', label: 'Договор АСЦ' },
+    ]
+  },
+  {
+    group: 'Соглашения',
+    types: [
+      { value: 'доп-соглашение', label: 'Дополнительное соглашение' },
+      { value: 'nda', label: 'NDA / Соглашение о конфиденциальности' },
+      { value: 'эдо', label: 'Соглашение о переходе на ЭДО' },
+      { value: 'протокол-разногласий', label: 'Протокол разногласий' },
+    ]
+  },
+  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
+  // {
+  //   group: 'Претензионно-исковые',
+  //   types: [
+  //     { value: 'претензия', label: 'Претензия' },
+  //     { value: 'исковое', label: 'Исковое заявление' },
+  //     { value: 'ответ-претензию', label: 'Ответ на претензию' },
+  //   ]
+  // },
+  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
+  // {
+  //   group: 'Организационно-распорядительные',
+  //   types: [
+  //     { value: 'положение', label: 'Положение' },
+  //     { value: 'инструкция', label: 'Инструкция' },
+  //     { value: 'служебная-записка', label: 'Служебная записка' },
+  //   ]
+  // },
+  {
+    group: 'Доверенности и согласия',
+    types: [
+      { value: 'доверенность', label: 'Доверенность' },
+      { value: 'персданные', label: 'Согласие на обработку персональных данных' },
+    ]
+  },
+  // {
+  //   group: 'Акты и заключения',
+  //   types: [
+  //     { value: 'акт', label: 'Акт приёма-передачи' },
+  //     { value: 'заключение', label: 'Правовое заключение' },
+  //     { value: 'справка', label: 'Справка' },
+  //   ]
+  // },
+  // {
+  //   group: 'Учредительные',
+  //   types: [
+  //     { value: 'устав', label: 'Устав' },
+  //     { value: 'учредительный', label: 'Учредительный договор' },
+  //   ]
+  // },
+  // {
+  //   group: 'Прочие',
+  //   types: [
+  //     { value: 'письмо', label: 'Письмо' },
+  //     { value: 'счет', label: 'Счёт' },
+  //     { value: 'другое', label: 'Другое' },
+  //   ]
+  // },
+]
+
+// Категории для определения типа анализа AI
+export const CONTRACT_DOCUMENT_TYPES = [
+  'поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа',
+  'агентский', 'дилерский', 'лицензионный', 'сервисный',
+  'доп-соглашение', 'nda', 'эдо', 'протокол-разногласий',
+  'претензия', 'исковое', 'ответ-претензию'
+]
+
+// Регионы
+export const REGIONS = [
+  { value: '', label: 'Не указан' },
+  { value: 'РФ', label: 'Российская Федерация' },
+  { value: 'СНГ', label: 'Страны СНГ' },
+  { value: 'международный', label: 'Международный' },
+]
+
+// Вспомогательная функция для получения label по value
+export function getDocumentTypeLabel(value: string): string {
+  for (const group of DOCUMENT_TYPES) {
+    const found = group.types.find(t => t.value === value)
+    if (found) return found.label
+  }
+  return value
+}
+
+// JSX helper для рендера optgroup
+export function renderDocumentTypeOptions() {
+  return DOCUMENT_TYPES.map(group => ({
+    group: group.group,
+    options: group.types,
+  }))
+}
+</file>
+
+<file path="app/page.tsx">
+import Header from '@/app/components/Header'
+import MyDocuments from '@/app/components/MyDocuments'
+import ContractsList from '@/app/components/ContractsList'
+import PersonalStats from '@/app/components/PersonalStats'
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <Header />
+        <MyDocuments />
+        <PersonalStats />
+        <ContractsList />
       </div>
     </div>
   )
@@ -2992,7 +3122,7 @@ export default function HelpPage() {
                     <p className="text-sm text-gray-700">{r.admin_reply}</p>
                   </div>
                 )}
-                {r.status !== 'resolved' && (
+                {r.status !== 'resolved' && isAdmin && (
                   <div className="space-y-2">
                     <textarea
                       value={replyText[r.id] ?? ''}
@@ -3002,7 +3132,7 @@ export default function HelpPage() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
                     <div className="flex gap-2">
                       <select
-                        value={replyStatus[r.id] ?? 'in_progress'}
+                        value={replyStatus[r.id] !== undefined ? replyStatus[r.id] : 'in_progress'}
                         onChange={e => setReplyStatus(prev => ({ ...prev, [r.id]: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
                         <option value="in_progress">🟡 В работе</option>
@@ -3050,136 +3180,6 @@ export default function HelpPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/lib/documentTypes.ts">
-export const DOCUMENT_TYPES = [
-  {
-    group: 'Договоры',
-    types: [
-      { value: 'поставка', label: 'Договор поставки' },
-      { value: 'услуги', label: 'Договор услуг' },
-      { value: 'аренда', label: 'Договор аренды' },
-      { value: 'подряд', label: 'Договор подряда' },
-      { value: 'купля-продажа', label: 'Договор купли-продажи' },
-      { value: 'агентский', label: 'Агентский договор' },
-      { value: 'дилерский', label: 'Дилерский договор' },
-      { value: 'лицензионный', label: 'Лицензионный договор' },
-      { value: 'сервисный', label: 'Сервисный договор' },
-      { value: 'асц', label: 'Договор АСЦ' },
-    ]
-  },
-  {
-    group: 'Соглашения',
-    types: [
-      { value: 'доп-соглашение', label: 'Дополнительное соглашение' },
-      { value: 'nda', label: 'NDA / Соглашение о конфиденциальности' },
-      { value: 'эдо', label: 'Соглашение о переходе на ЭДО' },
-      { value: 'протокол-разногласий', label: 'Протокол разногласий' },
-    ]
-  },
-  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
-  // {
-  //   group: 'Претензионно-исковые',
-  //   types: [
-  //     { value: 'претензия', label: 'Претензия' },
-  //     { value: 'исковое', label: 'Исковое заявление' },
-  //     { value: 'ответ-претензию', label: 'Ответ на претензию' },
-  //   ]
-  // },
-  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
-  // {
-  //   group: 'Организационно-распорядительные',
-  //   types: [
-  //     { value: 'положение', label: 'Положение' },
-  //     { value: 'инструкция', label: 'Инструкция' },
-  //     { value: 'служебная-записка', label: 'Служебная записка' },
-  //   ]
-  // },
-  {
-    group: 'Доверенности и согласия',
-    types: [
-      { value: 'доверенность', label: 'Доверенность' },
-      { value: 'персданные', label: 'Согласие на обработку персональных данных' },
-    ]
-  },
-  // {
-  //   group: 'Акты и заключения',
-  //   types: [
-  //     { value: 'акт', label: 'Акт приёма-передачи' },
-  //     { value: 'заключение', label: 'Правовое заключение' },
-  //     { value: 'справка', label: 'Справка' },
-  //   ]
-  // },
-  // {
-  //   group: 'Учредительные',
-  //   types: [
-  //     { value: 'устав', label: 'Устав' },
-  //     { value: 'учредительный', label: 'Учредительный договор' },
-  //   ]
-  // },
-  // {
-  //   group: 'Прочие',
-  //   types: [
-  //     { value: 'письмо', label: 'Письмо' },
-  //     { value: 'счет', label: 'Счёт' },
-  //     { value: 'другое', label: 'Другое' },
-  //   ]
-  // },
-]
-
-// Категории для определения типа анализа AI
-export const CONTRACT_DOCUMENT_TYPES = [
-  'поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа',
-  'агентский', 'дилерский', 'лицензионный', 'сервисный',
-  'доп-соглашение', 'nda', 'эдо', 'протокол-разногласий',
-  'претензия', 'исковое', 'ответ-претензию'
-]
-
-// Регионы
-export const REGIONS = [
-  { value: '', label: 'Не указан' },
-  { value: 'РФ', label: 'Российская Федерация' },
-  { value: 'СНГ', label: 'Страны СНГ' },
-  { value: 'международный', label: 'Международный' },
-]
-
-// Вспомогательная функция для получения label по value
-export function getDocumentTypeLabel(value: string): string {
-  for (const group of DOCUMENT_TYPES) {
-    const found = group.types.find(t => t.value === value)
-    if (found) return found.label
-  }
-  return value
-}
-
-// JSX helper для рендера optgroup
-export function renderDocumentTypeOptions() {
-  return DOCUMENT_TYPES.map(group => ({
-    group: group.group,
-    options: group.types,
-  }))
-}
-</file>
-
-<file path="app/page.tsx">
-import Header from '@/app/components/Header'
-import MyDocuments from '@/app/components/MyDocuments'
-import ContractsList from '@/app/components/ContractsList'
-import PersonalStats from '@/app/components/PersonalStats'
-
-export default function HomePage() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <Header />
-        <MyDocuments />
-        <PersonalStats />
-        <ContractsList />
       </div>
     </div>
   )

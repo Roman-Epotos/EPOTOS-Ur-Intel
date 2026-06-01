@@ -137,7 +137,8 @@ export default function HelpPage() {
   const handleReply = async (requestId: string, userBitrixId: number) => {
     const reply = replyText[requestId]
     if (!reply?.trim()) return
-    const status = replyStatus[requestId] ?? 'in_progress'
+    const status = replyStatus[requestId] !== undefined ? replyStatus[requestId] : 'in_progress'
+    console.log('handleReply status:', status, 'replyStatus map:', replyStatus)
     if (status === 'resolved') {
       if (!confirm('Отметить обращение как «Решено»?\n\nЧат по данному вопросу будет закрыт — дальнейшая переписка невозможна.')) return
     }
