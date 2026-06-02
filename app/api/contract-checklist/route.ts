@@ -126,7 +126,7 @@ Rules:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 4000,
         temperature: 0.1,
