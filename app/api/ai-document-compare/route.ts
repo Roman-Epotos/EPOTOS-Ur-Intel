@@ -122,6 +122,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
     }
 
+    // Временное логирование для отладки
+    console.log('=== AI RAW RESPONSE ===', rawContent.slice(0, 1000))
+    console.log('=== SIGNED TEXT LENGTH ===', signedText.length)
+    console.log('=== COMPARE TEXT LENGTH ===', compareText.length)
+    console.log('=== SIGNED TEXT PREVIEW ===', signedText.slice(0, 300))
+
     let result
     try {
       // Убираем markdown если есть
