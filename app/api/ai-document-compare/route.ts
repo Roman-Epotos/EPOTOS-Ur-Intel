@@ -15,23 +15,8 @@ async function extractText(fileUrl: string, fileName: string): Promise<string> {
   const bytes = new Uint8Array(buffer)
 
   if (fileName.toLowerCase().endsWith('.pdf')) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse')
-      const data = await pdfParse(Buffer.from(bytes))
-      return data.text ?? ''
-    } catch {
-      // Фоллбэк — извлекаем текст через regex из raw PDF
-      const raw = Buffer.from(bytes).toString('latin1')
-      const textMatches = raw.match(/BT[\s\S]*?ET/g) ?? []
-      const text = textMatches
-        .join(' ')
-        .replace(/\(([^)]+)\)\s*Tj/g, '$1 ')
-        .replace(/[^\x20-\x7E\u0400-\u04FF]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-      return text || raw.replace(/[^\x20-\x7E\u0400-\u04FF\n]/g, ' ').replace(/\s+/g, ' ').trim()
-    }
+    // Возвращаем base64 для прямой передачи в Gemini
+    return `__PDF_BASE64__${Buffer.from(bytes).toString('base64')}`
   }
 
   if (fileName.toLowerCase().endsWith('.docx')) {
@@ -79,6 +64,26 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Формируем контент для AI
+    const isPdfBase64 = signedText.startsWith('__PDF_BASE64__')
+    const pdfBase64 = isPdfBase64 ? signedText.replace('__PDF_BASE64__', '') : null
+
+    const userContent = isPdfBase64
+      ? [
+          {
+            type: 'text',
+            text: `Сравни два документа:\n1. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n${compareText.slice(0, 15000)}\n\n2. ПОДПИСАННЫЙ ДОКУМЕНТ (PDF прикреплён)`
+          },
+          {
+            type: 'file',
+            file: {
+              filename: signed_file_name,
+              file_data: `data:application/pdf;base64,${pdfBase64}`
+            }
+          }
+        ]
+      : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
+
     // AI сравнение
     const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -102,12 +107,12 @@ export async function POST(request: NextRequest) {
 4. Если документы идентичны по содержанию — match: true, discrepancies: []
 5. Если найдены реальные расхождения — ОБЯЗАТЕЛЬНО заполняй поля agreed_text и signed_text конкретным текстом из документов
 
-Верни ТОЛЬКО валидный JSON без markdown, без \`\`\`json:
+Верни ТОЛЬКО валидный JSON без markdown:
 {"match":true/false,"summary":"Краткий вывод","discrepancies":[{"section":"номер пункта","type":"изменение/добавление/удаление","agreed_text":"текст из согласованного","signed_text":"текст из подписанного","severity":"высокая/средняя/низкая"}]}`
           },
           {
             role: 'user',
-            content: `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ (PDF):\n${signedText.slice(0, 12000)}`
+            content: userContent
           }
         ],
         max_tokens: 4000,
