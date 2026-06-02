@@ -31,6 +31,7 @@ export default function NewContractPage() {
     end_date: '',
     document_category: 'contract',
     region: '',
+    customer_number: '',
   })
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null)
   const [counterpartySearch, setCounterpartySearch] = useState('')
@@ -200,6 +201,8 @@ export default function NewContractPage() {
             is_child: isChild,
             parent_contract_id: isChild && parentSource === 'system' ? parentContractId : null,
             parent_contract_external: isChild && parentSource === 'external' ? parentContractExternal : null,
+            company_prefix: form.company_prefix,
+            customer_number: form.customer_number ?? null,
           }),
         })
         clearTimeout(timeout)
@@ -332,6 +335,20 @@ export default function NewContractPage() {
                 )}
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Номер документа со стороны заказчика
+                <span className="ml-2 text-xs text-gray-400 font-normal">(необязательно)</span>
+              </label>
+              <input
+                name="customer_number"
+                value={form.customer_number}
+                onChange={handleChange}
+                placeholder="Например: ЗК-2026/123"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

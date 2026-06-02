@@ -140,6 +140,8 @@ export async function POST(request: NextRequest) {
         is_child: body.is_child ?? false,
         parent_contract_id: body.parent_contract_id ?? null,
         parent_contract_external: body.parent_contract_external ?? null,
+        company_prefix: body.company_prefix ?? null,
+        customer_number: body.customer_number ?? null,
       })
       .select('id')
       .single()

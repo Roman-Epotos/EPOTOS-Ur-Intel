@@ -56,7 +56,8 @@ export async function GET(request: NextRequest) {
       // ГД и юристы видят договоры своих компаний
       if (companiesParam) {
         const companies = companiesParam.split(',')
-        const prefixFilters = companies.map(c => `number.like.${c}-%`).join(',')
+        // Фильтруем по company_prefix (надёжно) с фоллбэком на номер
+        const prefixFilters = companies.map(c => `company_prefix.eq.${c},number.like.${c}-%`).join(',')
         query = query.or(prefixFilters)
       }
     } else {
