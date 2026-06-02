@@ -6,6 +6,7 @@ import Link from 'next/link'
 import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
+import RelatedDocuments from '@/app/components/RelatedDocuments'
 import AIAnalysis from '@/app/components/AIAnalysis'
 import ExecutionControl from '@/app/components/ExecutionControl'
 
@@ -70,6 +71,9 @@ interface Contract {
   signed_file_name?: string | null
   signed_file_uploaded_at?: string | null
   signed_file_uploaded_by?: string | null
+  parent_contract_id?: string | null
+  parent_contract_external?: string | null
+  is_child?: boolean | null
 }
 
 interface Participant {
@@ -613,6 +617,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
+    { id: 'related', label: 'Связанные документы', icon: '🔗' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
@@ -1280,6 +1285,20 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                   .filter((id): id is number => id != null) ?? []
               }
               onStatusChange={(newStatus) => setContractStatus(newStatus)}
+            />
+          )}
+
+          {activeTab === 'related' && (
+            <RelatedDocuments
+              contractId={contract.id}
+              contractNumber={contract.number ?? ''}
+              contractStatus={contractStatus}
+              parentContractId={contract.parent_contract_id ?? null}
+              parentContractExternal={contract.parent_contract_external ?? null}
+              isChild={contract.is_child ?? false}
+              currentUserId={parseInt(user?.id ?? '0')}
+              currentUserRole={currentUserRole}
+              currentUserCompanies={currentUserCompanies}
             />
           )}
 
