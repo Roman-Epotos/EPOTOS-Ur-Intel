@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         .limit(20)
 
       if (search) {
-        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%`)
+        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%,customer_number.ilike.%${search}%`)
       }
 
       const { data, error } = await query

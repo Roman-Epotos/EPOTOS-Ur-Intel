@@ -110,7 +110,7 @@ export default function NewContractPage() {
     setShowCounterpartySuggestions(false)
   }
 
-  const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+  const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий', 'спецификация']
 
   // Поиск родительского документа
   const searchParentContracts = async (q: string) => {
