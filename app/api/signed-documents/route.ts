@@ -67,6 +67,86 @@ export async function POST(request: NextRequest) {
 
     const userId = parseInt(user_bitrix_id)
     const status_only = formData.get('status_only') === 'true'
+    const temp_upload = formData.get('temp_upload') === 'true'
+    const confirm_upload = formData.get('confirm_upload') === 'true'
+    const temp_file_url = formData.get('temp_file_url') as string
+    const temp_file_name = formData.get('temp_file_name') as string
+    const has_discrepancies = formData.get('has_discrepancies') === 'true'
+    const discrepancy_comment = formData.get('discrepancy_comment') as string
+    const discrepancy_summary = formData.get('discrepancy_summary') as string
+
+    // Временная загрузка — просто сохраняем файл и возвращаем URL
+    if (temp_upload && file) {
+      const fileExt = file.name.split('.').pop()
+      const tempPath = `temp/${contract_id}/${Date.now()}.${fileExt}`
+      const fileBuffer = await file.arrayBuffer()
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(tempPath, fileBuffer, { contentType: file.type, upsert: true })
+      if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(tempPath)
+      return NextResponse.json({ success: true, temp_url: urlData.publicUrl })
+    }
+
+    // Подтверждение загрузки — сохраняем уже загруженный файл как подписанный
+    if (confirm_upload && temp_file_url) {
+      // Перемещаем из temp в постоянное хранилище
+      const fileExt = temp_file_name.split('.').pop()
+      const finalPath = `signed/${contract_id}/${Date.now()}.${fileExt}`
+      const tempPath = temp_file_url.split('/contracts/')[1]
+
+      // Копируем файл
+      const { error: copyError } = await supabase.storage
+        .from('contracts')
+        .copy(tempPath, finalPath)
+
+      if (copyError) {
+        // Если copy не работает — скачиваем и перезаливаем
+        const fileRes = await fetch(temp_file_url)
+        const fileBuffer = await fileRes.arrayBuffer()
+        await supabase.storage.from('contracts').upload(finalPath, fileBuffer, { upsert: true })
+      }
+
+      // Удаляем временный файл
+      await supabase.storage.from('contracts').remove([tempPath])
+
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(finalPath)
+      const finalUrl = urlData.publicUrl
+
+      // Сохраняем в БД
+      await supabase.from('signed_documents').insert({
+        contract_id,
+        file_url: finalUrl,
+        file_name: temp_file_name,
+        uploaded_by_name: user_name,
+        uploaded_by_bitrix_id: userId,
+        signed_date: formData.get('signed_date') || null,
+        has_discrepancies,
+        discrepancy_comment: has_discrepancies ? discrepancy_comment : null,
+      })
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: has_discrepancies ? 'Загружен подписанный документ с расхождениями' : 'Загружен подписанный документ',
+        details: has_discrepancies
+          ? `Расхождения: ${discrepancy_summary}. Причина загрузки: ${discrepancy_comment}`
+          : `Файл: ${temp_file_name}`,
+        user_name: user_name ?? 'Пользователь',
+      })
+
+      // Обновляем статус договора
+      const { data: currentDocs } = await supabase
+        .from('signed_documents')
+        .select('id')
+        .eq('contract_id', contract_id)
+
+      const docsCount = (currentDocs?.length ?? 0)
+      const newStatus = docsCount >= 2 ? 'подписан' : 'загружен_частично'
+      await supabase.from('contracts').update({ status: newStatus }).eq('id', contract_id)
+
+      return NextResponse.json({ success: true })
+    }
 
     // Если только обновление статуса — файл не нужен
     if (!status_only && !file) {

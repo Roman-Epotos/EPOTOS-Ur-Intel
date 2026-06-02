@@ -7,6 +7,7 @@ import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
 import RelatedDocuments from '@/app/components/RelatedDocuments'
+import SignedDocumentUploadModal from '@/app/components/SignedDocumentUploadModal'
 import AIAnalysis from '@/app/components/AIAnalysis'
 import ExecutionControl from '@/app/components/ExecutionControl'
 
@@ -203,7 +204,9 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [rejecting, setRejecting] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
-  const [signedDocs, setSignedDocs] = useState<{id: string; file_url: string; file_name: string; uploaded_by_name: string; created_at: string}[]>([])
+  const [signedDocs, setSignedDocs] = useState<{id: string; file_url: string; file_name: string; uploaded_by_name: string; created_at: string; has_discrepancies?: boolean; discrepancy_comment?: string}[]>([])
+  const [showSignedModal, setShowSignedModal] = useState(false)
+  const [signedFileOptions, setSignedFileOptions] = useState<{id: string; file_name: string; type: 'version' | 'attachment'; version_number?: number}[]>([])
   const [showConfirmAllModal, setShowConfirmAllModal] = useState(false)
   const [uploadingSignedFile, setUploadingSignedFile] = useState(false)
   const [showAttachmentForm, setShowAttachmentForm] = useState(false)
@@ -299,6 +302,23 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         setCurrentUserCompanies(data.companies ?? [])
       })
   }, [user])
+
+  const openSignedModal = async () => {
+    // Собираем список файлов для сравнения (версии + доп. материалы)
+    const options: {id: string; file_name: string; type: 'version' | 'attachment'; version_number?: number}[] = []
+    versions.forEach(v => {
+      if (v.file_name?.endsWith('.docx') || v.file_name?.endsWith('.pdf')) {
+        options.push({ id: v.id, file_name: v.file_name, type: 'version', version_number: v.version_number })
+      }
+    })
+    attachments.forEach(a => {
+      if (a.file_name?.endsWith('.docx') || a.file_name?.endsWith('.pdf')) {
+        options.push({ id: a.id, file_name: a.file_name, type: 'attachment' })
+      }
+    })
+    setSignedFileOptions(options)
+    setShowSignedModal(true)
+  }
 
   const loadAttachments = async () => {
     const res = await fetch(`${baseUrl}/api/attachments?contract_id=${contract.id}`)
@@ -1143,36 +1163,16 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Подписанные экземпляры</h2>
                   {canUploadSigned && (
-                    <label className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer
-                      ${['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)
-                        ? `bg-gray-900 text-white hover:bg-gray-700 ${uploadingSignedFile ? 'opacity-50' : ''}`
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                      title={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) ? 'Доступно после согласования документа' : ''}>
-                      {uploadingSignedFile ? 'Загрузка...' : '+ Загрузить подписанный файл'}
-                      <input type="file" className="hidden" accept=".pdf,.docx,.xlsx"
-                        disabled={uploadingSignedFile || !['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0]
-                          if (!file) return
-                          setUploadingSignedFile(true)
-                          const fd = new FormData()
-                          fd.append('file', file)
-                          fd.append('contract_id', contract.id)
-                          fd.append('user_name', user?.name ?? '')
-                          fd.append('user_bitrix_id', user?.id ?? '')
-                          fd.append('confirm_all', 'false')
-                          const res = await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', { method: 'POST', body: fd })
-                          const data = await res.json()
-                          setUploadingSignedFile(false)
-                          if (data.error) { alert('Ошибка: ' + data.error); return }
-                          const docsRes = await fetch(`https://epotos-ur-intel.vercel.app/api/signed-documents?contract_id=${contract.id}`)
-                          const docsData = await docsRes.json()
-                          if (docsData.documents) setSignedDocs(docsData.documents)
-                          setShowConfirmAllModal(true)
-                          e.target.value = ''
-                        }}
-                      />
-                    </label>
+                    <button
+                      onClick={() => ['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) ? openSignedModal() : null}
+                      disabled={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)}
+                      title={!['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus) ? 'Доступно после согласования документа' : ''}
+                      className={`text-xs px-3 py-1.5 rounded-lg
+                        ${['согласован','загружен_частично','подписан','на_исполнении'].includes(contractStatus)
+                          ? 'bg-gray-900 text-white hover:bg-gray-700 cursor-pointer'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                      + Загрузить подписанный файл
+                    </button>
                   )}
                 </div>
                 {signedDocs.length === 0 ? (
@@ -1501,7 +1501,24 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
             />
           )}
 
-          {activeTab === 'related' && (
+          {showSignedModal && (
+          <SignedDocumentUploadModal
+            contractId={contract.id}
+            userName={user?.name ?? ''}
+            userBitrixId={user?.id ?? ''}
+            fileOptions={signedFileOptions}
+            onSuccess={async () => {
+              setShowSignedModal(false)
+              const docsRes = await fetch(`${baseUrl}/api/signed-documents?contract_id=${contract.id}`)
+              const docsData = await docsRes.json()
+              if (docsData.documents) setSignedDocs(docsData.documents)
+              setContractStatus(prev => prev === 'согласован' ? 'загружен_частично' : prev)
+            }}
+            onClose={() => setShowSignedModal(false)}
+          />
+        )}
+
+        {activeTab === 'related' && (
             <RelatedDocuments
               contractId={contract.id}
               contractNumber={contract.number ?? ''}

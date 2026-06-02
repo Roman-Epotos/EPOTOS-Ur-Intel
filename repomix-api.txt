@@ -44,6 +44,7 @@ The content is organized as follows:
 <directory_structure>
 app/api/ai-analysis/route.ts
 app/api/ai-chat/route.ts
+app/api/ai-document-compare/route.ts
 app/api/ai-generate/route.ts
 app/api/approval-settings/route.ts
 app/api/approvals/[sessionId]/approve/route.ts
@@ -87,6 +88,162 @@ app/api/versions/route.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="app/api/ai-document-compare/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!
+
+// Извлекаем текст из файла по URL
+async function extractTextFromUrl(fileUrl: string, fileName: string): Promise<string> {
+  const response = await fetch(fileUrl)
+  const buffer = await response.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (fileName.endsWith('.pdf')) {
+    // Для PDF — отправляем как base64 в AI для извлечения текста
+    const base64 = Buffer.from(bytes).toString('base64')
+    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'file',
+                file: { filename: fileName, file_data: `data:application/pdf;base64,${base64}` }
+              },
+              { type: 'text', text: 'Извлеки весь текст из этого PDF документа. Сохрани структуру: номера пунктов, разделы, реквизиты. Возвращай только текст без комментариев.' }
+            ]
+          }
+        ],
+        max_tokens: 8000,
+      })
+    })
+    const aiData = await aiRes.json()
+    return aiData.choices?.[0]?.message?.content ?? ''
+  }
+
+  if (fileName.endsWith('.docx')) {
+    // Для DOCX — извлекаем XML и убираем теги
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(bytes)
+    const xml = await zip.file('word/document.xml')?.async('text') ?? ''
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+  return ''
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, signed_file_url, signed_file_name, compare_file_id, compare_file_type } = body
+
+    // compare_file_type: 'version' | 'attachment'
+    // compare_file_id: id версии или вложения
+
+    // Получаем URL файла для сравнения
+    let compareFileUrl = ''
+    let compareFileName = ''
+
+    if (compare_file_type === 'version') {
+      const { data } = await supabase.from('versions').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    } else if (compare_file_type === 'attachment') {
+      const { data } = await supabase.from('document_attachments').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    }
+
+    if (!compareFileUrl) {
+      return NextResponse.json({ error: 'Файл для сравнения не найден' }, { status: 404 })
+    }
+
+    // Извлекаем текст из обоих документов
+    const [signedText, compareText] = await Promise.all([
+      extractTextFromUrl(signed_file_url, signed_file_name),
+      extractTextFromUrl(compareFileUrl, compareFileName),
+    ])
+
+    if (!signedText || !compareText) {
+      return NextResponse.json({ error: 'Не удалось извлечь текст из документов' }, { status: 400 })
+    }
+
+    // AI сравнение
+    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: `Ты юридический эксперт. Сравни два документа: согласованный и подписанный. 
+Найди все расхождения в тексте — изменённые условия, добавленные или удалённые пункты, изменения в реквизитах.
+Верни ТОЛЬКО JSON без markdown в формате:
+{
+  "match": true/false,
+  "summary": "Краткий вывод (1-2 предложения)",
+  "discrepancies": [
+    {
+      "section": "Название раздела или номер пункта",
+      "type": "изменение/добавление/удаление",
+      "agreed_text": "Текст в согласованном документе",
+      "signed_text": "Текст в подписанном документе",
+      "severity": "высокая/средняя/низкая"
+    }
+  ]
+}`
+          },
+          {
+            role: 'user',
+            content: `СОГЛАСОВАННЫЙ ДОКУМЕНТ:\n${compareText}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText}`
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+      })
+    })
+
+    const aiData = await aiRes.json()
+    const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+
+    let result
+    try {
+      const clean = rawContent.replace(/```json|```/g, '').trim()
+      result = JSON.parse(clean)
+    } catch {
+      result = { match: false, summary: 'Не удалось разобрать ответ AI', discrepancies: [] }
+    }
+
+    return NextResponse.json({ success: true, result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
 
 <file path="app/api/approval-settings/route.ts">
 import { createClient } from '@supabase/supabase-js'
@@ -1989,6 +2146,109 @@ export async function GET() {
 }
 </file>
 
+<file path="app/api/dashboard-finance/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const prefixes = companyPrefix ? companyPrefix.split(',') : null
+
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
+
+    // Фильтр по компании
+    const filterByCompany = <T extends { number?: string; company_prefix?: string }>(items: T[]): T[] => {
+      if (!prefixes) return items
+      return items.filter(c =>
+        prefixes.some(p => c.number?.startsWith(`${p}-`) || c.company_prefix === p)
+      )
+    }
+
+    // 1. Все договоры (не архив, с суммой)
+    const { data: rawContracts } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, status, amount, company_prefix, end_date, created_at')
+      .neq('status', 'архив')
+
+    const allContracts = filterByCompany(rawContracts ?? [])
+
+    // Суммы и кол-во по статусам
+    const statsSums: Record<string, number> = {}
+    const statsCount: Record<string, number> = {}
+    allContracts.forEach(c => {
+      if (c.amount) {
+        statsSums[c.status] = (statsSums[c.status] ?? 0) + c.amount
+        statsCount[c.status] = (statsCount[c.status] ?? 0) + 1
+      }
+    })
+
+    // 2. Дебиторская задолженность
+    const debtContracts = allContracts
+      .filter(c => c.status === 'на_исполнении' && c.amount)
+      .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+      .slice(0, 10)
+
+    const totalDebt = debtContracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
+
+    // 3. Договоры без суммы (не черновик, не архив)
+    const noAmountContracts = (rawContracts ?? [])
+      .filter(c => !c.amount && c.status !== 'черновик')
+      .filter(c => !prefixes || prefixes.some(p => c.number?.startsWith(`${p}-`)))
+      .slice(0, 10)
+
+    // 4. Топ контрагентов
+    const counterpartyMap: Record<string, number> = {}
+    allContracts.forEach(c => {
+      if (c.counterparty && c.amount) {
+        counterpartyMap[c.counterparty] = (counterpartyMap[c.counterparty] ?? 0) + c.amount
+      }
+    })
+    const topCounterparties = Object.entries(counterpartyMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, total]) => ({ name, total }))
+
+    // 5. Динамика за период
+    const periodContracts = allContracts.filter(c =>
+      c.created_at && new Date(c.created_at) >= new Date(fromDateStr) && c.amount
+    )
+    const companyAmounts: Record<string, number> = {}
+    periodContracts.forEach(c => {
+      if (c.company_prefix) {
+        companyAmounts[c.company_prefix] = (companyAmounts[c.company_prefix] ?? 0) + (c.amount ?? 0)
+      }
+    })
+    const totalPeriodAmount = periodContracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
+
+    return NextResponse.json({
+      stats_sums: statsSums,
+      stats_count: statsCount,
+      debt_contracts: debtContracts,
+      total_debt: totalDebt,
+      no_amount_contracts: noAmountContracts,
+      top_counterparties: topCounterparties,
+      company_amounts: companyAmounts,
+      total_period_amount: totalPeriodAmount,
+      period_days: days,
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/my-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2490,6 +2750,86 @@ export async function POST(request: NextRequest) {
 
     const userId = parseInt(user_bitrix_id)
     const status_only = formData.get('status_only') === 'true'
+    const temp_upload = formData.get('temp_upload') === 'true'
+    const confirm_upload = formData.get('confirm_upload') === 'true'
+    const temp_file_url = formData.get('temp_file_url') as string
+    const temp_file_name = formData.get('temp_file_name') as string
+    const has_discrepancies = formData.get('has_discrepancies') === 'true'
+    const discrepancy_comment = formData.get('discrepancy_comment') as string
+    const discrepancy_summary = formData.get('discrepancy_summary') as string
+
+    // Временная загрузка — просто сохраняем файл и возвращаем URL
+    if (temp_upload && file) {
+      const fileExt = file.name.split('.').pop()
+      const tempPath = `temp/${contract_id}/${Date.now()}.${fileExt}`
+      const fileBuffer = await file.arrayBuffer()
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(tempPath, fileBuffer, { contentType: file.type, upsert: true })
+      if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(tempPath)
+      return NextResponse.json({ success: true, temp_url: urlData.publicUrl })
+    }
+
+    // Подтверждение загрузки — сохраняем уже загруженный файл как подписанный
+    if (confirm_upload && temp_file_url) {
+      // Перемещаем из temp в постоянное хранилище
+      const fileExt = temp_file_name.split('.').pop()
+      const finalPath = `signed/${contract_id}/${Date.now()}.${fileExt}`
+      const tempPath = temp_file_url.split('/contracts/')[1]
+
+      // Копируем файл
+      const { error: copyError } = await supabase.storage
+        .from('contracts')
+        .copy(tempPath, finalPath)
+
+      if (copyError) {
+        // Если copy не работает — скачиваем и перезаливаем
+        const fileRes = await fetch(temp_file_url)
+        const fileBuffer = await fileRes.arrayBuffer()
+        await supabase.storage.from('contracts').upload(finalPath, fileBuffer, { upsert: true })
+      }
+
+      // Удаляем временный файл
+      await supabase.storage.from('contracts').remove([tempPath])
+
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(finalPath)
+      const finalUrl = urlData.publicUrl
+
+      // Сохраняем в БД
+      await supabase.from('signed_documents').insert({
+        contract_id,
+        file_url: finalUrl,
+        file_name: temp_file_name,
+        uploaded_by_name: user_name,
+        uploaded_by_bitrix_id: userId,
+        signed_date: formData.get('signed_date') || null,
+        has_discrepancies,
+        discrepancy_comment: has_discrepancies ? discrepancy_comment : null,
+      })
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: has_discrepancies ? 'Загружен подписанный документ с расхождениями' : 'Загружен подписанный документ',
+        details: has_discrepancies
+          ? `Расхождения: ${discrepancy_summary}. Причина загрузки: ${discrepancy_comment}`
+          : `Файл: ${temp_file_name}`,
+        user_name: user_name ?? 'Пользователь',
+      })
+
+      // Обновляем статус договора
+      const { data: currentDocs } = await supabase
+        .from('signed_documents')
+        .select('id')
+        .eq('contract_id', contract_id)
+
+      const docsCount = (currentDocs?.length ?? 0)
+      const newStatus = docsCount >= 2 ? 'подписан' : 'загружен_частично'
+      await supabase.from('contracts').update({ status: newStatus }).eq('id', contract_id)
+
+      return NextResponse.json({ success: true })
+    }
 
     // Если только обновление статуса — файл не нужен
     if (!status_only && !file) {
@@ -4159,109 +4499,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/dashboard-finance/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const prefixes = companyPrefix ? companyPrefix.split(',') : null
-
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
-
-    // Фильтр по компании
-    const filterByCompany = <T extends { number?: string; company_prefix?: string }>(items: T[]): T[] => {
-      if (!prefixes) return items
-      return items.filter(c =>
-        prefixes.some(p => c.number?.startsWith(`${p}-`) || c.company_prefix === p)
-      )
-    }
-
-    // 1. Все договоры (не архив, с суммой)
-    const { data: rawContracts } = await supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, status, amount, company_prefix, end_date, created_at')
-      .neq('status', 'архив')
-
-    const allContracts = filterByCompany(rawContracts ?? [])
-
-    // Суммы и кол-во по статусам
-    const statsSums: Record<string, number> = {}
-    const statsCount: Record<string, number> = {}
-    allContracts.forEach(c => {
-      if (c.amount) {
-        statsSums[c.status] = (statsSums[c.status] ?? 0) + c.amount
-        statsCount[c.status] = (statsCount[c.status] ?? 0) + 1
-      }
-    })
-
-    // 2. Дебиторская задолженность
-    const debtContracts = allContracts
-      .filter(c => c.status === 'на_исполнении' && c.amount)
-      .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
-      .slice(0, 10)
-
-    const totalDebt = debtContracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
-
-    // 3. Договоры без суммы (не черновик, не архив)
-    const noAmountContracts = (rawContracts ?? [])
-      .filter(c => !c.amount && c.status !== 'черновик')
-      .filter(c => !prefixes || prefixes.some(p => c.number?.startsWith(`${p}-`)))
-      .slice(0, 10)
-
-    // 4. Топ контрагентов
-    const counterpartyMap: Record<string, number> = {}
-    allContracts.forEach(c => {
-      if (c.counterparty && c.amount) {
-        counterpartyMap[c.counterparty] = (counterpartyMap[c.counterparty] ?? 0) + c.amount
-      }
-    })
-    const topCounterparties = Object.entries(counterpartyMap)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([name, total]) => ({ name, total }))
-
-    // 5. Динамика за период
-    const periodContracts = allContracts.filter(c =>
-      c.created_at && new Date(c.created_at) >= new Date(fromDateStr) && c.amount
-    )
-    const companyAmounts: Record<string, number> = {}
-    periodContracts.forEach(c => {
-      if (c.company_prefix) {
-        companyAmounts[c.company_prefix] = (companyAmounts[c.company_prefix] ?? 0) + (c.amount ?? 0)
-      }
-    })
-    const totalPeriodAmount = periodContracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
-
-    return NextResponse.json({
-      stats_sums: statsSums,
-      stats_count: statsCount,
-      debt_contracts: debtContracts,
-      total_debt: totalDebt,
-      no_amount_contracts: noAmountContracts,
-      top_counterparties: topCounterparties,
-      company_amounts: companyAmounts,
-      total_period_amount: totalPeriodAmount,
-      period_days: days,
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/dashboard-legal/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5285,6 +5522,147 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/user-role/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DEVELOPER_ID = 30
+const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
+
+const GC_ROLE_PRIORITY: Record<string, number> = {
+  developer:  1,
+  admin:      2,
+  gc_manager: 3,
+  finance_gc: 4,
+  legal_gc:   5,
+}
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+  }
+  const userId = parseInt(bitrixUserId)
+
+  // 1. Проверяем роль ГК (наивысшая из найденных)
+  let gcRole: string | null = null
+
+  if (userId === DEVELOPER_ID) {
+    gcRole = 'developer'
+  } else {
+    const { data: systemRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+    if (systemRole) gcRole = systemRole.role
+  }
+
+  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
+  if (gcRole) {
+    // Но всё равно собираем роли из согласующих для all_roles
+    const approvalRoles: string[] = []
+
+    const { data: dirSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'director')
+      .eq('is_active', true)
+      .limit(1)
+    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
+
+    const { data: legalSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'legal')
+      .eq('is_active', true)
+      .limit(1)
+    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
+
+    const { data: finSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting'])
+      .eq('is_active', true)
+      .limit(1)
+    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
+
+    return NextResponse.json({
+      role: gcRole,
+      companies: ALL_COMPANIES,
+      all_roles: [gcRole, ...approvalRoles],
+    })
+  }
+
+  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
+  const approvalRoles: string[] = []
+  const companiesMap: Record<string, string[]> = {}
+
+  // Директор
+  const { data: dirSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'director')
+    .eq('is_active', true)
+
+  if (dirSettings && dirSettings.length > 0) {
+    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
+  }
+
+  // Юрист
+  const { data: legalSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'legal')
+    .eq('is_active', true)
+
+  if (legalSettings && legalSettings.length > 0) {
+    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
+  }
+
+  // Финансист
+  const { data: finSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .in('stage', ['finance', 'accounting'])
+    .eq('is_active', true)
+
+  if (finSettings && finSettings.length > 0) {
+    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
+    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
+  }
+
+  if (approvalRoles.length === 0) {
+    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
+  }
+
+  // Объединяем все компании из всех ролей согласующих
+  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
+
+  // Основная роль — первая в списке приоритетов: director > legal > finance
+  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
+
+  return NextResponse.json({
+    role: primaryRole,
+    companies: allCompanies,
+    all_roles: approvalRoles,
+  })
+}
+</file>
+
 <file path="app/api/contracts/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5604,147 +5982,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/user-role/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const DEVELOPER_ID = 30
-const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
-
-const GC_ROLE_PRIORITY: Record<string, number> = {
-  developer:  1,
-  admin:      2,
-  gc_manager: 3,
-  finance_gc: 4,
-  legal_gc:   5,
-}
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-  }
-  const userId = parseInt(bitrixUserId)
-
-  // 1. Проверяем роль ГК (наивысшая из найденных)
-  let gcRole: string | null = null
-
-  if (userId === DEVELOPER_ID) {
-    gcRole = 'developer'
-  } else {
-    const { data: systemRole } = await supabase
-      .from('system_roles')
-      .select('role')
-      .eq('bitrix_user_id', userId)
-      .single()
-    if (systemRole) gcRole = systemRole.role
-  }
-
-  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
-  if (gcRole) {
-    // Но всё равно собираем роли из согласующих для all_roles
-    const approvalRoles: string[] = []
-
-    const { data: dirSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'director')
-      .eq('is_active', true)
-      .limit(1)
-    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
-
-    const { data: legalSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'legal')
-      .eq('is_active', true)
-      .limit(1)
-    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
-
-    const { data: finSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting'])
-      .eq('is_active', true)
-      .limit(1)
-    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
-
-    return NextResponse.json({
-      role: gcRole,
-      companies: ALL_COMPANIES,
-      all_roles: [gcRole, ...approvalRoles],
-    })
-  }
-
-  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
-  const approvalRoles: string[] = []
-  const companiesMap: Record<string, string[]> = {}
-
-  // Директор
-  const { data: dirSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'director')
-    .eq('is_active', true)
-
-  if (dirSettings && dirSettings.length > 0) {
-    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
-  }
-
-  // Юрист
-  const { data: legalSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'legal')
-    .eq('is_active', true)
-
-  if (legalSettings && legalSettings.length > 0) {
-    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
-  }
-
-  // Финансист
-  const { data: finSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .in('stage', ['finance', 'accounting'])
-    .eq('is_active', true)
-
-  if (finSettings && finSettings.length > 0) {
-    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
-    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
-  }
-
-  if (approvalRoles.length === 0) {
-    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
-  }
-
-  // Объединяем все компании из всех ролей согласующих
-  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
-
-  // Основная роль — первая в списке приоритетов: director > legal > finance
-  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
-
-  return NextResponse.json({
-    role: primaryRole,
-    companies: allCompanies,
-    all_roles: approvalRoles,
-  })
-}
-</file>
-
 <file path="app/api/contracts-list/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5773,7 +6010,7 @@ export async function GET(request: NextRequest) {
         .limit(20)
 
       if (search) {
-        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%`)
+        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%,customer_number.ilike.%${search}%`)
       }
 
       const { data, error } = await query
