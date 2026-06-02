@@ -38,6 +38,17 @@ export default function NewContractPage() {
   const [showCounterpartySuggestions, setShowCounterpartySuggestions] = useState(false)
   const [counterpartySearchLoading, setCounterpartySearchLoading] = useState(false)
 
+  // Связанный документ
+  const [isChild, setIsChild] = useState(false)
+  const [parentSource, setParentSource] = useState<'system' | 'external'>('system')
+  const [parentContractExternal, setParentContractExternal] = useState('')
+  const [parentContractId, setParentContractId] = useState<string | null>(null)
+  const [parentContractNumber, setParentContractNumber] = useState('')
+  const [parentSearch, setParentSearch] = useState('')
+  const [parentSearchLoading, setParentSearchLoading] = useState(false)
+  const [parentSuggestions, setParentSuggestions] = useState<{id: string, number: string, title: string, counterparty: string, status: string}[]>([])
+  const [showParentSuggestions, setShowParentSuggestions] = useState(false)
+
   useEffect(() => {
     if (!form.company_prefix || !form.type) {
       setAutoNumber('')
@@ -46,10 +57,16 @@ export default function NewContractPage() {
       setEditingNumber(false)
       return
     }
+    // Дочерний документ с привязкой к родителю в системе
+    if (isChild && parentSource === 'system' && parentContractId) {
+      generateChildNumber(parentContractId, form.type)
+      return
+    }
+    // Стандартная нумерация
     const generate = async () => {
       try {
         const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
+        const res = await fetch(`${baseUrl}/api/contracts?prefix=${encodeURIComponent(form.company_prefix)}&type=${encodeURIComponent(form.type)}`)
         const data = await res.json()
         if (data.number) {
           setAutoNumber(data.number)
@@ -62,7 +79,7 @@ export default function NewContractPage() {
       }
     }
     generate()
-  }, [form.company_prefix, form.type])
+  }, [form.company_prefix, form.type, isChild, parentSource, parentContractId])
 
   const searchCounterparties = async (q: string) => {
     if (q.length < 2) { setCounterpartySuggestions([]); return }
@@ -85,6 +102,50 @@ export default function NewContractPage() {
   }
 
   const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий']
+
+  // Поиск родительского документа
+  const searchParentContracts = async (q: string) => {
+    if (q.length < 2) { setParentSuggestions([]); return }
+    setParentSearchLoading(true)
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/contracts-list?search=${encodeURIComponent(q)}&parent_only=true&bitrix_user_id=${user?.id ?? ''}`)
+      const data = await res.json()
+      setParentSuggestions(data.contracts ?? [])
+      setShowParentSuggestions(true)
+    } finally {
+      setParentSearchLoading(false)
+    }
+  }
+
+  const selectParentContract = (c: {id: string, number: string, title: string, counterparty: string, status: string}) => {
+    setParentContractId(c.id)
+    setParentContractNumber(c.number)
+    setParentSearch(`${c.number} — ${c.title}`)
+    setShowParentSuggestions(false)
+    // Автоматически подставляем контрагента из родительского документа
+    if (!form.counterparty) {
+      setForm(p => ({ ...p, counterparty: c.counterparty }))
+      setCounterpartySearch(c.counterparty)
+    }
+  }
+
+  // Генерация номера для дочернего документа
+  const generateChildNumber = async (parentId: string, childType: string) => {
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/contracts?child_number=true&parent_id=${parentId}&child_type=${encodeURIComponent(childType)}`)
+      const data = await res.json()
+      if (data.number) {
+        setAutoNumber(data.number)
+        setManualNumber(data.number)
+        setNumberChanged(false)
+        setEditingNumber(false)
+      }
+    } catch {
+      console.error('Ошибка генерации номера дочернего документа')
+    }
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const newForm = { ...form, [e.target.name]: e.target.value }
@@ -128,6 +189,9 @@ export default function NewContractPage() {
             document_category: form.document_category,
             user_name: user?.name ?? 'Система',
             user_bitrix_id: user?.id ?? null,
+            is_child: isChild,
+            parent_contract_id: isChild && parentSource === 'system' ? parentContractId : null,
+            parent_contract_external: isChild && parentSource === 'external' ? parentContractExternal : null,
           }),
         })
         clearTimeout(timeout)
@@ -171,6 +235,93 @@ export default function NewContractPage() {
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
                 {error}
+              </div>
+            )}
+
+            {/* Тип документа: основной или дочерний */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Тип создаваемого документа
+              </label>
+              <div className="flex gap-3">
+                <button type="button"
+                  onClick={() => { setIsChild(false); setParentContractId(null); setParentContractExternal('') }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${!isChild ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                  📄 Основной документ
+                </button>
+                <button type="button"
+                  onClick={() => setIsChild(true)}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${isChild ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                  📎 Дополнительный документ
+                </button>
+              </div>
+            </div>
+
+            {/* Привязка к родительскому документу */}
+            {isChild && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-medium text-blue-900">Привязка к основному документу</p>
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => setParentSource('system')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${parentSource === 'system' ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                    🔍 Найти в системе
+                  </button>
+                  <button type="button"
+                    onClick={() => setParentSource('external')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${parentSource === 'external' ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                    ✏️ Документ вне системы
+                  </button>
+                </div>
+
+                {parentSource === 'system' && (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={parentSearch}
+                      onChange={e => { setParentSearch(e.target.value); searchParentContracts(e.target.value) }}
+                      placeholder="Поиск по номеру, названию или контрагенту..."
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                    {parentSearchLoading && <p className="text-xs text-gray-400 mt-1">Поиск...</p>}
+                    {showParentSuggestions && parentSuggestions.length > 0 && (
+                      <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                        {parentSuggestions.map(c => (
+                          <button key={c.id} type="button"
+                            onClick={() => selectParentContract(c)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                            <p className="text-sm font-medium text-gray-900">{c.number}</p>
+                            <p className="text-xs text-gray-500">{c.title} · {c.counterparty}</p>
+                            <p className="text-xs text-gray-400">{c.status}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {parentContractId && (
+                      <div className="mt-2 flex items-center gap-2 bg-white border border-green-200 rounded-lg px-3 py-2">
+                        <span className="text-green-600 text-sm">✓</span>
+                        <p className="text-sm text-gray-900 font-medium">{parentContractNumber}</p>
+                        <button type="button" onClick={() => { setParentContractId(null); setParentContractNumber(''); setParentSearch('') }}
+                          className="ml-auto text-xs text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {parentSource === 'external' && (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={parentContractExternal}
+                      onChange={e => setParentContractExternal(e.target.value)}
+                      placeholder="Введите номер основного договора..."
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                    <p className="text-xs text-blue-700">
+                      💡 В карточке документа будет указано, что он является дополнительным к договору № {parentContractExternal || '...'}, созданному вне системы ЮрИнтел.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

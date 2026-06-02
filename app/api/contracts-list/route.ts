@@ -10,6 +10,32 @@ export async function GET(request: NextRequest) {
   const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
   const role = request.nextUrl.searchParams.get('role')
   const companiesParam = request.nextUrl.searchParams.get('companies')
+  const parentOnly = request.nextUrl.searchParams.get('parent_only')
+  const search = request.nextUrl.searchParams.get('search')
+
+  // Режим поиска родительских документов
+  if (parentOnly === 'true' && bitrixUserId) {
+    try {
+      let query = supabase
+        .from('contracts')
+        .select('id, number, title, counterparty, status')
+        .is('deleted_at', null)
+        .in('status', ['согласован', 'подписан', 'на_исполнении'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (search) {
+        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%`)
+      }
+
+      const { data, error } = await query
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ contracts: data ?? [] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+  }
 
   if (!bitrixUserId || !role) {
     return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })

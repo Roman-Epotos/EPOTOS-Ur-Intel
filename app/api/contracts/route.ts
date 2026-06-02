@@ -33,6 +33,7 @@ const TYPE_CODES: Record<string, string> = {
   'учредительный': 'ДОГ',
   'письмо': 'ПСМ',
   'счет': 'СЧТ',
+  'спецификация': 'СПЕЦ',
   'другое': 'ДОК',
 }
 
@@ -40,6 +41,42 @@ const TYPE_CODES: Record<string, string> = {
 export async function GET(request: NextRequest) {
   const prefix = request.nextUrl.searchParams.get('prefix')
   const type = request.nextUrl.searchParams.get('type') ?? ''
+  const childNumber = request.nextUrl.searchParams.get('child_number')
+  const parentId = request.nextUrl.searchParams.get('parent_id')
+  const childType = request.nextUrl.searchParams.get('child_type') ?? ''
+
+  // Генерация номера дочернего документа
+  if (childNumber === 'true' && parentId) {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { data: parent } = await supabase
+      .from('contracts')
+      .select('number')
+      .eq('id', parentId)
+      .single()
+
+    if (!parent) return NextResponse.json({ error: 'Родительский документ не найден' }, { status: 404 })
+
+    // Считаем сколько дочерних документов уже есть
+    const { data: children } = await supabase
+      .from('contracts')
+      .select('child_number')
+      .eq('parent_contract_id', parentId)
+      .order('child_number', { ascending: false })
+      .limit(1)
+
+    const nextChildNum = children && children.length > 0 ? (children[0].child_number ?? 0) + 1 : 1
+    const childTypeCode = TYPE_CODES[childType] ?? 'ДОК'
+
+    // Берём номер родителя и меняем код типа
+    // ТХ-ДОГ-2026/06/1 → ТХ-СПЕЦ-2026/06/1-1
+    const parentParts = parent.number.split('-')
+    parentParts[1] = childTypeCode
+    const baseNumber = parentParts.join('-')
+    const number = `${baseNumber}-${nextChildNum}`
+
+    return NextResponse.json({ number })
+  }
+
   if (!prefix) {
     return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
   }
@@ -82,6 +119,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    const { is_child, parent_contract_id, parent_contract_external, child_number: childNum } = body
     const userName = body.user_name ?? 'Система'
 
     // Сохраняем договор
@@ -99,6 +137,9 @@ export async function POST(request: NextRequest) {
         status: 'черновик',
         author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
         document_category: body.document_category ?? 'contract',
+        is_child: body.is_child ?? false,
+        parent_contract_id: body.parent_contract_id ?? null,
+        parent_contract_external: body.parent_contract_external ?? null,
       })
       .select('id')
       .single()
