@@ -74,6 +74,7 @@ interface Contract {
   parent_contract_id?: string | null
   parent_contract_external?: string | null
   is_child?: boolean | null
+  customer_number?: string | null
 }
 
 interface Participant {
@@ -227,6 +228,50 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [acknowledging, setAcknowledging] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<string>('user')
   const [currentUserCompanies, setCurrentUserCompanies] = useState<string[]>([])
+
+  // Inline edit реквизитов
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState({
+    title: contract.title ?? '',
+    counterparty: contract.counterparty ?? '',
+    amount: contract.amount ? String(contract.amount) : '',
+    start_date: contract.start_date ?? '',
+    end_date: contract.end_date ?? '',
+    customer_number: contract.customer_number ?? '',
+  })
+  const [savingField, setSavingField] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+  const isLocked = LOCKED_STATUSES.includes(contractStatus)
+  const CAN_EDIT_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
+  const canEditDetails = !isLocked && (
+    CAN_EDIT_ROLES.includes(currentUserRole) ||
+    parseInt(user?.id ?? '0') === contract.author_bitrix_id
+  )
+
+  const saveField = async (field: string, value: string) => {
+    setSavingField(true)
+    setSaveError('')
+    const oldValue = (contract as unknown as Record<string, unknown>)[field]
+    const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        field,
+        value,
+        user_name: user?.name ?? 'Пользователь',
+        old_value: oldValue,
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setEditingField(null)
+    } else {
+      setSaveError(data.error ?? 'Ошибка сохранения')
+    }
+    setSavingField(false)
+  }
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -701,21 +746,138 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       })}
                     </div>
                   </div>
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты документа</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Реквизиты документа</h2>
+                    {isLocked && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg">🔒 Редактирование заблокировано</span>}
+                  </div>
+                  {saveError && <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{saveError}</div>}
                   <div className="space-y-3">
-                    {[
-                      { label: 'Название', value: contract.title },
-                      { label: 'Контрагент', value: contract.counterparty },
-                      { label: 'Тип', value: contract.type },
-                      { label: 'Сумма', value: contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—' },
-                      { label: 'Дата начала', value: contract.start_date ?? '—' },
-                      { label: 'Дата окончания', value: contract.end_date ?? '—' },
-                    ].map(item => (
-                      <div key={item.label} className="flex gap-4">
-                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">{item.label}</span>
-                        <span className="text-sm text-gray-900">{item.value ?? '—'}</span>
-                      </div>
-                    ))}
+                    {/* Название */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Название</span>
+                      {editingField === 'title' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.title} onChange={e => setEditValues(p => ({...p, title: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('title', editValues.title)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.title || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('title')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Контрагент */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Контрагент</span>
+                      {editingField === 'counterparty' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.counterparty} onChange={e => setEditValues(p => ({...p, counterparty: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('counterparty', editValues.counterparty)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.counterparty || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('counterparty')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Тип — только просмотр */}
+                    <div className="flex gap-4">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Тип</span>
+                      <span className="text-sm text-gray-900">{contract.type ?? '—'}</span>
+                    </div>
+                    {/* Сумма */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Сумма</span>
+                      {editingField === 'amount' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="number" value={editValues.amount} onChange={e => setEditValues(p => ({...p, amount: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('amount', editValues.amount)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.amount ? Number(editValues.amount).toLocaleString('ru-RU') + ' ₽' : '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('amount')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Дата начала */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата начала</span>
+                      {editingField === 'start_date' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="date" value={editValues.start_date} onChange={e => setEditValues(p => ({...p, start_date: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('start_date', editValues.start_date)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.start_date || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('start_date')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Дата окончания */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата окончания</span>
+                      {editingField === 'end_date' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="date" value={editValues.end_date} onChange={e => setEditValues(p => ({...p, end_date: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('end_date', editValues.end_date)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.end_date || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('end_date')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Номер заказчика */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Номер заказчика</span>
+                      {editingField === 'customer_number' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.customer_number} onChange={e => setEditValues(p => ({...p, customer_number: e.target.value}))}
+                            placeholder="Номер со стороны заказчика"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('customer_number', editValues.customer_number)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.customer_number || '—'}</span>
+                          {!isLocked && <button onClick={() => setEditingField('customer_number')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div>

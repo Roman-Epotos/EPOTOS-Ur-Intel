@@ -85,3 +85,62 @@ export async function DELETE(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ contractId: string }> }
+) {
+  try {
+    const { contractId } = await params
+    const body = await request.json()
+    const { field, value, user_name, old_value } = body
+
+    const ALLOWED_FIELDS = ['title', 'counterparty', 'amount', 'start_date', 'end_date', 'customer_number']
+    if (!ALLOWED_FIELDS.includes(field)) {
+      return NextResponse.json({ error: 'Поле не разрешено для редактирования' }, { status: 400 })
+    }
+
+    const { data: contract } = await supabase
+      .from('contracts')
+      .select('status')
+      .eq('id', contractId)
+      .single()
+
+    const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+    if (contract && LOCKED_STATUSES.includes(contract.status)) {
+      return NextResponse.json({ error: 'Документ заблокирован для редактирования' }, { status: 403 })
+    }
+
+    const updateValue = field === 'amount'
+      ? (value ? parseFloat(value) : null)
+      : (value || null)
+
+    const { error } = await supabase
+      .from('contracts')
+      .update({ [field]: updateValue })
+      .eq('id', contractId)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    const fieldLabels: Record<string, string> = {
+      title: 'Название',
+      counterparty: 'Контрагент',
+      amount: 'Сумма',
+      start_date: 'Дата начала',
+      end_date: 'Дата окончания',
+      customer_number: 'Номер заказчика',
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id: contractId,
+      action: `Изменено поле «${fieldLabels[field] ?? field}»`,
+      details: `Было: ${old_value ?? '—'} → Стало: ${value || '—'}`,
+      user_name: user_name ?? 'Пользователь',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

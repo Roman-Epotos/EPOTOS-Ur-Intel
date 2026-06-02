@@ -55,6 +55,7 @@ app/components/GenerateFromTemplate.tsx
 app/components/Header.tsx
 app/components/MyDocuments.tsx
 app/components/PersonalStats.tsx
+app/components/RelatedDocuments.tsx
 </directory_structure>
 
 <files>
@@ -3154,6 +3155,472 @@ export default function DeleteContractButton({
 }
 </file>
 
+<file path="app/components/RelatedDocuments.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+interface RelatedContract {
+  id: string
+  number: string
+  title: string
+  type: string
+  status: string
+  created_at: string
+  counterparty: string
+}
+
+interface Props {
+  contractId: string
+  contractNumber: string
+  contractStatus: string
+  parentContractId: string | null
+  parentContractExternal: string | null
+  isChild: boolean
+  currentUserId: number
+  currentUserRole: string
+  currentUserCompanies: string[]
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-600',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  согласован: 'bg-blue-100 text-blue-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-purple-100 text-purple-800',
+  отклонён: 'bg-red-100 text-red-700',
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  согласован: 'Согласован',
+  подписан: 'Подписан',
+  на_исполнении: 'На исполнении',
+  отклонён: 'Отклонён',
+}
+
+const CAN_LINK_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
+
+export default function RelatedDocuments({
+  contractId, contractNumber, contractStatus,
+  parentContractId, parentContractExternal, isChild,
+  currentUserId, currentUserRole, currentUserCompanies,
+}: Props) {
+  const [children, setChildren] = useState<RelatedContract[]>([])
+  const [parent, setParent] = useState<RelatedContract | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Привязка
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [linkSource, setLinkSource] = useState<'system' | 'external'>('system')
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkSearchLoading, setLinkSearchLoading] = useState(false)
+  const [linkSuggestions, setLinkSuggestions] = useState<RelatedContract[]>([])
+  const [selectedParent, setSelectedParent] = useState<RelatedContract | null>(null)
+  const [externalNumber, setExternalNumber] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [linkSuccess, setLinkSuccess] = useState('')
+  const [linkError, setLinkError] = useState('')
+
+  const canLink = CAN_LINK_ROLES.includes(currentUserRole)
+
+  useEffect(() => {
+    loadRelated()
+  }, [contractId])
+
+  const loadRelated = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/related-contracts?contract_id=${contractId}`)
+      const data = await res.json()
+      setChildren(data.children ?? [])
+      setParent(data.parent ?? null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const searchParents = async (q: string) => {
+    if (q.length < 2) { setLinkSuggestions([]); return }
+    setLinkSearchLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${currentUserId}&parent_only=true&search=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setLinkSuggestions((data.contracts ?? []).filter((c: RelatedContract) => c.id !== contractId))
+    } finally {
+      setLinkSearchLoading(false)
+    }
+  }
+
+  const handleLink = async () => {
+    setLinking(true)
+    setLinkError('')
+    setLinkSuccess('')
+    const res = await fetch(`${baseUrl}/api/related-contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contract_id: contractId,
+        parent_contract_id: linkSource === 'system' ? selectedParent?.id : null,
+        parent_contract_external: linkSource === 'external' ? externalNumber : null,
+        is_child: true,
+        user_id: currentUserId,
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setLinkSuccess('Документ успешно привязан!')
+      setShowLinkModal(false)
+      loadRelated()
+    } else {
+      setLinkError(data.error ?? 'Ошибка привязки')
+    }
+    setLinking(false)
+  }
+
+  const handleUnlink = async () => {
+    if (!confirm('Отвязать этот документ от родительского?')) return
+    const res = await fetch(`${baseUrl}/api/related-contracts`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract_id: contractId, user_id: currentUserId }),
+    })
+    const data = await res.json()
+    if (data.success) loadRelated()
+  }
+
+  if (loading) return (
+    <div className="p-6">
+      <p className="text-sm text-gray-400">Загрузка...</p>
+    </div>
+  )
+
+  return (
+    <div className="p-6 space-y-6">
+
+      {linkSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{linkSuccess}</div>}
+
+      {/* Родительский документ */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">📄 Основной документ</h2>
+          {canLink && (
+            <button onClick={() => setShowLinkModal(true)}
+              className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+              {isChild ? '🔄 Перепривязать' : '🔗 Привязать к документу'}
+            </button>
+          )}
+        </div>
+
+        {parent ? (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+            <div>
+              <Link href={`/contracts/${parent.id}`}
+                className="text-sm font-medium text-blue-600 hover:underline">
+                {parent.number}
+              </Link>
+              <p className="text-sm text-gray-700 mt-0.5">{parent.title}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{parent.counterparty}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[parent.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                {statusLabel[parent.status] ?? parent.status}
+              </span>
+              {canLink && (
+                <button onClick={handleUnlink}
+                  className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">
+                  Отвязать
+                </button>
+              )}
+            </div>
+          </div>
+        ) : parentContractExternal ? (
+          <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
+            <p className="text-sm text-gray-700">📎 Дополнительный документ к договору <strong>{parentContractExternal}</strong></p>
+            <p className="text-xs text-gray-500 mt-1">Основной договор создан вне системы ЮрИнтел</p>
+            {canLink && (
+              <button onClick={handleUnlink}
+                className="text-xs text-red-500 mt-2 hover:underline">
+                Отвязать
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <p className="text-sm text-gray-400">Этот документ не привязан к основному</p>
+            {canLink && (
+              <button onClick={() => setShowLinkModal(true)}
+                className="text-xs text-blue-600 mt-2 hover:underline">
+                Привязать →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Дочерние документы */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">
+          🔗 Дочерние документы
+          {children.length > 0 && (
+            <span className="ml-2 bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full">{children.length}</span>
+          )}
+        </h2>
+
+        {children.length === 0 ? (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <p className="text-sm text-gray-400">Дочерних документов пока нет</p>
+            <p className="text-xs text-gray-400 mt-1">Спецификации, доп.соглашения и другие документы, привязанные к этому, появятся здесь</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {children.map(c => (
+              <div key={c.id} className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+                <div>
+                  <Link href={`/contracts/${c.id}`}
+                    className="text-sm font-medium text-blue-600 hover:underline">
+                    {c.number}
+                  </Link>
+                  <p className="text-sm text-gray-700 mt-0.5">{c.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{c.type} · {new Date(c.created_at).toLocaleDateString('ru-RU')}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {statusLabel[c.status] ?? c.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Модальное окно привязки */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Привязать к основному документу</h3>
+
+            {linkError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{linkError}</div>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setLinkSource('system')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'system' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                🔍 Найти в системе
+              </button>
+              <button onClick={() => setLinkSource('external')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'external' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                ✏️ Документ вне системы
+              </button>
+            </div>
+
+            {linkSource === 'system' && (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={linkSearch}
+                  onChange={e => { setLinkSearch(e.target.value); searchParents(e.target.value) }}
+                  placeholder="Поиск по номеру, названию или контрагенту..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+                {linkSearchLoading && <p className="text-xs text-gray-400 mt-1">Поиск...</p>}
+                {linkSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {linkSuggestions.map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => { setSelectedParent(c); setLinkSuggestions([]); setLinkSearch(`${c.number} — ${c.title}`) }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <p className="text-sm font-medium text-gray-900">{c.number}</p>
+                        <p className="text-xs text-gray-500">{c.title} · {c.counterparty}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedParent && (
+                  <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <span className="text-green-600 text-sm">✓</span>
+                    <p className="text-sm text-gray-900 font-medium">{selectedParent.number}</p>
+                    <button type="button" onClick={() => { setSelectedParent(null); setLinkSearch('') }}
+                      className="ml-auto text-xs text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {linkSource === 'external' && (
+              <input
+                type="text"
+                value={externalNumber}
+                onChange={e => setExternalNumber(e.target.value)}
+                placeholder="Введите номер основного договора..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={handleLink} disabled={linking || (linkSource === 'system' && !selectedParent) || (linkSource === 'external' && !externalNumber.trim())}
+                className="flex-1 bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                {linking ? 'Привязываем...' : '🔗 Привязать'}
+              </button>
+              <button onClick={() => { setShowLinkModal(false); setLinkError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/Header.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+  const [helpUnread, setHelpUnread] = useState(0)
+
+  const checkUnread = async (userId: string) => {
+    const baseUrl = 'https://epotos-ur-intel.vercel.app'
+    const isAdminUser = [30, 1148].includes(parseInt(userId))
+    const url = isAdminUser
+      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
+      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
+    const r = await fetch(url)
+    const d = await r.json()
+    const reqs = d.requests ?? []
+    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
+      if (req.status === 'resolved') return false
+      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
+      if (!lastSeen) return true
+      const msgs = req.support_messages ?? []
+      if (msgs.length === 0) return false
+      const lastMsgAt = msgs[msgs.length - 1].created_at
+      return new Date(lastMsgAt) > new Date(lastSeen)
+    }).length
+    setHelpUnread(unread)
+  }
+
+  useEffect(() => {
+    if (!user) return
+    checkUnread(user.id)
+
+    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
+    const channel = supabaseClient
+      .channel('header_support_unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_messages',
+      }, (payload) => {
+        const msg = payload.new as { author_bitrix_id: number }
+        // Показываем только если сообщение от другого пользователя
+        if (msg.author_bitrix_id !== parseInt(user.id)) {
+          checkUnread(user.id)
+        }
+      })
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [user])
+
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
+        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Link
+          href="/contracts/new"
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+        >
+          + Новый документ
+        </Link>
+        <Link
+          href="/dashboard"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🖥️ Рабочий стол
+        </Link>
+        <Link
+          href="/counterparties"
+          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          🏢 Контрагенты
+        </Link>
+
+        {/* Профиль пользователя */}
+        
+        <Link href="/help"
+          className="relative text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+          ❓ Помощь
+          {helpUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+              {helpUnread}
+            </span>
+          )}
+        </Link>
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+</file>
+
 <file path="app/components/ContractTabs.tsx">
 'use client'
 import { buildChatHtml } from '@/utils/chatPrint'
@@ -3163,6 +3630,7 @@ import Link from 'next/link'
 import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
+import RelatedDocuments from '@/app/components/RelatedDocuments'
 import AIAnalysis from '@/app/components/AIAnalysis'
 import ExecutionControl from '@/app/components/ExecutionControl'
 
@@ -3227,6 +3695,9 @@ interface Contract {
   signed_file_name?: string | null
   signed_file_uploaded_at?: string | null
   signed_file_uploaded_by?: string | null
+  parent_contract_id?: string | null
+  parent_contract_external?: string | null
+  is_child?: boolean | null
 }
 
 interface Participant {
@@ -3380,6 +3851,50 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [acknowledging, setAcknowledging] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<string>('user')
   const [currentUserCompanies, setCurrentUserCompanies] = useState<string[]>([])
+
+  // Inline edit реквизитов
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState({
+    title: contract.title ?? '',
+    counterparty: contract.counterparty ?? '',
+    amount: contract.amount ? String(contract.amount) : '',
+    start_date: contract.start_date ?? '',
+    end_date: contract.end_date ?? '',
+    customer_number: (contract as Record<string, unknown>).customer_number as string ?? '',
+  })
+  const [savingField, setSavingField] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+  const isLocked = LOCKED_STATUSES.includes(contractStatus)
+  const CAN_EDIT_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
+  const canEditDetails = !isLocked && (
+    CAN_EDIT_ROLES.includes(currentUserRole) ||
+    parseInt(user?.id ?? '0') === contract.author_bitrix_id
+  )
+
+  const saveField = async (field: string, value: string) => {
+    setSavingField(true)
+    setSaveError('')
+    const oldValue = (contract as Record<string, unknown>)[field]
+    const res = await fetch(`${baseUrl}/api/contracts/${contract.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        field,
+        value,
+        user_name: user?.name ?? 'Пользователь',
+        old_value: oldValue,
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setEditingField(null)
+    } else {
+      setSaveError(data.error ?? 'Ошибка сохранения')
+    }
+    setSavingField(false)
+  }
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -3770,6 +4285,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
+    { id: 'related', label: 'Связанные документы', icon: '🔗' },
     { id: 'chat', label: 'Чат', icon: '💬', dot: hasActiveSession, badge: unreadCount },
   ]
 
@@ -3853,21 +4369,138 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       })}
                     </div>
                   </div>
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Реквизиты документа</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Реквизиты документа</h2>
+                    {isLocked && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg">🔒 Редактирование заблокировано</span>}
+                  </div>
+                  {saveError && <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{saveError}</div>}
                   <div className="space-y-3">
-                    {[
-                      { label: 'Название', value: contract.title },
-                      { label: 'Контрагент', value: contract.counterparty },
-                      { label: 'Тип', value: contract.type },
-                      { label: 'Сумма', value: contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—' },
-                      { label: 'Дата начала', value: contract.start_date ?? '—' },
-                      { label: 'Дата окончания', value: contract.end_date ?? '—' },
-                    ].map(item => (
-                      <div key={item.label} className="flex gap-4">
-                        <span className="text-sm text-gray-500 w-36 flex-shrink-0">{item.label}</span>
-                        <span className="text-sm text-gray-900">{item.value ?? '—'}</span>
-                      </div>
-                    ))}
+                    {/* Название */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Название</span>
+                      {editingField === 'title' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.title} onChange={e => setEditValues(p => ({...p, title: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('title', editValues.title)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.title || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('title')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Контрагент */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Контрагент</span>
+                      {editingField === 'counterparty' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.counterparty} onChange={e => setEditValues(p => ({...p, counterparty: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('counterparty', editValues.counterparty)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.counterparty || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('counterparty')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Тип — только просмотр */}
+                    <div className="flex gap-4">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Тип</span>
+                      <span className="text-sm text-gray-900">{contract.type ?? '—'}</span>
+                    </div>
+                    {/* Сумма */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Сумма</span>
+                      {editingField === 'amount' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="number" value={editValues.amount} onChange={e => setEditValues(p => ({...p, amount: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('amount', editValues.amount)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.amount ? Number(editValues.amount).toLocaleString('ru-RU') + ' ₽' : '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('amount')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Дата начала */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата начала</span>
+                      {editingField === 'start_date' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="date" value={editValues.start_date} onChange={e => setEditValues(p => ({...p, start_date: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('start_date', editValues.start_date)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.start_date || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('start_date')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Дата окончания */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Дата окончания</span>
+                      {editingField === 'end_date' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input type="date" value={editValues.end_date} onChange={e => setEditValues(p => ({...p, end_date: e.target.value}))}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('end_date', editValues.end_date)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.end_date || '—'}</span>
+                          {canEditDetails && <button onClick={() => setEditingField('end_date')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Номер заказчика */}
+                    <div className="flex gap-4 items-start">
+                      <span className="text-sm text-gray-500 w-36 flex-shrink-0">Номер заказчика</span>
+                      {editingField === 'customer_number' ? (
+                        <div className="flex-1 flex gap-2">
+                          <input value={editValues.customer_number} onChange={e => setEditValues(p => ({...p, customer_number: e.target.value}))}
+                            placeholder="Номер со стороны заказчика"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          <button onClick={() => saveField('customer_number', editValues.customer_number)} disabled={savingField}
+                            className="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700 disabled:opacity-50">
+                            {savingField ? '...' : '✓'}
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center gap-2">
+                          <span className="text-sm text-gray-900">{editValues.customer_number || '—'}</span>
+                          {!isLocked && <button onClick={() => setEditingField('customer_number')} className="text-gray-300 hover:text-gray-600 text-xs">✏️</button>}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -4440,6 +5073,20 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
             />
           )}
 
+          {activeTab === 'related' && (
+            <RelatedDocuments
+              contractId={contract.id}
+              contractNumber={contract.number ?? ''}
+              contractStatus={contractStatus}
+              parentContractId={contract.parent_contract_id ?? null}
+              parentContractExternal={contract.parent_contract_external ?? null}
+              isChild={contract.is_child ?? false}
+              currentUserId={parseInt(user?.id ?? '0')}
+              currentUserRole={currentUserRole}
+              currentUserCompanies={currentUserCompanies}
+            />
+          )}
+
           {activeTab === 'chat' && (
             <div className="p-6">
               {!hasActiveSession ? (
@@ -4744,150 +5391,6 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
           </div>
         </div>
       )}
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/Header.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import Link from 'next/link'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-)
-
-export default function Header() {
-  const { user, loading } = useBitrixAuth()
-  const [helpUnread, setHelpUnread] = useState(0)
-
-  const checkUnread = async (userId: string) => {
-    const baseUrl = 'https://epotos-ur-intel.vercel.app'
-    const isAdminUser = [30, 1148].includes(parseInt(userId))
-    const url = isAdminUser
-      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
-      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
-    const r = await fetch(url)
-    const d = await r.json()
-    const reqs = d.requests ?? []
-    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
-      if (req.status === 'resolved') return false
-      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
-      if (!lastSeen) return true
-      const msgs = req.support_messages ?? []
-      if (msgs.length === 0) return false
-      const lastMsgAt = msgs[msgs.length - 1].created_at
-      return new Date(lastMsgAt) > new Date(lastSeen)
-    }).length
-    setHelpUnread(unread)
-  }
-
-  useEffect(() => {
-    if (!user) return
-    checkUnread(user.id)
-
-    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
-    const channel = supabaseClient
-      .channel('header_support_unread')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'support_messages',
-      }, (payload) => {
-        const msg = payload.new as { author_bitrix_id: number }
-        // Показываем только если сообщение от другого пользователя
-        if (msg.author_bitrix_id !== parseInt(user.id)) {
-          checkUnread(user.id)
-        }
-      })
-      .subscribe()
-
-    return () => { supabaseClient.removeChannel(channel) }
-  }, [user])
-
-  return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
-        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-        >
-          + Новый документ
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          🖥️ Рабочий стол
-        </Link>
-        <Link
-          href="/counterparties"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          🏢 Контрагенты
-        </Link>
-
-        {/* Профиль пользователя */}
-        
-        <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-          ❓ Помощь
-          {helpUnread > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-              {helpUnread}
-            </span>
-          )}
-        </Link>
-        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
-          <Link href="/admin"
-            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            Настройки
-          </Link>
-        )}
-        {!loading && (
-          <div className="flex items-center gap-3">
-            {user ? (
-              <div className="flex items-center gap-2">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                  ?
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Гость</p>
-                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

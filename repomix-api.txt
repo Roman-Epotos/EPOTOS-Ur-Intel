@@ -76,6 +76,7 @@ app/api/my-documents/route.ts
 app/api/onlyoffice/callback/route.ts
 app/api/onlyoffice/file/route.ts
 app/api/onlyoffice/route.ts
+app/api/related-contracts/route.ts
 app/api/signed-documents/route.ts
 app/api/support-requests/route.ts
 app/api/system-roles/route.ts
@@ -4351,6 +4352,148 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/related-contracts/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const CAN_LINK_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
+
+// GET — получить связанные документы (родитель + дочерние)
+export async function GET(request: NextRequest) {
+  const contractId = request.nextUrl.searchParams.get('contract_id')
+  if (!contractId) return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+
+  try {
+    // Получаем текущий документ
+    const { data: contract } = await supabase
+      .from('contracts')
+      .select('id, number, title, type, status, created_at, counterparty, parent_contract_id, parent_contract_external, is_child')
+      .eq('id', contractId)
+      .single()
+
+    if (!contract) return NextResponse.json({ error: 'Документ не найден' }, { status: 404 })
+
+    // Получаем родительский документ (если есть)
+    let parent = null
+    if (contract.parent_contract_id) {
+      const { data } = await supabase
+        .from('contracts')
+        .select('id, number, title, type, status, created_at, counterparty')
+        .eq('id', contract.parent_contract_id)
+        .single()
+      parent = data
+    }
+
+    // Получаем дочерние документы
+    const { data: children } = await supabase
+      .from('contracts')
+      .select('id, number, title, type, status, created_at, counterparty')
+      .eq('parent_contract_id', contractId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    return NextResponse.json({
+      parent: parent ?? null,
+      children: children ?? [],
+      parent_contract_external: contract.parent_contract_external ?? null,
+      is_child: contract.is_child ?? false,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// POST — привязать документ к родителю
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, parent_contract_id, parent_contract_external, is_child } = body
+
+    if (!contract_id) return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+
+    // Считаем child_number
+    let childNumber = null
+    if (parent_contract_id) {
+      const { data: siblings } = await supabase
+        .from('contracts')
+        .select('child_number')
+        .eq('parent_contract_id', parent_contract_id)
+        .order('child_number', { ascending: false })
+        .limit(1)
+
+      childNumber = siblings && siblings.length > 0 ? (siblings[0].child_number ?? 0) + 1 : 1
+    }
+
+    const { error } = await supabase
+      .from('contracts')
+      .update({
+        parent_contract_id: parent_contract_id ?? null,
+        parent_contract_external: parent_contract_external ?? null,
+        is_child: is_child ?? true,
+        child_number: childNumber,
+      })
+      .eq('id', contract_id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Документ привязан к родительскому',
+      details: parent_contract_id
+        ? `Привязан к документу ID: ${parent_contract_id}`
+        : `Привязан к внешнему документу: ${parent_contract_external}`,
+      user_name: body.user_name ?? 'Пользователь',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// DELETE — отвязать документ от родителя
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, user_name } = body
+
+    if (!contract_id) return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('contracts')
+      .update({
+        parent_contract_id: null,
+        parent_contract_external: null,
+        is_child: false,
+        child_number: null,
+      })
+      .eq('id', contract_id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Документ отвязан от родительского',
+      details: 'Связь с родительским документом удалена',
+      user_name: user_name ?? 'Пользователь',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/system-roles/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4737,175 +4880,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/contracts/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
-
-const TYPE_CODES: Record<string, string> = {
-  'поставка': 'ДОГ',
-  'услуги': 'ДОГ',
-  'аренда': 'ДОГ',
-  'подряд': 'ДОГ',
-  'купля-продажа': 'ДОГ',
-  'агентский': 'ДОГ',
-  'дилерский': 'ДОГ',
-  'лицензионный': 'ДОГ',
-  'сервисный': 'ДОГ',
-  'доп-соглашение': 'ДОП',
-  'nda': 'КОНФ',
-  'эдо': 'ЭДО',
-  'протокол-разногласий': 'ПРТ',
-  'претензия': 'ПРЗ',
-  'исковое': 'ИСК',
-  'ответ-претензию': 'ПРЗ',
-  'положение': 'ОРД',
-  'инструкция': 'ОРД',
-  'служебная-записка': 'ОРД',
-  'доверенность': 'ДОВ',
-  'персданные': 'СПД',
-  'акт': 'АКТ',
-  'заключение': 'ПРВ',
-  'справка': 'СПР',
-  'устав': 'УСТ',
-  'учредительный': 'ДОГ',
-  'письмо': 'ПСМ',
-  'счет': 'СЧТ',
-  'спецификация': 'СПЕЦ',
-  'другое': 'ДОК',
-}
-
-// Генерация номера договора
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-  const type = request.nextUrl.searchParams.get('type') ?? ''
-  const childNumber = request.nextUrl.searchParams.get('child_number')
-  const parentId = request.nextUrl.searchParams.get('parent_id')
-  const childType = request.nextUrl.searchParams.get('child_type') ?? ''
-
-  // Генерация номера дочернего документа
-  if (childNumber === 'true' && parentId) {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-    const { data: parent } = await supabase
-      .from('contracts')
-      .select('number')
-      .eq('id', parentId)
-      .single()
-
-    if (!parent) return NextResponse.json({ error: 'Родительский документ не найден' }, { status: 404 })
-
-    // Считаем сколько дочерних документов уже есть
-    const { data: children } = await supabase
-      .from('contracts')
-      .select('child_number')
-      .eq('parent_contract_id', parentId)
-      .order('child_number', { ascending: false })
-      .limit(1)
-
-    const nextChildNum = children && children.length > 0 ? (children[0].child_number ?? 0) + 1 : 1
-    const childTypeCode = TYPE_CODES[childType] ?? 'ДОК'
-
-    // Берём номер родителя и меняем код типа
-    // ТХ-ДОГ-2026/06/1 → ТХ-СПЕЦ-2026/06/1-1
-    const parentParts = parent.number.split('-')
-    parentParts[1] = childTypeCode
-    const baseNumber = parentParts.join('-')
-    const number = `${baseNumber}-${nextChildNum}`
-
-    return NextResponse.json({ number })
-  }
-
-  if (!prefix) {
-    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
-  }
-
-  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
-  const fullPrefix = `${prefix}-${typeCode}`
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const data = await res.json()
-  let maxNum = 0
-  if (data && data.length > 0) {
-    const lastNumber = data[0].number as string
-    const parts = lastNumber.split('/')
-    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
-    if (!isNaN(lastSeq)) maxNum = lastSeq
-  }
-  const nextNum = String(maxNum + 1)
-  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
-
-  return NextResponse.json({ number })
-}
-
-// Сохранение договора
-export async function POST(request: NextRequest) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-  try {
-    const body = await request.json()
-    const { is_child, parent_contract_id, parent_contract_external, child_number: childNum } = body
-    const userName = body.user_name ?? 'Система'
-
-    // Сохраняем договор
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .insert({
-        number: body.number,
-        title: body.title,
-        counterparty: body.counterparty,
-        counterparty_id: body.counterparty_id ?? null,
-        type: body.type,
-        amount: body.amount ? parseFloat(body.amount) : null,
-        start_date: body.start_date || null,
-        end_date: body.end_date || null,
-        status: 'черновик',
-        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
-        document_category: body.document_category ?? 'contract',
-        is_child: body.is_child ?? false,
-        parent_contract_id: body.parent_contract_id ?? null,
-        parent_contract_external: body.parent_contract_external ?? null,
-      })
-      .select('id')
-      .single()
-
-    if (contractError) {
-      return NextResponse.json({ error: contractError.message }, { status: 400 })
-    }
-
-    // Записываем в лог с именем пользователя
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contract.id,
-        action: 'Документ создан',
-        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
-        user_name: userName,
-      })
-
-    return NextResponse.json({ success: true, id: contract.id })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/counterparties/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5252,181 +5226,170 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/contracts-list/route.ts">
+<file path="app/api/contracts/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
 
+const TYPE_CODES: Record<string, string> = {
+  'поставка': 'ДОГ',
+  'услуги': 'ДОГ',
+  'аренда': 'ДОГ',
+  'подряд': 'ДОГ',
+  'купля-продажа': 'ДОГ',
+  'агентский': 'ДОГ',
+  'дилерский': 'ДОГ',
+  'лицензионный': 'ДОГ',
+  'сервисный': 'ДОГ',
+  'доп-соглашение': 'ДОП',
+  'nda': 'КОНФ',
+  'эдо': 'ЭДО',
+  'протокол-разногласий': 'ПРТ',
+  'претензия': 'ПРЗ',
+  'исковое': 'ИСК',
+  'ответ-претензию': 'ПРЗ',
+  'положение': 'ОРД',
+  'инструкция': 'ОРД',
+  'служебная-записка': 'ОРД',
+  'доверенность': 'ДОВ',
+  'персданные': 'СПД',
+  'акт': 'АКТ',
+  'заключение': 'ПРВ',
+  'справка': 'СПР',
+  'устав': 'УСТ',
+  'учредительный': 'ДОГ',
+  'письмо': 'ПСМ',
+  'счет': 'СЧТ',
+  'спецификация': 'СПЕЦ',
+  'другое': 'ДОК',
+}
+
+// Генерация номера договора
 export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  const role = request.nextUrl.searchParams.get('role')
-  const companiesParam = request.nextUrl.searchParams.get('companies')
-  const parentOnly = request.nextUrl.searchParams.get('parent_only')
-  const search = request.nextUrl.searchParams.get('search')
+  const prefix = request.nextUrl.searchParams.get('prefix')
+  const type = request.nextUrl.searchParams.get('type') ?? ''
+  const childNumber = request.nextUrl.searchParams.get('child_number')
+  const parentId = request.nextUrl.searchParams.get('parent_id')
+  const childType = request.nextUrl.searchParams.get('child_type') ?? ''
 
-  // Режим поиска родительских документов
-  if (parentOnly === 'true' && bitrixUserId) {
-    try {
-      let query = supabase
-        .from('contracts')
-        .select('id, number, title, counterparty, status')
-        .is('deleted_at', null)
-        .in('status', ['согласован', 'подписан', 'на_исполнении'])
-        .order('created_at', { ascending: false })
-        .limit(20)
+  // Генерация номера дочернего документа
+  if (childNumber === 'true' && parentId) {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { data: parent } = await supabase
+      .from('contracts')
+      .select('number')
+      .eq('id', parentId)
+      .single()
 
-      if (search) {
-        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%`)
-      }
+    if (!parent) return NextResponse.json({ error: 'Родительский документ не найден' }, { status: 404 })
 
-      const { data, error } = await query
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ contracts: data ?? [] })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка'
-      return NextResponse.json({ error: message }, { status: 500 })
+    // Считаем сколько дочерних документов уже есть
+    const { data: children } = await supabase
+      .from('contracts')
+      .select('child_number')
+      .eq('parent_contract_id', parentId)
+      .order('child_number', { ascending: false })
+      .limit(1)
+
+    const nextChildNum = children && children.length > 0 ? (children[0].child_number ?? 0) + 1 : 1
+    const childTypeCode = TYPE_CODES[childType] ?? 'ДОК'
+
+    // Берём номер родителя и меняем код типа
+    // ТХ-ДОГ-2026/06/1 → ТХ-СПЕЦ-2026/06/1-1
+    const parentParts = parent.number.split('-')
+    parentParts[1] = childTypeCode
+    const baseNumber = parentParts.join('-')
+    const number = `${baseNumber}-${nextChildNum}`
+
+    return NextResponse.json({ number })
+  }
+
+  if (!prefix) {
+    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
+  }
+
+  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
+  const fullPrefix = `${prefix}-${typeCode}`
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
+    {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
     }
-  }
+  )
 
-  if (!bitrixUserId || !role) {
-    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
+  const data = await res.json()
+  let maxNum = 0
+  if (data && data.length > 0) {
+    const lastNumber = data[0].number as string
+    const parts = lastNumber.split('/')
+    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
+    if (!isNaN(lastSeq)) maxNum = lastSeq
   }
+  const nextNum = String(maxNum + 1)
+  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
 
-  const userId = parseInt(bitrixUserId)
+  return NextResponse.json({ number })
+}
+
+// Сохранение договора
+export async function POST(request: NextRequest) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
   try {
-    let query = supabase
+    const body = await request.json()
+    const { is_child, parent_contract_id, parent_contract_external, child_number: childNum } = body
+    const userName = body.user_name ?? 'Система'
+
+    // Сохраняем договор
+    const { data: contract, error: contractError } = await supabase
       .from('contracts')
-      .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .insert({
+        number: body.number,
+        title: body.title,
+        counterparty: body.counterparty,
+        counterparty_id: body.counterparty_id ?? null,
+        type: body.type,
+        amount: body.amount ? parseFloat(body.amount) : null,
+        start_date: body.start_date || null,
+        end_date: body.end_date || null,
+        status: 'черновик',
+        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
+        document_category: body.document_category ?? 'contract',
+        is_child: body.is_child ?? false,
+        parent_contract_id: body.parent_contract_id ?? null,
+        parent_contract_external: body.parent_contract_external ?? null,
+        company_prefix: body.company_prefix ?? null,
+        customer_number: body.customer_number ?? null,
+      })
+      .select('id')
+      .single()
 
-    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
-      // Роли ГК видят все договоры
-    } else if (role === 'director' || role === 'legal' || role === 'finance') {
-      // ГД и юристы видят договоры своих компаний
-      if (companiesParam) {
-        const companies = companiesParam.split(',')
-        const prefixFilters = companies.map(c => `number.like.${c}-%`).join(',')
-        query = query.or(prefixFilters)
-      }
-    } else {
-      // Обычный пользователь — только свои договоры
-      // 1. Созданные им
-      // 2. В согласовании которых участвовал
-      const { data: participantSessions } = await supabase
-        .from('approval_participants')
-        .select('approval_sessions!inner(contract_id)')
-        .eq('bitrix_user_id', userId)
-
-      const contractIds = participantSessions?.map(
-        (p: { approval_sessions: { contract_id: string }[] }) =>
-          Array.isArray(p.approval_sessions)
-            ? p.approval_sessions[0]?.contract_id
-            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
-      ).filter(Boolean) as string[] ?? []
-
-      // Добавляем ID договоров где он автор
-      const { data: authorContracts } = await supabase
-        .from('contracts')
-        .select('id')
-        .eq('author_bitrix_id', userId)
-
-      const authorIds = authorContracts?.map(c => c.id) ?? []
-      const allIds = [...new Set([...contractIds, ...authorIds])]
-
-      if (allIds.length === 0) {
-        return NextResponse.json({ contracts: [] })
-      }
-
-      query = query.in('id', allIds)
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
     }
 
-    const { data: contractsRaw, error } = await query
-    
-    // Проверяем наличие файлов для каждого договора
-    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let versionsMap: Record<string, boolean> = {}
-    
-    if (contractIds.length > 0) {
-      const { data: versions } = await supabase
-        .from('versions')
-        .select('contract_id')
-        .in('contract_id', contractIds)
-      
-      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
-        acc[v.contract_id] = true
-        return acc
-      }, {})
-    }
-    
-    // Собираем тип последнего файла по договору
-    const { data: versions2 } = await supabase
-      .from('versions')
-      .select('contract_id, file_name')
-      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
-      .order('version_number', { ascending: false })
+    // Записываем в лог с именем пользователя
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contract.id,
+        action: 'Документ создан',
+        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
+        user_name: userName,
+      })
 
-    const fileTypeMap: Record<string, string> = {}
-    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
-      if (!fileTypeMap[v.contract_id]) {
-        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
-      }
-    })
-
-    // Получаем количество сообщений в чатах согласования
-    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let unreadMap: Record<string, number> = {}
-    let lastMsgTimeMap: Record<string, string> = {}
-
-    if (contractIds2.length > 0) {
-      const { data: sessions } = await supabase
-        .from('approval_sessions')
-        .select('id, contract_id')
-        .in('contract_id', contractIds2)
-        .eq('status', 'active')
-
-      if (sessions && sessions.length > 0) {
-        const sessionIds = sessions.map((s: { id: string }) => s.id)
-        const sessionContractMap: Record<string, string> = {}
-        sessions.forEach((s: { id: string, contract_id: string }) => {
-          sessionContractMap[s.id] = s.contract_id
-        })
-
-        const { data: messages } = await supabase
-          .from('approval_messages')
-          .select('session_id, created_at')
-          .in('session_id', sessionIds)
-          .order('created_at', { ascending: false })
-
-        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
-          const contractId = sessionContractMap[m.session_id]
-          if (contractId) {
-            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
-              lastMsgTimeMap[contractId] = m.created_at
-            }
-          }
-        })
-      }
-    }
-
-    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
-      ...c,
-      has_files: versionsMap[c.id] ?? false,
-      file_type: fileTypeMap[c.id] ?? null,
-      unread_messages: unreadMap[c.id] ?? 0,
-      last_message_at: lastMsgTimeMap[c.id] ?? null,
-    }))
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ contracts: contracts ?? [] })
+    return NextResponse.json({ success: true, id: contract.id })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -5720,6 +5683,189 @@ export async function GET(request: NextRequest) {
     companies: allCompanies,
     all_roles: approvalRoles,
   })
+}
+</file>
+
+<file path="app/api/contracts-list/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  const role = request.nextUrl.searchParams.get('role')
+  const companiesParam = request.nextUrl.searchParams.get('companies')
+  const parentOnly = request.nextUrl.searchParams.get('parent_only')
+  const search = request.nextUrl.searchParams.get('search')
+
+  // Режим поиска родительских документов
+  if (parentOnly === 'true' && bitrixUserId) {
+    try {
+      let query = supabase
+        .from('contracts')
+        .select('id, number, title, counterparty, status')
+        .is('deleted_at', null)
+        .in('status', ['согласован', 'подписан', 'на_исполнении'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (search) {
+        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%`)
+      }
+
+      const { data, error } = await query
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ contracts: data ?? [] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+  }
+
+  if (!bitrixUserId || !role) {
+    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    let query = supabase
+      .from('contracts')
+      .select('*')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
+      // Роли ГК видят все договоры
+    } else if (role === 'director' || role === 'legal' || role === 'finance') {
+      // ГД и юристы видят договоры своих компаний
+      if (companiesParam) {
+        const companies = companiesParam.split(',')
+        // Фильтруем по company_prefix (надёжно) с фоллбэком на номер
+        const prefixFilters = companies.map(c => `company_prefix.eq.${c},number.like.${c}-%`).join(',')
+        query = query.or(prefixFilters)
+      }
+    } else {
+      // Обычный пользователь — только свои договоры
+      // 1. Созданные им
+      // 2. В согласовании которых участвовал
+      const { data: participantSessions } = await supabase
+        .from('approval_participants')
+        .select('approval_sessions!inner(contract_id)')
+        .eq('bitrix_user_id', userId)
+
+      const contractIds = participantSessions?.map(
+        (p: { approval_sessions: { contract_id: string }[] }) =>
+          Array.isArray(p.approval_sessions)
+            ? p.approval_sessions[0]?.contract_id
+            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
+      ).filter(Boolean) as string[] ?? []
+
+      // Добавляем ID договоров где он автор
+      const { data: authorContracts } = await supabase
+        .from('contracts')
+        .select('id')
+        .eq('author_bitrix_id', userId)
+
+      const authorIds = authorContracts?.map(c => c.id) ?? []
+      const allIds = [...new Set([...contractIds, ...authorIds])]
+
+      if (allIds.length === 0) {
+        return NextResponse.json({ contracts: [] })
+      }
+
+      query = query.in('id', allIds)
+    }
+
+    const { data: contractsRaw, error } = await query
+    
+    // Проверяем наличие файлов для каждого договора
+    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let versionsMap: Record<string, boolean> = {}
+    
+    if (contractIds.length > 0) {
+      const { data: versions } = await supabase
+        .from('versions')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+      
+      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
+        acc[v.contract_id] = true
+        return acc
+      }, {})
+    }
+    
+    // Собираем тип последнего файла по договору
+    const { data: versions2 } = await supabase
+      .from('versions')
+      .select('contract_id, file_name')
+      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
+      .order('version_number', { ascending: false })
+
+    const fileTypeMap: Record<string, string> = {}
+    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
+      if (!fileTypeMap[v.contract_id]) {
+        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
+      }
+    })
+
+    // Получаем количество сообщений в чатах согласования
+    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let unreadMap: Record<string, number> = {}
+    let lastMsgTimeMap: Record<string, string> = {}
+
+    if (contractIds2.length > 0) {
+      const { data: sessions } = await supabase
+        .from('approval_sessions')
+        .select('id, contract_id')
+        .in('contract_id', contractIds2)
+        .eq('status', 'active')
+
+      if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s: { id: string }) => s.id)
+        const sessionContractMap: Record<string, string> = {}
+        sessions.forEach((s: { id: string, contract_id: string }) => {
+          sessionContractMap[s.id] = s.contract_id
+        })
+
+        const { data: messages } = await supabase
+          .from('approval_messages')
+          .select('session_id, created_at')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: false })
+
+        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
+          const contractId = sessionContractMap[m.session_id]
+          if (contractId) {
+            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
+              lastMsgTimeMap[contractId] = m.created_at
+            }
+          }
+        })
+      }
+    }
+
+    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
+      ...c,
+      has_files: versionsMap[c.id] ?? false,
+      file_type: fileTypeMap[c.id] ?? null,
+      unread_messages: unreadMap[c.id] ?? 0,
+      last_message_at: lastMsgTimeMap[c.id] ?? null,
+    }))
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ contracts: contracts ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
