@@ -57,8 +57,16 @@ export default function NewContractPage() {
       setEditingNumber(false)
       return
     }
-    // Дочерний документ с привязкой к родителю в системе
-    if (isChild && parentSource === 'system' && parentContractId) {
+    // Дочерний документ с привязкой к родителю в системе —
+    // ждём выбора родителя, без него номер не генерируем
+    if (isChild && parentSource === 'system') {
+      if (!parentContractId) {
+        setAutoNumber('')
+        setManualNumber('')
+        setNumberChanged(false)
+        setEditingNumber(false)
+        return
+      }
       generateChildNumber(parentContractId, form.type)
       return
     }
