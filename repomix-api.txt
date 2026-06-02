@@ -4159,96 +4159,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/contracts/[contractId]/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ contractId: string }> }
-) {
-  try {
-    const { contractId } = await params
-
-    const { data: contract, error } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('id', contractId)
-      .single()
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ contract })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ contractId: string }> }
-) {
-  try {
-    const { contractId } = await params
-    const body = await request.json()
-    const { admin_bitrix_id, reason } = body
-
-    // Проверяем права администратора
-    const { data: admin } = await supabase
-      .from('system_admins')
-      .select('id')
-      .eq('bitrix_user_id', admin_bitrix_id)
-      .single()
-
-    if (!admin) {
-      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
-    }
-
-    // Проверяем что причина указана (обязательно)
-    if (!reason || !reason.trim()) {
-      return NextResponse.json({ error: 'Необходимо указать причину удаления' }, { status: 400 })
-    }
-
-    // Мягкое удаление — помечаем документ как удалённый
-    const { error } = await supabase
-      .from('contracts')
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by_bitrix_id: admin_bitrix_id,
-        deleted_by_name: body.user_name ?? 'Администратор',
-        delete_reason: reason.trim(),
-      })
-      .eq('id', contractId)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contractId,
-        action: 'Документ удалён',
-        details: `Причина: ${reason.trim()}`,
-        user_name: body.user_name ?? 'Администратор',
-      })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/dashboard-finance/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4342,6 +4252,146 @@ export async function GET(request: NextRequest) {
       top_counterparties: topCounterparties,
       company_amounts: companyAmounts,
       total_period_amount: totalPeriodAmount,
+      period_days: days,
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/dashboard-legal/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
+
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
+    // 1. Статистика по статусам
+    let contractsQuery = supabase
+      .from('contracts')
+      .select('status, company_prefix')
+      .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: allContracts } = await contractsQuery
+
+    const statusStats: Record<string, number> = {}
+    const companyStats: Record<string, number> = {}
+    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
+      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
+      if (c.company_prefix) {
+        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // 2. Просроченные согласования
+    let overdueApprovalsQuery = supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, initiated_by_name,
+        contracts!inner ( id, number, title, counterparty, status )
+      `)
+      .eq('status', 'active')
+      .lt('deadline', new Date().toISOString())
+      .order('deadline', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
+
+    // 3. Согласованы но без подписанных экземпляров
+    let unsignedQuery = supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at')
+      .eq('status', 'согласован')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
+
+    // 4. Просроченные пункты чек-листа (без задачи Б24)
+    let overdueChecklistQuery = supabase
+      .from('contract_checklist')
+      .select(`
+        id, title, due_date, contract_id,
+        contracts!inner ( id, number, title )
+      `)
+      .eq('is_done', false)
+      .is('bitrix_task_id', null)
+      .lt('due_date', new Date().toISOString().slice(0, 10))
+      .order('due_date', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
+
+    // 5. Динамика создания документов за период
+    const { data: recentContracts } = await supabase
+      .from('contracts')
+      .select('created_at, company_prefix, status')
+      .gte('created_at', fromDateStr)
+      .order('created_at', { ascending: true })
+
+    // Группируем по неделям
+    const weeklyMap: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
+      const date = new Date(c.created_at)
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
+    })
+
+    // Группируем по компаниям за период
+    const companyPeriodStats: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
+      if (c.company_prefix) {
+        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    return NextResponse.json({
+      status_stats: statusStats,
+      company_stats: companyStats,
+      overdue_approvals: overdueApprovals ?? [],
+      unsigned_contracts: unsignedContracts ?? [],
+      overdue_checklist: overdueChecklist ?? [],
+      weekly_dynamics: weeklyMap,
+      company_period_stats: companyPeriodStats,
+      total_period: recentContracts?.length ?? 0,
       period_days: days,
     })
 
@@ -4880,6 +4930,155 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/contracts/[contractId]/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ contractId: string }> }
+) {
+  try {
+    const { contractId } = await params
+
+    const { data: contract, error } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ contract })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ contractId: string }> }
+) {
+  try {
+    const { contractId } = await params
+    const body = await request.json()
+    const { admin_bitrix_id, reason } = body
+
+    // Проверяем права администратора
+    const { data: admin } = await supabase
+      .from('system_admins')
+      .select('id')
+      .eq('bitrix_user_id', admin_bitrix_id)
+      .single()
+
+    if (!admin) {
+      return NextResponse.json({ error: 'Нет прав администратора' }, { status: 403 })
+    }
+
+    // Проверяем что причина указана (обязательно)
+    if (!reason || !reason.trim()) {
+      return NextResponse.json({ error: 'Необходимо указать причину удаления' }, { status: 400 })
+    }
+
+    // Мягкое удаление — помечаем документ как удалённый
+    const { error } = await supabase
+      .from('contracts')
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_bitrix_id: admin_bitrix_id,
+        deleted_by_name: body.user_name ?? 'Администратор',
+        delete_reason: reason.trim(),
+      })
+      .eq('id', contractId)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contractId,
+        action: 'Документ удалён',
+        details: `Причина: ${reason.trim()}`,
+        user_name: body.user_name ?? 'Администратор',
+      })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ contractId: string }> }
+) {
+  try {
+    const { contractId } = await params
+    const body = await request.json()
+    const { field, value, user_name, old_value } = body
+
+    const ALLOWED_FIELDS = ['title', 'counterparty', 'amount', 'start_date', 'end_date', 'customer_number']
+    if (!ALLOWED_FIELDS.includes(field)) {
+      return NextResponse.json({ error: 'Поле не разрешено для редактирования' }, { status: 400 })
+    }
+
+    const { data: contract } = await supabase
+      .from('contracts')
+      .select('status')
+      .eq('id', contractId)
+      .single()
+
+    const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+    if (contract && LOCKED_STATUSES.includes(contract.status)) {
+      return NextResponse.json({ error: 'Документ заблокирован для редактирования' }, { status: 403 })
+    }
+
+    const updateValue = field === 'amount'
+      ? (value ? parseFloat(value) : null)
+      : (value || null)
+
+    const { error } = await supabase
+      .from('contracts')
+      .update({ [field]: updateValue })
+      .eq('id', contractId)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    const fieldLabels: Record<string, string> = {
+      title: 'Название',
+      counterparty: 'Контрагент',
+      amount: 'Сумма',
+      start_date: 'Дата начала',
+      end_date: 'Дата окончания',
+      customer_number: 'Номер заказчика',
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id: contractId,
+      action: `Изменено поле «${fieldLabels[field] ?? field}»`,
+      details: `Было: ${old_value ?? '—'} → Стало: ${value || '—'}`,
+      user_name: user_name ?? 'Пользователь',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/counterparties/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4983,146 +5182,6 @@ export async function DELETE(request: NextRequest) {
 
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/dashboard-legal/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
-
-    // Вспомогательная функция фильтра по префиксу компании
-    const prefixFilter = (prefix: string) =>
-      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
-
-    // ID договоров нужной компании (используем везде)
-    let companyContractIds: string[] | null = null
-    if (companyPrefix) {
-      const { data: filtered } = await supabase
-        .from('contracts')
-        .select('id')
-        .or(prefixFilter(companyPrefix))
-      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
-    }
-
-    // 1. Статистика по статусам
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('status, company_prefix')
-      .neq('status', 'архив')
-    if (companyPrefix) {
-      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: allContracts } = await contractsQuery
-
-    const statusStats: Record<string, number> = {}
-    const companyStats: Record<string, number> = {}
-    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
-      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
-      if (c.company_prefix) {
-        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    // 2. Просроченные согласования
-    let overdueApprovalsQuery = supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('status', 'active')
-      .lt('deadline', new Date().toISOString())
-      .order('deadline', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueApprovals } = await overdueApprovalsQuery
-
-    // 3. Согласованы но без подписанных экземпляров
-    let unsignedQuery = supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at')
-      .eq('status', 'согласован')
-      .order('created_at', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      unsignedQuery = unsignedQuery.in('id', companyContractIds)
-    }
-    const { data: unsignedContracts } = await unsignedQuery
-
-    // 4. Просроченные пункты чек-листа (без задачи Б24)
-    let overdueChecklistQuery = supabase
-      .from('contract_checklist')
-      .select(`
-        id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
-      `)
-      .eq('is_done', false)
-      .is('bitrix_task_id', null)
-      .lt('due_date', new Date().toISOString().slice(0, 10))
-      .order('due_date', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueChecklist } = await overdueChecklistQuery
-
-    // 5. Динамика создания документов за период
-    const { data: recentContracts } = await supabase
-      .from('contracts')
-      .select('created_at, company_prefix, status')
-      .gte('created_at', fromDateStr)
-      .order('created_at', { ascending: true })
-
-    // Группируем по неделям
-    const weeklyMap: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
-      const date = new Date(c.created_at)
-      const weekStart = new Date(date)
-      weekStart.setDate(date.getDate() - date.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
-    })
-
-    // Группируем по компаниям за период
-    const companyPeriodStats: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
-      if (c.company_prefix) {
-        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    return NextResponse.json({
-      status_stats: statusStats,
-      company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
-      weekly_dynamics: weeklyMap,
-      company_period_stats: companyPeriodStats,
-      total_period: recentContracts?.length ?? 0,
-      period_days: days,
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 </file>

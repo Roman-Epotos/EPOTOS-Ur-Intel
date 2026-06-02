@@ -990,11 +990,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                             className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                             👁️ Просмотр
                           </a>
-                          <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700">
-                            ✏️ Редактировать
-                          </a>
+                          {!isLocked && (
+                            <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700">
+                              ✏️ Редактировать
+                            </a>
+                          )}
                         </>
                       )}
                       {(parseInt(user?.id ?? '0') === contract.author_bitrix_id || [30, 1148].includes(parseInt(user?.id ?? '0'))) && (
@@ -1111,11 +1113,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                 className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
                                 👁️ Просмотр
                               </a>
-                              <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
-                                target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
-                                ✏️ Редактировать
-                              </a>
+                              {!isLocked && (
+                                <a href={`https://epotos-ur-intel.vercel.app/editor?attachment_id=${att.id}&mode=edit&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="text-xs text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">
+                                  ✏️ Редактировать
+                                </a>
+                              )}
                             </>
                           )}
                           <a href={att.file_url} target="_blank" rel="noopener noreferrer"
