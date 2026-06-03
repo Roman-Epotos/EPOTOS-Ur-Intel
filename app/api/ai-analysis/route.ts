@@ -252,6 +252,7 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
           'X-Title': 'Epotos-YurIntel',
+          'X-Anthropic-Beta': 'pdfs-2024-09-25',
         },
         body: JSON.stringify({
           model: 'anthropic/claude-sonnet-4-5',
@@ -283,7 +284,12 @@ export async function POST(request: NextRequest) {
       const rawContent = aiData.choices?.[0]?.message?.content ?? ''
       console.log('Claude PDF rawContent:', typeof rawContent, String(rawContent).slice(0, 500))
       try {
-        const clean = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        const clean = rawContent
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*/g, '')
+          .replace(/'''\s*json\s*/gi, '')
+          .replace(/'''\s*/g, '')
+          .trim()
         const jsonMatch = clean.match(/\{[\s\S]*\}/)
         result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
       } catch {
