@@ -6162,8 +6162,8 @@ export async function POST(request: NextRequest) {
     }
 
     let result: object
-    if (textOrUrl.startsWith('__PDF_BASE64__')) {
-      // PDF — отправляем напрямую в Claude как document
+    if (false && textOrUrl.startsWith('__PDF_BASE64__')) {
+      // PDF через Claude — временно отключено
       const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
       console.log('PDF base64 size:', pdfBase64.length, 'analysis_type:', analysis_type)
       const systemPrompts: Record<string, string> = {
@@ -6178,6 +6178,7 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
           'X-Title': 'Epotos-YurIntel',
+          'X-Anthropic-Beta': 'pdfs-2024-09-25',
         },
         body: JSON.stringify({
           model: 'anthropic/claude-sonnet-4-5',
@@ -6205,10 +6206,16 @@ export async function POST(request: NextRequest) {
         })
       })
       const aiData = await aiRes.json()
-      console.log('Claude PDF response status:', aiRes.status, 'data:', JSON.stringify(aiData).slice(0, 300))
+      console.log('Claude PDF response status:', aiRes.status)
       const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+      console.log('Claude PDF rawContent:', typeof rawContent, String(rawContent).slice(0, 500))
       try {
-        const clean = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        const clean = rawContent
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*/g, '')
+          .replace(/'''\s*json\s*/gi, '')
+          .replace(/'''\s*/g, '')
+          .trim()
         const jsonMatch = clean.match(/\{[\s\S]*\}/)
         result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
       } catch {

@@ -207,10 +207,9 @@ export async function POST(request: NextRequest) {
     let textOrUrl: string
 
     if (fileName.endsWith('.pdf')) {
-      console.log('PDF mode - sending as base64 to Claude')
-      const pdfResponse = await fetch(file_url)
-      const pdfBuffer = await pdfResponse.arrayBuffer()
-      textOrUrl = `__PDF_BASE64__${Buffer.from(pdfBuffer).toString('base64')}`
+      console.log('PDF mode - extracting text with unpdf')
+      textOrUrl = await extractTextFromPdf(file_url)
+      console.log('PDF text length:', textOrUrl.length)
     } else if (fileName.endsWith('.doc')) {
       return NextResponse.json({
         error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
@@ -236,8 +235,8 @@ export async function POST(request: NextRequest) {
     }
 
     let result: object
-    if (textOrUrl.startsWith('__PDF_BASE64__')) {
-      // PDF — отправляем напрямую в Claude как document
+    if (false && textOrUrl.startsWith('__PDF_BASE64__')) {
+      // PDF через Claude — временно отключено
       const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
       console.log('PDF base64 size:', pdfBase64.length, 'analysis_type:', analysis_type)
       const systemPrompts: Record<string, string> = {
