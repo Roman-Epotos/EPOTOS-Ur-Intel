@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
     if (textOrUrl.startsWith('__PDF_BASE64__')) {
       // PDF — отправляем напрямую в Claude как document
       const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
+      console.log('PDF base64 size:', pdfBase64.length, 'analysis_type:', analysis_type)
       const systemPrompts: Record<string, string> = {
         legal_review: 'Ты юридический эксперт ГК ЭПОТОС. Проведи юридический анализ документа. ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К — компании группы, их присутствие не является риском. Верни ТОЛЬКО валидный JSON без markdown: {"red_flags":[{"severity":"high|medium|low","title":"название","description":"описание","recommendation":"рекомендация"}],"warnings":[{"title":"название","description":"описание"}],"positives":[{"title":"название","description":"описание"}],"overall_risk":"high|medium|low","summary":"краткий вывод"}',
         passport: 'Ты юридический эксперт ГК ЭПОТОС. Составь паспорт документа. Верни ТОЛЬКО валидный JSON без markdown: {"essence":"суть документа","parties":{"our_obligations":["обязательство"],"counterparty_obligations":["обязательство"]},"key_terms":{"amount":"сумма","payment_terms":"условия оплаты","start_date":"дата начала","end_date":"дата окончания","auto_renewal":"пролонгация"},"termination":"условия расторжения","control_points":["точка контроля"],"attention_zones":["зона внимания"]}',
@@ -269,6 +270,7 @@ export async function POST(request: NextRequest) {
         })
       })
       const aiData = await aiRes.json()
+      console.log('Claude PDF response status:', aiRes.status, 'data:', JSON.stringify(aiData).slice(0, 300))
       const rawContent = aiData.choices?.[0]?.message?.content ?? ''
       try {
         const clean = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
