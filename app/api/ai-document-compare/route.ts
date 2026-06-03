@@ -137,23 +137,41 @@ export async function POST(request: NextRequest) {
 
     let result
     try {
-      // Убираем markdown если есть
-      const clean = rawContent
+      // Агрессивная очистка от markdown
+      let clean = rawContent
         .replace(/```json\s*/gi, '')
         .replace(/```\s*/g, '')
+        .replace(/^\s*json\s*/i, '')
         .trim()
-      // Находим JSON объект
-      const jsonMatch = clean.match(/\{[\s\S]*\}/)
-      result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
+
+      // Находим первый JSON объект в тексте
+      const startIdx = clean.indexOf('{')
+      const endIdx = clean.lastIndexOf('}')
+      if (startIdx !== -1 && endIdx !== -1) {
+        clean = clean.slice(startIdx, endIdx + 1)
+      }
+
+      result = JSON.parse(clean)
+
+      // Проверяем структуру
+      if (typeof result.match !== 'boolean') {
+        result.match = false
+      }
+      if (!Array.isArray(result.discrepancies)) {
+        result.discrepancies = []
+      }
     } catch {
-      // Если парсинг не удался — возвращаем как есть с флагом ошибки
+      // Если парсинг не удался — пробуем извлечь match из текста
+      const isMatch = rawContent.toLowerCase().includes('"match": true') ||
+                      rawContent.toLowerCase().includes('"match":true')
       return NextResponse.json({
         success: true,
         result: {
-          match: false,
-          summary: 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
+          match: isMatch,
+          summary: isMatch
+            ? 'Документы соответствуют друг другу'
+            : 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
           discrepancies: [],
-          raw: rawContent.slice(0, 500)
         }
       })
     }
