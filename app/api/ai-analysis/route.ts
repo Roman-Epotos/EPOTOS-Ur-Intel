@@ -152,7 +152,7 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4-5',
+        model: prompt.startsWith('__PDF_BASE64__') ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash',
         messages: [{
           role: 'user',
           content: prompt.startsWith('__PDF_BASE64__')
@@ -162,12 +162,14 @@ Return ONLY valid JSON without markdown:
                   source: {
                     type: 'base64',
                     media_type: 'application/pdf',
-                    data: prompt.replace('__PDF_BASE64__', '').split('\n\n')[0]
+                    data: prompt.replace('__PDF_BASE64__', '')
                   }
                 },
                 {
                   type: 'text',
-                  text: prompt.replace('__PDF_BASE64__', '').split('\n\n').slice(1).join('\n\n')
+                  text: analysisType === 'legal_review'
+                    ? 'Проведи юридический анализ этого договора. Определи риски, проблемные условия, рекомендации. Верни JSON с полями: overall_risk (низкий/средний/высокий), risks (массив), recommendations (массив).'
+                    : 'Составь паспорт этого договора. Извлеки ключевые условия: стороны, предмет, суммы, сроки, права и обязанности. Верни JSON с полями: parties, subject, amount, terms, key_conditions.'
                 }
               ]
             : prompt
@@ -225,11 +227,10 @@ export async function POST(request: NextRequest) {
     let textOrUrl: string
 
     if (fileName.endsWith('.pdf')) {
-      console.log('PDF mode - sending as base64 to Gemini')
+      console.log('PDF mode - sending as base64 to Claude')
       const pdfResponse = await fetch(file_url)
       const pdfBuffer = await pdfResponse.arrayBuffer()
-      const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
-      textOrUrl = `__PDF_BASE64__${pdfBase64}`
+      textOrUrl = `__PDF_BASE64__${Buffer.from(pdfBuffer).toString('base64')}`
     } else if (fileName.endsWith('.doc')) {
       return NextResponse.json({
         error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
