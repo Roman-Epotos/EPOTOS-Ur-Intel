@@ -153,7 +153,7 @@ Return ONLY valid JSON without markdown:
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt.replace(/[^\x00-\x7F]/g, (c) => encodeURIComponent(c)) }],
+        messages: [{ role: 'user', content: prompt }],
         max_tokens: 4000,
         temperature: 0.2,
       }),
