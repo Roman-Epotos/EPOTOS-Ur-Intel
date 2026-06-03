@@ -152,8 +152,26 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
+        model: 'anthropic/claude-sonnet-4-5',
+        messages: [{
+          role: 'user',
+          content: prompt.startsWith('__PDF_BASE64__')
+            ? [
+                {
+                  type: 'document',
+                  source: {
+                    type: 'base64',
+                    media_type: 'application/pdf',
+                    data: prompt.replace('__PDF_BASE64__', '').split('\n\n')[0]
+                  }
+                },
+                {
+                  type: 'text',
+                  text: prompt.replace('__PDF_BASE64__', '').split('\n\n').slice(1).join('\n\n')
+                }
+              ]
+            : prompt
+        }],
         max_tokens: 4000,
         temperature: 0.2,
       }),
@@ -207,9 +225,11 @@ export async function POST(request: NextRequest) {
     let textOrUrl: string
 
     if (fileName.endsWith('.pdf')) {
-      console.log('PDF mode - extracting text with unpdf')
-      textOrUrl = await extractTextFromPdf(file_url)
-      console.log('PDF text length:', textOrUrl.length)
+      console.log('PDF mode - sending as base64 to Gemini')
+      const pdfResponse = await fetch(file_url)
+      const pdfBuffer = await pdfResponse.arrayBuffer()
+      const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
+      textOrUrl = `__PDF_BASE64__${pdfBase64}`
     } else if (fileName.endsWith('.doc')) {
       return NextResponse.json({
         error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
@@ -226,7 +246,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Неподдерживаемый формат файла' }, { status: 400 })
     }
 
-    if (!textOrUrl || textOrUrl.length < 50) {
+    if (!textOrUrl || (textOrUrl.length < 50 && !textOrUrl.startsWith('__PDF_BASE64__'))) {
       await supabase
         .from('ai_analysis')
         .update({ status: 'error', result_json: { error: 'Не удалось извлечь текст из документа' } })
