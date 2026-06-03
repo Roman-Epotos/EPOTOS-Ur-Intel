@@ -72,13 +72,12 @@ export async function POST(request: NextRequest) {
       ? [
           {
             type: 'text',
-            text: `Сравни два документа:\n1. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n${compareText.slice(0, 15000)}\n\n2. ПОДПИСАННЫЙ ДОКУМЕНТ (PDF прикреплён)`
+            text: `Сравни два документа по содержанию. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n\n${compareText.slice(0, 15000)}\n\nПОДПИСАННЫЙ ДОКУМЕНТ — смотри прикреплённый PDF файл. Верни ТОЛЬКО JSON без markdown блоков.`
           },
           {
-            type: 'file',
-            file: {
-              filename: signed_file_name,
-              file_data: `data:application/pdf;base64,${pdfBase64}`
+            type: 'image_url',
+            image_url: {
+              url: `data:application/pdf;base64,${pdfBase64}`
             }
           }
         ]
@@ -127,11 +126,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
     }
 
-    // Временное логирование для отладки
-    console.log('=== AI RAW RESPONSE ===', rawContent.slice(0, 1000))
-    console.log('=== SIGNED TEXT LENGTH ===', signedText.length)
-    console.log('=== COMPARE TEXT LENGTH ===', compareText.length)
-    console.log('=== SIGNED TEXT PREVIEW ===', signedText.slice(0, 300))
+    // убрано логирование
 
     let result
     try {
