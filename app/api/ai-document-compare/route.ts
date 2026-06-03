@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         ]
       : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
 
-    // AI сравнение
+    // AI сравнение — используем Claude через OpenRouter (лучше следует JSON формату)
     const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'anthropic/claude-sonnet-4-5',
         messages: [
           {
             role: 'system',
