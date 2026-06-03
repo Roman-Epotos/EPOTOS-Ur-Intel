@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
 
     const contentType = fileName.endsWith('.xlsx')
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : fileName.endsWith('.pdf')
+      ? 'application/pdf'
       : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
     return new NextResponse(arrayBuffer, {

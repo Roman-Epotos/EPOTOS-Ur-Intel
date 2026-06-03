@@ -151,7 +151,7 @@ ${templateInstruction}
         'X-Title': 'EpotosYurIntel',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.5-flash',
         route: 'fallback',
         models: ['google/gemini-2.5-flash', 'anthropic/claude-haiku-4-5', 'qwen/qwen3-235b-a22b'],
         messages: [

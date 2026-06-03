@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         attachment_id: attachment_id ?? null,
         type: analysis_type,
         status: 'processing',
-        model_used: 'google/google/gemini-2.5-flash',
+        model_used: 'google/gemini-2.5-flash',
       })
       .select('id')
       .single()

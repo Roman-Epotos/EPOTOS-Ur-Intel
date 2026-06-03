@@ -2093,6 +2093,154 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/dashboard/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+    if (!bitrixUserId) return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+    const userId = parseInt(bitrixUserId)
+
+    // 1. Документы требующие моего согласования
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
+      .select(`
+        id, role, status, stage,
+        approval_sessions!inner (
+          id, deadline, initiated_by_name,
+          contracts!inner (
+            id, number, title, counterparty, status, amount
+          )
+        )
+      `)
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+      .eq('role', 'required')
+
+    // 2. Пункты чек-листа с дедлайном в ближайшие 3 дня
+    const today = new Date()
+    const in3days = new Date()
+    in3days.setDate(today.getDate() + 3)
+    const { data: deadlineItems } = await supabase
+      .from('contract_checklist')
+      .select(`
+        id, title, due_date, contract_id,
+        contracts!inner ( id, number, title )
+      `)
+      .eq('is_done', false)
+      .is('bitrix_task_id', null)
+      .gte('due_date', today.toISOString().slice(0, 10))
+      .lte('due_date', in3days.toISOString().slice(0, 10))
+      .order('due_date', { ascending: true })
+      .limit(10)
+
+    // 3. Мои черновики
+    const { data: myDrafts } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at, type')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'черновик')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    // 4. Мои активные согласования (где я инициатор)
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, created_at,
+        contracts!inner ( id, number, title, counterparty, status )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    // 5. Контрагенты с высоким риском у которых есть активные документы
+    const { data: highRiskCounterparties } = await supabase
+      .from('counterparties')
+      .select('id, full_name, short_name, inn, risk_level, status')
+      .eq('risk_level', 'высокий')
+      .eq('status', 'активный')
+      .limit(5)
+
+    // 6. Статистика документов
+    const { count: totalDocs } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+
+    const { count: onApproval } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'на_согласовании')
+
+    const { count: onExecution } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'на_исполнении')
+
+    const { count: totalCounterparties } = await supabase
+      .from('counterparties')
+      .select('*', { count: 'exact', head: true })
+
+    // Проверяем доступ к дашбордам напрямую из БД
+    const { data: sysRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+
+    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+    const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
+
+    const { data: legalSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .eq('stage', 'legal').eq('is_active', true).limit(1)
+
+    const { data: financeSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting']).eq('is_active', true).limit(1)
+
+    const { data: directorSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .eq('stage', 'director').eq('is_active', true).limit(1)
+
+    const legalAccess = isGC || (legalSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
+    const financeAccess = isGC || (financeSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
+
+    return NextResponse.json({
+      my_approvals: myApprovals ?? [],
+      deadline_items: deadlineItems ?? [],
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+      high_risk_counterparties: highRiskCounterparties ?? [],
+      has_dashboard_access: legalAccess || financeAccess,
+      legal_dashboard_access: legalAccess,
+      finance_dashboard_access: financeAccess,
+      stats: {
+        total_docs: totalDocs ?? 0,
+        on_approval: onApproval ?? 0,
+        on_execution: onExecution ?? 0,
+        total_counterparties: totalCounterparties ?? 0,
+      }
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/my-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2524,6 +2672,101 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/system-roles/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DEVELOPER_ID = 30
+const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
+
+// GET — список ролей ГК
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('system_roles')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ roles: data ?? [] })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — назначить роль
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { bitrix_user_id, user_name, role, admin_bitrix_id } = body
+
+    if (!bitrix_user_id || !user_name || !role) {
+      return NextResponse.json({ error: 'Заполните все поля' }, { status: 400 })
+    }
+
+    if (!ALLOWED_ROLES.includes(role)) {
+      return NextResponse.json({ error: 'Недопустимая роль' }, { status: 400 })
+    }
+
+    // Только разработчик может назначать admin
+    if (role === 'admin' && admin_bitrix_id !== DEVELOPER_ID) {
+      return NextResponse.json({ error: 'Только разработчик может назначать администраторов' }, { status: 403 })
+    }
+
+    // Проверяем права: разработчик или admin
+    const isDeveloper = admin_bitrix_id === DEVELOPER_ID
+    if (!isDeveloper) {
+      const { data: adminRole } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('bitrix_user_id', admin_bitrix_id)
+        .single()
+      if (!adminRole || adminRole.role !== 'admin') {
+        return NextResponse.json({ error: 'Нет прав для назначения ролей' }, { status: 403 })
+      }
+    }
+
+    // Upsert — обновляем если уже есть
+    const { error } = await supabase
+      .from('system_roles')
+      .upsert({ bitrix_user_id, user_name, role, created_by: admin_bitrix_id },
+        { onConflict: 'bitrix_user_id' })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить роль
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, admin_bitrix_id } = body
+
+    // Только разработчик может удалять роли
+    if (admin_bitrix_id !== DEVELOPER_ID) {
+      return NextResponse.json({ error: 'Только разработчик может удалять роли' }, { status: 403 })
+    }
+
+    const { error } = await supabase
+      .from('system_roles')
+      .delete()
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/templates/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2701,6 +2944,147 @@ export async function PATCH(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+</file>
+
+<file path="app/api/user-role/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DEVELOPER_ID = 30
+const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
+
+const GC_ROLE_PRIORITY: Record<string, number> = {
+  developer:  1,
+  admin:      2,
+  gc_manager: 3,
+  finance_gc: 4,
+  legal_gc:   5,
+}
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+  }
+  const userId = parseInt(bitrixUserId)
+
+  // 1. Проверяем роль ГК (наивысшая из найденных)
+  let gcRole: string | null = null
+
+  if (userId === DEVELOPER_ID) {
+    gcRole = 'developer'
+  } else {
+    const { data: systemRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+    if (systemRole) gcRole = systemRole.role
+  }
+
+  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
+  if (gcRole) {
+    // Но всё равно собираем роли из согласующих для all_roles
+    const approvalRoles: string[] = []
+
+    const { data: dirSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'director')
+      .eq('is_active', true)
+      .limit(1)
+    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
+
+    const { data: legalSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .eq('stage', 'legal')
+      .eq('is_active', true)
+      .limit(1)
+    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
+
+    const { data: finSettings } = await supabase
+      .from('approval_settings')
+      .select('id')
+      .eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting'])
+      .eq('is_active', true)
+      .limit(1)
+    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
+
+    return NextResponse.json({
+      role: gcRole,
+      companies: ALL_COMPANIES,
+      all_roles: [gcRole, ...approvalRoles],
+    })
+  }
+
+  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
+  const approvalRoles: string[] = []
+  const companiesMap: Record<string, string[]> = {}
+
+  // Директор
+  const { data: dirSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'director')
+    .eq('is_active', true)
+
+  if (dirSettings && dirSettings.length > 0) {
+    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
+  }
+
+  // Юрист
+  const { data: legalSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .eq('stage', 'legal')
+    .eq('is_active', true)
+
+  if (legalSettings && legalSettings.length > 0) {
+    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
+    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
+  }
+
+  // Финансист
+  const { data: finSettings } = await supabase
+    .from('approval_settings')
+    .select('company_prefix')
+    .eq('bitrix_user_id', userId)
+    .in('stage', ['finance', 'accounting'])
+    .eq('is_active', true)
+
+  if (finSettings && finSettings.length > 0) {
+    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
+    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
+  }
+
+  if (approvalRoles.length === 0) {
+    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
+  }
+
+  // Объединяем все компании из всех ролей согласующих
+  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
+
+  // Основная роль — первая в списке приоритетов: director > legal > finance
+  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
+
+  return NextResponse.json({
+    role: primaryRole,
+    companies: allCompanies,
+    all_roles: approvalRoles,
+  })
 }
 </file>
 
@@ -4039,154 +4423,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/dashboard/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-    if (!bitrixUserId) return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-    const userId = parseInt(bitrixUserId)
-
-    // 1. Документы требующие моего согласования
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
-      .select(`
-        id, role, status, stage,
-        approval_sessions!inner (
-          id, deadline, initiated_by_name,
-          contracts!inner (
-            id, number, title, counterparty, status, amount
-          )
-        )
-      `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-      .eq('role', 'required')
-
-    // 2. Пункты чек-листа с дедлайном в ближайшие 3 дня
-    const today = new Date()
-    const in3days = new Date()
-    in3days.setDate(today.getDate() + 3)
-    const { data: deadlineItems } = await supabase
-      .from('contract_checklist')
-      .select(`
-        id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
-      `)
-      .eq('is_done', false)
-      .is('bitrix_task_id', null)
-      .gte('due_date', today.toISOString().slice(0, 10))
-      .lte('due_date', in3days.toISOString().slice(0, 10))
-      .order('due_date', { ascending: true })
-      .limit(10)
-
-    // 3. Мои черновики
-    const { data: myDrafts } = await supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at, type')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'черновик')
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    // 4. Мои активные согласования (где я инициатор)
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, created_at,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    // 5. Контрагенты с высоким риском у которых есть активные документы
-    const { data: highRiskCounterparties } = await supabase
-      .from('counterparties')
-      .select('id, full_name, short_name, inn, risk_level, status')
-      .eq('risk_level', 'высокий')
-      .eq('status', 'активный')
-      .limit(5)
-
-    // 6. Статистика документов
-    const { count: totalDocs } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-
-    const { count: onApproval } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'на_согласовании')
-
-    const { count: onExecution } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'на_исполнении')
-
-    const { count: totalCounterparties } = await supabase
-      .from('counterparties')
-      .select('*', { count: 'exact', head: true })
-
-    // Проверяем доступ к дашбордам напрямую из БД
-    const { data: sysRole } = await supabase
-      .from('system_roles')
-      .select('role')
-      .eq('bitrix_user_id', userId)
-      .single()
-
-    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
-    const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
-
-    const { data: legalSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .eq('stage', 'legal').eq('is_active', true).limit(1)
-
-    const { data: financeSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting']).eq('is_active', true).limit(1)
-
-    const { data: directorSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .eq('stage', 'director').eq('is_active', true).limit(1)
-
-    const legalAccess = isGC || (legalSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
-    const financeAccess = isGC || (financeSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
-
-    return NextResponse.json({
-      my_approvals: myApprovals ?? [],
-      deadline_items: deadlineItems ?? [],
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-      high_risk_counterparties: highRiskCounterparties ?? [],
-      has_dashboard_access: legalAccess || financeAccess,
-      legal_dashboard_access: legalAccess,
-      finance_dashboard_access: financeAccess,
-      stats: {
-        total_docs: totalDocs ?? 0,
-        on_approval: onApproval ?? 0,
-        on_execution: onExecution ?? 0,
-        total_counterparties: totalCounterparties ?? 0,
-      }
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/related-contracts/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4773,242 +5009,6 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/system-roles/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const DEVELOPER_ID = 30
-const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
-
-// GET — список ролей ГК
-export async function GET() {
-  try {
-    const { data, error } = await supabase
-      .from('system_roles')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ roles: data ?? [] })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// POST — назначить роль
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { bitrix_user_id, user_name, role, admin_bitrix_id } = body
-
-    if (!bitrix_user_id || !user_name || !role) {
-      return NextResponse.json({ error: 'Заполните все поля' }, { status: 400 })
-    }
-
-    if (!ALLOWED_ROLES.includes(role)) {
-      return NextResponse.json({ error: 'Недопустимая роль' }, { status: 400 })
-    }
-
-    // Только разработчик может назначать admin
-    if (role === 'admin' && admin_bitrix_id !== DEVELOPER_ID) {
-      return NextResponse.json({ error: 'Только разработчик может назначать администраторов' }, { status: 403 })
-    }
-
-    // Проверяем права: разработчик или admin
-    const isDeveloper = admin_bitrix_id === DEVELOPER_ID
-    if (!isDeveloper) {
-      const { data: adminRole } = await supabase
-        .from('system_roles')
-        .select('role')
-        .eq('bitrix_user_id', admin_bitrix_id)
-        .single()
-      if (!adminRole || adminRole.role !== 'admin') {
-        return NextResponse.json({ error: 'Нет прав для назначения ролей' }, { status: 403 })
-      }
-    }
-
-    // Upsert — обновляем если уже есть
-    const { error } = await supabase
-      .from('system_roles')
-      .upsert({ bitrix_user_id, user_name, role, created_by: admin_bitrix_id },
-        { onConflict: 'bitrix_user_id' })
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// DELETE — удалить роль
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, admin_bitrix_id } = body
-
-    // Только разработчик может удалять роли
-    if (admin_bitrix_id !== DEVELOPER_ID) {
-      return NextResponse.json({ error: 'Только разработчик может удалять роли' }, { status: 403 })
-    }
-
-    const { error } = await supabase
-      .from('system_roles')
-      .delete()
-      .eq('id', id)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/user-role/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const DEVELOPER_ID = 30
-const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
-
-const GC_ROLE_PRIORITY: Record<string, number> = {
-  developer:  1,
-  admin:      2,
-  gc_manager: 3,
-  finance_gc: 4,
-  legal_gc:   5,
-}
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-  }
-  const userId = parseInt(bitrixUserId)
-
-  // 1. Проверяем роль ГК (наивысшая из найденных)
-  let gcRole: string | null = null
-
-  if (userId === DEVELOPER_ID) {
-    gcRole = 'developer'
-  } else {
-    const { data: systemRole } = await supabase
-      .from('system_roles')
-      .select('role')
-      .eq('bitrix_user_id', userId)
-      .single()
-    if (systemRole) gcRole = systemRole.role
-  }
-
-  // Если есть роль ГК — возвращаем сразу (все компании + все роли согласующих не важны)
-  if (gcRole) {
-    // Но всё равно собираем роли из согласующих для all_roles
-    const approvalRoles: string[] = []
-
-    const { data: dirSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'director')
-      .eq('is_active', true)
-      .limit(1)
-    if (dirSettings && dirSettings.length > 0) approvalRoles.push('director')
-
-    const { data: legalSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .eq('stage', 'legal')
-      .eq('is_active', true)
-      .limit(1)
-    if (legalSettings && legalSettings.length > 0) approvalRoles.push('legal')
-
-    const { data: finSettings } = await supabase
-      .from('approval_settings')
-      .select('id')
-      .eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting'])
-      .eq('is_active', true)
-      .limit(1)
-    if (finSettings && finSettings.length > 0) approvalRoles.push('finance')
-
-    return NextResponse.json({
-      role: gcRole,
-      companies: ALL_COMPANIES,
-      all_roles: [gcRole, ...approvalRoles],
-    })
-  }
-
-  // 2. Нет роли ГК — проверяем роли из согласующих (все одноранговые)
-  const approvalRoles: string[] = []
-  const companiesMap: Record<string, string[]> = {}
-
-  // Директор
-  const { data: dirSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'director')
-    .eq('is_active', true)
-
-  if (dirSettings && dirSettings.length > 0) {
-    const companies = dirSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('director'); companiesMap['director'] = companies }
-  }
-
-  // Юрист
-  const { data: legalSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .eq('stage', 'legal')
-    .eq('is_active', true)
-
-  if (legalSettings && legalSettings.length > 0) {
-    const companies = legalSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[]
-    if (companies.length > 0) { approvalRoles.push('legal'); companiesMap['legal'] = companies }
-  }
-
-  // Финансист
-  const { data: finSettings } = await supabase
-    .from('approval_settings')
-    .select('company_prefix')
-    .eq('bitrix_user_id', userId)
-    .in('stage', ['finance', 'accounting'])
-    .eq('is_active', true)
-
-  if (finSettings && finSettings.length > 0) {
-    const companies = [...new Set(finSettings.map((s: { company_prefix: string | null }) => s.company_prefix).filter(Boolean) as string[])]
-    if (companies.length > 0) { approvalRoles.push('finance'); companiesMap['finance'] = companies }
-  }
-
-  if (approvalRoles.length === 0) {
-    return NextResponse.json({ role: 'user', companies: [], all_roles: ['user'] })
-  }
-
-  // Объединяем все компании из всех ролей согласующих
-  const allCompanies = [...new Set(Object.values(companiesMap).flat())]
-
-  // Основная роль — первая в списке приоритетов: director > legal > finance
-  const primaryRole = ['director', 'legal', 'finance'].find(r => approvalRoles.includes(r)) ?? approvalRoles[0]
-
-  return NextResponse.json({
-    role: primaryRole,
-    companies: allCompanies,
-    all_roles: approvalRoles,
-  })
-}
-</file>
-
 <file path="app/api/ai-analysis/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5205,7 +5205,7 @@ export async function POST(request: NextRequest) {
         attachment_id: attachment_id ?? null,
         type: analysis_type,
         status: 'processing',
-        model_used: 'google/google/gemini-2.5-flash',
+        model_used: 'google/gemini-2.5-flash',
       })
       .select('id')
       .single()
@@ -5826,173 +5826,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/ai-document-compare/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!
-
-// Извлекаем текст из файла по URL
-async function extractText(fileUrl: string, fileName: string): Promise<string> {
-  const response = await fetch(fileUrl)
-  const buffer = await response.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-
-  if (fileName.toLowerCase().endsWith('.pdf')) {
-    // Возвращаем base64 для прямой передачи в Gemini
-    return `__PDF_BASE64__${Buffer.from(bytes).toString('base64')}`
-  }
-
-  if (fileName.toLowerCase().endsWith('.docx')) {
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(bytes)
-    const xml = await zip.file('word/document.xml')?.async('text') ?? ''
-    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-  }
-
-  return ''
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { contract_id, signed_file_url, signed_file_name, compare_file_id, compare_file_type } = body
-
-    // Получаем URL файла для сравнения
-    let compareFileUrl = ''
-    let compareFileName = ''
-
-    if (compare_file_type === 'version') {
-      const { data } = await supabase.from('versions').select('file_url, file_name').eq('id', compare_file_id).single()
-      compareFileUrl = data?.file_url ?? ''
-      compareFileName = data?.file_name ?? ''
-    } else if (compare_file_type === 'attachment') {
-      const { data } = await supabase.from('document_attachments').select('file_url, file_name').eq('id', compare_file_id).single()
-      compareFileUrl = data?.file_url ?? ''
-      compareFileName = data?.file_name ?? ''
-    }
-
-    if (!compareFileUrl) {
-      return NextResponse.json({ error: 'Файл для сравнения не найден' }, { status: 404 })
-    }
-
-    // Извлекаем текст из обоих документов параллельно
-    const [signedText, compareText] = await Promise.all([
-      extractText(signed_file_url, signed_file_name),
-      extractText(compareFileUrl, compareFileName),
-    ])
-
-    if (!signedText || !compareText) {
-      return NextResponse.json({
-        error: `Не удалось извлечь текст. Подписанный: ${signedText.length} симв., Согласованный: ${compareText.length} симв.`
-      }, { status: 400 })
-    }
-
-    // Формируем контент для AI
-    const isPdfBase64 = signedText.startsWith('__PDF_BASE64__')
-    const pdfBase64 = isPdfBase64 ? signedText.replace('__PDF_BASE64__', '') : null
-
-    const userContent = isPdfBase64
-      ? [
-          {
-            type: 'text',
-            text: `Сравни два документа:\n1. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n${compareText.slice(0, 15000)}\n\n2. ПОДПИСАННЫЙ ДОКУМЕНТ (PDF прикреплён)`
-          },
-          {
-            type: 'file',
-            file: {
-              filename: signed_file_name,
-              file_data: `data:application/pdf;base64,${pdfBase64}`
-            }
-          }
-        ]
-      : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
-
-    // AI сравнение
-    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'Epotos-YurIntel',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `Ты юридический эксперт. Сравни два документа: согласованный (DOCX) и подписанный (PDF).
-
-ВАЖНЫЕ ПРАВИЛА:
-1. ИГНОРИРУЙ полностью: подписи, печати, штампы ЭДО, QR-коды, отметки об электронном подписании, колонтитулы с датами подписания, технические метаданные PDF, строки вида "_________________ Поставщик __________________"
-2. Сравнивай ТОЛЬКО смысловое содержание: условия договора, права и обязанности сторон, суммы, сроки, реквизиты
-3. Незначительные различия в форматировании, переносах строк, пробелах — НЕ расхождения
-4. Если документы идентичны по содержанию — match: true, discrepancies: []
-5. Если найдены реальные расхождения — ОБЯЗАТЕЛЬНО заполняй поля agreed_text и signed_text конкретным текстом из документов
-
-Верни ТОЛЬКО валидный JSON без markdown:
-{"match":true/false,"summary":"Краткий вывод","discrepancies":[{"section":"номер пункта","type":"изменение/добавление/удаление","agreed_text":"текст из согласованного","signed_text":"текст из подписанного","severity":"высокая/средняя/низкая"}]}`
-          },
-          {
-            role: 'user',
-            content: userContent
-          }
-        ],
-        max_tokens: 4000,
-        temperature: 0.1,
-      })
-    })
-
-    const aiData = await aiRes.json()
-    const rawContent = aiData.choices?.[0]?.message?.content ?? ''
-
-    if (!rawContent) {
-      return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
-    }
-
-    // Временное логирование для отладки
-    console.log('=== AI RAW RESPONSE ===', rawContent.slice(0, 1000))
-    console.log('=== SIGNED TEXT LENGTH ===', signedText.length)
-    console.log('=== COMPARE TEXT LENGTH ===', compareText.length)
-    console.log('=== SIGNED TEXT PREVIEW ===', signedText.slice(0, 300))
-
-    let result
-    try {
-      // Убираем markdown если есть
-      const clean = rawContent
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .trim()
-      // Находим JSON объект
-      const jsonMatch = clean.match(/\{[\s\S]*\}/)
-      result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
-    } catch {
-      // Если парсинг не удался — возвращаем как есть с флагом ошибки
-      return NextResponse.json({
-        success: true,
-        result: {
-          match: false,
-          summary: 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
-          discrepancies: [],
-          raw: rawContent.slice(0, 500)
-        }
-      })
-    }
-
-    return NextResponse.json({ success: true, result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/contracts-list/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -6374,6 +6207,200 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/ai-document-compare/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!
+
+// Извлекаем текст из файла по URL
+async function extractText(fileUrl: string, fileName: string): Promise<string> {
+  const response = await fetch(fileUrl)
+  const buffer = await response.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (fileName.toLowerCase().endsWith('.pdf')) {
+    // Возвращаем base64 для прямой передачи в Gemini
+    return `__PDF_BASE64__${Buffer.from(bytes).toString('base64')}`
+  }
+
+  if (fileName.toLowerCase().endsWith('.docx')) {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(bytes)
+    const xml = await zip.file('word/document.xml')?.async('text') ?? ''
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+  return ''
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, signed_file_url, signed_file_name, compare_file_id, compare_file_type } = body
+
+    // Получаем URL файла для сравнения
+    let compareFileUrl = ''
+    let compareFileName = ''
+
+    if (compare_file_type === 'version') {
+      const { data } = await supabase.from('versions').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    } else if (compare_file_type === 'attachment') {
+      const { data } = await supabase.from('document_attachments').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    }
+
+    if (!compareFileUrl) {
+      return NextResponse.json({ error: 'Файл для сравнения не найден' }, { status: 404 })
+    }
+
+    // Извлекаем текст из обоих документов параллельно
+    const [signedText, compareText] = await Promise.all([
+      extractText(signed_file_url, signed_file_name),
+      extractText(compareFileUrl, compareFileName),
+    ])
+
+    if (!signedText || !compareText) {
+      return NextResponse.json({
+        error: `Не удалось извлечь текст. Подписанный: ${signedText.length} симв., Согласованный: ${compareText.length} симв.`
+      }, { status: 400 })
+    }
+
+    // Формируем контент для AI
+    const isPdfBase64 = signedText.startsWith('__PDF_BASE64__')
+    const pdfBase64 = isPdfBase64 ? signedText.replace('__PDF_BASE64__', '') : null
+
+    const userContent = isPdfBase64
+      ? [
+          {
+            type: 'text',
+            text: `Сравни два документа по содержанию. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n\n${compareText.slice(0, 15000)}\n\nПОДПИСАННЫЙ ДОКУМЕНТ — смотри прикреплённый PDF файл. Верни ТОЛЬКО JSON без markdown блоков.`
+          },
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: pdfBase64
+            }
+          }
+        ]
+      : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
+
+    // AI сравнение — используем Claude через OpenRouter (лучше следует JSON формату)
+    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-sonnet-4-5',
+        messages: [
+          {
+            role: 'system',
+            content: `Ты юридический эксперт-юрист с опытом проверки договоров.
+
+Твоя задача: определить есть ли ЮРИДИЧЕСКИ ЗНАЧИМЫЕ расхождения между согласованным договором (DOCX) и подписанным договором (PDF).
+
+ЮРИДИЧЕСКИ ЗНАЧИМОЕ РАСХОЖДЕНИЕ — это когда изменяется смысл условия:
+- изменена сумма, процент, срок, количество дней
+- изменено право или обязанность стороны (было "обязан" стало "вправе")
+- добавлен или удалён целый пункт с условием
+- изменено наименование стороны или предмет договора
+
+НЕ ЯВЛЯЕТСЯ РАСХОЖДЕНИЕМ:
+- разные пробелы, переносы строк, форматирование
+- пустые строки для подписей "___________"
+- незаполненные поля реквизитов (факс, банк контрагента)
+- колонтитулы, нумерация страниц
+- текст из соседнего пункта попавший из-за разрыва страницы PDF
+- одно и то же предложение написанное чуть иначе но с тем же смыслом
+- разница в одном-двух словах не меняющая смысл
+
+Если все условия договора совпадают по смыслу — это ИДЕНТИЧНЫЕ документы, даже если есть технические отличия форматирования.
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{"match":true/false,"summary":"Краткий вывод","discrepancies":[{"section":"номер пункта","type":"изменение/добавление/удаление","agreed_text":"точный текст из согласованного","signed_text":"точный текст из подписанного","severity":"высокая/средняя/низкая"}]}`
+          },
+          {
+            role: 'user',
+            content: userContent
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+      })
+    })
+
+    const aiData = await aiRes.json()
+    const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+
+    if (!rawContent) {
+      return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
+    }
+
+    // убрано логирование
+
+    let result
+    try {
+      // Агрессивная очистка от markdown
+      let clean = rawContent
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        .replace(/^\s*json\s*/i, '')
+        .trim()
+
+      // Находим первый JSON объект в тексте
+      const startIdx = clean.indexOf('{')
+      const endIdx = clean.lastIndexOf('}')
+      if (startIdx !== -1 && endIdx !== -1) {
+        clean = clean.slice(startIdx, endIdx + 1)
+      }
+
+      result = JSON.parse(clean)
+
+      // Проверяем структуру
+      if (typeof result.match !== 'boolean') {
+        result.match = false
+      }
+      if (!Array.isArray(result.discrepancies)) {
+        result.discrepancies = []
+      }
+    } catch {
+      // Если парсинг не удался — пробуем извлечь match из текста
+      const isMatch = rawContent.toLowerCase().includes('"match": true') ||
+                      rawContent.toLowerCase().includes('"match":true')
+      return NextResponse.json({
+        success: true,
+        result: {
+          match: isMatch,
+          summary: isMatch
+            ? 'Документы соответствуют друг другу'
+            : 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
+          discrepancies: [],
+        }
+      })
+    }
+
+    return NextResponse.json({ success: true, result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
