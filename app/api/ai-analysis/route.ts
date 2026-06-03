@@ -279,8 +279,9 @@ export async function POST(request: NextRequest) {
         })
       })
       const aiData = await aiRes.json()
-      console.log('Claude PDF response status:', aiRes.status, 'data:', JSON.stringify(aiData).slice(0, 300))
+      console.log('Claude PDF response status:', aiRes.status)
       const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+      console.log('Claude PDF rawContent:', typeof rawContent, String(rawContent).slice(0, 500))
       try {
         const clean = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
         const jsonMatch = clean.match(/\{[\s\S]*\}/)
