@@ -255,16 +255,25 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model: 'anthropic/claude-sonnet-4-5',
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
-              },
-              { type: 'text', text: systemPrompts[analysis_type] ?? systemPrompts.document_review }
-            ]
-          }],
+          messages: [
+            {
+              role: 'system',
+              content: 'Ты юридический эксперт ГК ЭПОТОС. Анализируй документы на русском языке. Возвращай ТОЛЬКО валидный JSON без markdown блоков.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: systemPrompts[analysis_type] ?? systemPrompts.document_review
+                },
+                {
+                  type: 'document',
+                  source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
+                }
+              ]
+            }
+          ],
           max_tokens: 4000,
           temperature: 0.2,
         })
