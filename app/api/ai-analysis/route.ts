@@ -152,28 +152,8 @@ Return ONLY valid JSON without markdown:
         'X-Title': 'Epotos-YurIntel',
       },
       body: JSON.stringify({
-        model: prompt.startsWith('__PDF_BASE64__') ? 'anthropic/claude-sonnet-4-5' : 'google/gemini-2.5-flash',
-        messages: [{
-          role: 'user',
-          content: prompt.startsWith('__PDF_BASE64__')
-            ? [
-                {
-                  type: 'document',
-                  source: {
-                    type: 'base64',
-                    media_type: 'application/pdf',
-                    data: prompt.replace('__PDF_BASE64__', '')
-                  }
-                },
-                {
-                  type: 'text',
-                  text: analysisType === 'legal_review'
-                    ? 'Проведи юридический анализ этого договора. Определи риски, проблемные условия, рекомендации. Верни JSON с полями: overall_risk (низкий/средний/высокий), risks (массив), recommendations (массив).'
-                    : 'Составь паспорт этого договора. Извлеки ключевые условия: стороны, предмет, суммы, сроки, права и обязанности. Верни JSON с полями: parties, subject, amount, terms, key_conditions.'
-                }
-              ]
-            : prompt
-        }],
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: prompt }],
         max_tokens: 4000,
         temperature: 0.2,
       }),
@@ -255,7 +235,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
     }
 
-    const result = await analyzeWithAI(textOrUrl, analysis_type)
+    let result: object
+    if (textOrUrl.startsWith('__PDF_BASE64__')) {
+      // PDF — отправляем напрямую в Claude как document
+      const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
+      const systemPrompts: Record<string, string> = {
+        legal_review: 'Ты юридический эксперт ГК ЭПОТОС. Проведи юридический анализ документа. ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К — компании группы, их присутствие не является риском. Верни ТОЛЬКО валидный JSON без markdown: {"red_flags":[{"severity":"high|medium|low","title":"название","description":"описание","recommendation":"рекомендация"}],"warnings":[{"title":"название","description":"описание"}],"positives":[{"title":"название","description":"описание"}],"overall_risk":"high|medium|low","summary":"краткий вывод"}',
+        passport: 'Ты юридический эксперт ГК ЭПОТОС. Составь паспорт документа. Верни ТОЛЬКО валидный JSON без markdown: {"essence":"суть документа","parties":{"our_obligations":["обязательство"],"counterparty_obligations":["обязательство"]},"key_terms":{"amount":"сумма","payment_terms":"условия оплаты","start_date":"дата начала","end_date":"дата окончания","auto_renewal":"пролонгация"},"termination":"условия расторжения","control_points":["точка контроля"],"attention_zones":["зона внимания"]}',
+        document_review: 'Ты аналитик документов ГК ЭПОТОС. Проанализируй документ. Верни ТОЛЬКО валидный JSON без markdown: {"summary":"краткое резюме","purpose":"цель документа","attention_points":["важный момент"],"recommendations":["рекомендация"],"document_type":"тип документа","urgency":"high|medium|low"}'
+      }
+      const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY!}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+          'X-Title': 'Epotos-YurIntel',
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-sonnet-4-5',
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
+              },
+              { type: 'text', text: systemPrompts[analysis_type] ?? systemPrompts.document_review }
+            ]
+          }],
+          max_tokens: 4000,
+          temperature: 0.2,
+        })
+      })
+      const aiData = await aiRes.json()
+      const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+      try {
+        const clean = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        const jsonMatch = clean.match(/\{[\s\S]*\}/)
+        result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
+      } catch {
+        result = { error: 'Не удалось разобрать ответ AI', raw: rawContent.slice(0, 300) }
+      }
+    } else {
+      result = await analyzeWithAI(textOrUrl, analysis_type)
+    }
 
     await supabase
       .from('ai_analysis')
