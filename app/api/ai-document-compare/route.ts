@@ -75,9 +75,11 @@ export async function POST(request: NextRequest) {
             text: `Сравни два документа по содержанию. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n\n${compareText.slice(0, 15000)}\n\nПОДПИСАННЫЙ ДОКУМЕНТ — смотри прикреплённый PDF файл. Верни ТОЛЬКО JSON без markdown блоков.`
           },
           {
-            type: 'image_url',
-            image_url: {
-              url: `data:application/pdf;base64,${pdfBase64}`
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: pdfBase64
             }
           }
         ]
