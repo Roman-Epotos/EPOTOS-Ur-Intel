@@ -114,8 +114,13 @@ export default function ContractsList() {
           }
           const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
           const contractsData = await contractsRes.json()
-          setContracts(contractsData.contracts ?? [])
-          const unique = [...new Set((contractsData.contracts ?? []).map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
+          const unique = [...new Set(sorted.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
           setCounterparties(unique.sort())
         }
         load()
@@ -142,7 +147,12 @@ export default function ContractsList() {
           }
           const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
           const contractsData = await contractsRes.json()
-          setContracts(contractsData.contracts ?? [])
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
         }
         reload()
       })
