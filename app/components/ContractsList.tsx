@@ -45,6 +45,7 @@ interface Contract {
   file_type?: string | null
   unread_messages?: number
   last_message_at?: string | null
+  created_at: string
 }
 
 interface UserRole {
@@ -173,7 +174,11 @@ export default function ContractsList() {
 
         const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
         const contractsData = await contractsRes.json()
-        const allContracts = contractsData.contracts ?? []
+        const allContracts = (contractsData.contracts ?? []).sort((a: Contract & { last_message_at?: string | null }, b: Contract & { last_message_at?: string | null }) => {
+          const aTime = a.last_message_at ?? a.created_at
+          const bTime = b.last_message_at ?? b.created_at
+          return new Date(bTime).getTime() - new Date(aTime).getTime()
+        })
         setContracts(allContracts)
         const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
         setCounterparties(unique.sort())
