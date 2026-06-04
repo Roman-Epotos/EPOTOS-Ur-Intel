@@ -20,7 +20,7 @@ export default async function ContractPage({
     .eq('id', id)
     .single()
 
-  if (!contract) notFound()
+  if (!contract || contract.deleted_at) notFound()
 
   const { data: logs } = await supabase
     .from('contract_logs')
