@@ -516,7 +516,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
 
   const handleEditMessage = async (messageId: string) => {
     if (!editingMessageText.trim() || !session) return
-    await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
+    const res = await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -527,6 +527,20 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     })
     setEditingMessageId(null)
     setEditingMessageText('')
+    if (res.ok) {
+      // Обновляем сообщение локально сразу — без перезагрузки всего чата
+      setSession(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          approval_messages: prev.approval_messages.map(m =>
+            m.id === messageId
+              ? { ...m, message: editingMessageText.trim() + ' (изм.)' }
+              : m
+          )
+        }
+      })
+    }
   }
 
   const handleFileUpload = async (file: File) => {
