@@ -4118,113 +4118,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/counterparties/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-// GET — список контрагентов или один по id
-export async function GET(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    const inn = request.nextUrl.searchParams.get('inn')
-    const search = request.nextUrl.searchParams.get('search')
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .select('*, contracts(id, number, title, status, created_at)')
-        .eq('id', id)
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data })
-    }
-
-    if (inn) {
-      const kpp = request.nextUrl.searchParams.get('kpp')
-      let query = supabase
-        .from('counterparties')
-        .select('*')
-        .eq('inn', inn)
-      if (kpp) query = query.eq('kpp', kpp)
-      const { data, error } = await query.single()
-      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data ?? null })
-    }
-
-    let query = supabase
-      .from('counterparties')
-      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at')
-      .order('full_name', { ascending: true })
-
-    if (search) {
-      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ counterparties: data ?? [] })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// POST — создать или обновить контрагента
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, ...fields } = body
-
-    fields.updated_at = new Date().toISOString()
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ success: true, counterparty: data })
-    }
-
-    const { data, error } = await supabase
-      .from('counterparties')
-      .insert(fields)
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true, counterparty: data })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// DELETE — удалить контрагента
-export async function DELETE(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-
-    const { error } = await supabase
-      .from('counterparties')
-      .delete()
-      .eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/onlyoffice/file/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5438,6 +5331,127 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/counterparties/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+// GET — список контрагентов или один по id
+export async function GET(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    const inn = request.nextUrl.searchParams.get('inn')
+    const search = request.nextUrl.searchParams.get('search')
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*, contracts(id, number, title, status, created_at)')
+        .eq('id', id)
+        .single()
+
+      // Дополнительно загружаем документы по текстовому совпадению если counterparty_id не заполнен
+      if (data && data.contracts?.length === 0) {
+        const searchName = data.short_name ?? data.full_name
+        const { data: extraContracts } = await supabase
+          .from('contracts')
+          .select('id, number, title, status, created_at')
+          .ilike('counterparty', `%${searchName}%`)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+        if (extraContracts?.length) {
+          data.contracts = extraContracts
+        }
+      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data })
+    }
+
+    if (inn) {
+      const kpp = request.nextUrl.searchParams.get('kpp')
+      let query = supabase
+        .from('counterparties')
+        .select('*')
+        .eq('inn', inn)
+      if (kpp) query = query.eq('kpp', kpp)
+      const { data, error } = await query.single()
+      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data ?? null })
+    }
+
+    let query = supabase
+      .from('counterparties')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at')
+      .order('full_name', { ascending: true })
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ counterparties: data ?? [] })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — создать или обновить контрагента
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, ...fields } = body
+
+    fields.updated_at = new Date().toISOString()
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .update(fields)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, counterparty: data })
+    }
+
+    const { data, error } = await supabase
+      .from('counterparties')
+      .insert(fields)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, counterparty: data })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить контрагента
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('counterparties')
+      .delete()
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/deleted-contracts/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5923,6 +5937,133 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/generate-from-template/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { template_id, fields, contract_id } = body
+
+    if (!template_id || !fields) {
+      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
+    }
+
+    // 1. Получаем шаблон из БД
+    const { data: template, error: tplError } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('id', template_id)
+      .eq('is_active', true)
+      .single()
+
+    if (tplError || !template) {
+      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
+    }
+
+    // 2. Скачиваем .docx шаблон из Supabase Storage
+    const fileRes = await fetch(template.file_url)
+    if (!fileRes.ok) {
+      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
+    }
+    const arrayBuffer = await fileRes.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // 3. Простая замена меток {{field}} в XML напрямую
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(buffer)
+
+    // Безопасные значения полей
+    const safeFields: Record<string, string> = {}
+    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
+    }
+
+    // Заменяем метки во всех XML файлах документа
+    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
+
+    for (const xmlFile of xmlFiles) {
+      const file = zip.file(xmlFile)
+      if (!file) continue
+      let content = await file.async('string')
+      // Заменяем каждую метку
+      for (const [key, value] of Object.entries(safeFields)) {
+        content = content.split(`{{${key}}}`).join(value)
+      }
+      zip.file(xmlFile, content)
+    }
+
+    const output = await zip.generateAsync({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    // 4. Логируем генерацию
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: `Сгенерирован документ из шаблона: ${template.name}`,
+        details: `Файл: ${template.name}.docx`,
+        user_name: body.user_name ?? 'Пользователь',
+      })
+    }
+
+    // 5. Возвращаем файл
+    return new NextResponse(new Uint8Array(output), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
+      },
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    console.error('generate-from-template error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// GET — список шаблонов для компании и типа документа
+export async function GET(request: NextRequest) {
+  try {
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const docType = request.nextUrl.searchParams.get('type')
+
+    let query = supabase
+      .from('document_templates')
+      .select('id, name, type, company_prefix, file_name, created_at')
+      .eq('is_active', true)
+      .order('name')
+
+    if (companyPrefix) {
+      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
+    }
+    if (docType) {
+      query = query.eq('type', docType)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    return NextResponse.json({ templates: data ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/ai-document-compare/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -6112,133 +6253,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/generate-from-template/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-export const runtime = 'nodejs'
-export const maxDuration = 60
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { template_id, fields, contract_id } = body
-
-    if (!template_id || !fields) {
-      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
-    }
-
-    // 1. Получаем шаблон из БД
-    const { data: template, error: tplError } = await supabase
-      .from('document_templates')
-      .select('*')
-      .eq('id', template_id)
-      .eq('is_active', true)
-      .single()
-
-    if (tplError || !template) {
-      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
-    }
-
-    // 2. Скачиваем .docx шаблон из Supabase Storage
-    const fileRes = await fetch(template.file_url)
-    if (!fileRes.ok) {
-      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
-    }
-    const arrayBuffer = await fileRes.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    // 3. Простая замена меток {{field}} в XML напрямую
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(buffer)
-
-    // Безопасные значения полей
-    const safeFields: Record<string, string> = {}
-    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
-      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
-    }
-
-    // Заменяем метки во всех XML файлах документа
-    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
-                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
-
-    for (const xmlFile of xmlFiles) {
-      const file = zip.file(xmlFile)
-      if (!file) continue
-      let content = await file.async('string')
-      // Заменяем каждую метку
-      for (const [key, value] of Object.entries(safeFields)) {
-        content = content.split(`{{${key}}}`).join(value)
-      }
-      zip.file(xmlFile, content)
-    }
-
-    const output = await zip.generateAsync({
-      type: 'nodebuffer',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    })
-
-    // 4. Логируем генерацию
-    if (contract_id) {
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: `Сгенерирован документ из шаблона: ${template.name}`,
-        details: `Файл: ${template.name}.docx`,
-        user_name: body.user_name ?? 'Пользователь',
-      })
-    }
-
-    // 5. Возвращаем файл
-    return new NextResponse(new Uint8Array(output), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
-      },
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    console.error('generate-from-template error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// GET — список шаблонов для компании и типа документа
-export async function GET(request: NextRequest) {
-  try {
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const docType = request.nextUrl.searchParams.get('type')
-
-    let query = supabase
-      .from('document_templates')
-      .select('id, name, type, company_prefix, file_name, created_at')
-      .eq('is_active', true)
-      .order('name')
-
-    if (companyPrefix) {
-      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
-    }
-    if (docType) {
-      query = query.eq('type', docType)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-    return NextResponse.json({ templates: data ?? [] })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
