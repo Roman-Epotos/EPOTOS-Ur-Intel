@@ -252,10 +252,10 @@ export default function CounterpartyPage() {
             {/* Договоры */}
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">
-                📄 Договоры ({counterparty.contracts?.length ?? 0})
+                📄 Документов ({counterparty.contracts?.length ?? 0})
               </h2>
               {counterparty.contracts?.length === 0 ? (
-                <p className="text-xs text-gray-400">Договоров нет</p>
+                <p className="text-xs text-gray-400">Документов нет</p>
               ) : (
                 <div className="space-y-2">
                   {counterparty.contracts?.map(c => (
