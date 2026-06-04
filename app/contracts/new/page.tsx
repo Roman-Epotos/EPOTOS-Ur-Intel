@@ -242,6 +242,7 @@ export default function NewContractPage() {
     if (!form.company_prefix) { setError('Выберите компанию'); return }
     if (!form.type) { setError('Выберите тип документа'); return }
     if (!finalNumber) { setError('Номер не сгенерирован'); return }
+    if (!counterpartyId) { setError('Выберите контрагента из реестра или добавьте нового через кнопку «+ Добавить контрагента в реестр»'); return }
 
     setLoading(true)
     setError('')
@@ -497,8 +498,8 @@ export default function NewContractPage() {
                   value={counterpartySearch}
                   onChange={e => {
                     setCounterpartySearch(e.target.value)
-                    setForm(p => ({ ...p, counterparty: e.target.value }))
                     setCounterpartyId(null)
+                    setForm(p => ({ ...p, counterparty: '' }))
                     searchCounterparties(e.target.value)
                   }}
                   onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}

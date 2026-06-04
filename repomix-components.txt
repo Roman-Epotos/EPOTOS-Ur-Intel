@@ -6034,9 +6034,80 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
-  const [counterparties, setCounterparties] = useState<Counterparty[]>([])
   const [counterpartyMode, setCounterpartyMode] = useState<'select' | 'empty'>('select')
   const [selectedCounterparty, setSelectedCounterparty] = useState<Counterparty | null>(null)
+  const [cpSearch, setCpSearch] = useState('')
+  const [cpSuggestions, setCpSuggestions] = useState<Counterparty[]>([])
+  const [cpSearchLoading, setCpSearchLoading] = useState(false)
+  const [cpNotFound, setCpNotFound] = useState(false)
+  const [showCpSuggestions, setShowCpSuggestions] = useState(false)
+
+  // Мини-модалка добавления контрагента
+  const [showAddCpModal, setShowAddCpModal] = useState(false)
+  const [addCpInn, setAddCpInn] = useState('')
+  const [addCpLoading, setAddCpLoading] = useState(false)
+  const [addCpResult, setAddCpResult] = useState<{
+    inn: string; kpp: string | null; ogrn: string | null; full_name: string;
+    short_name: string | null; legal_address: string | null; status: string;
+    director_name: string | null; director_title: string | null;
+  } | null>(null)
+  const [addCpError, setAddCpError] = useState('')
+  const [addCpSaving, setAddCpSaving] = useState(false)
+
+  const searchCp = async (q: string) => {
+    if (q.length < 2) { setCpSuggestions([]); setCpNotFound(false); return }
+    setCpSearchLoading(true)
+    setCpNotFound(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties?search=${encodeURIComponent(q)}&limit=10`)
+      const data = await res.json()
+      const list = data.counterparties ?? []
+      setCpSuggestions(list)
+      setShowCpSuggestions(true)
+      setCpNotFound(list.length === 0)
+    } finally {
+      setCpSearchLoading(false)
+    }
+  }
+
+  const searchCpByInn = async () => {
+    if (!addCpInn.trim()) return
+    setAddCpLoading(true)
+    setAddCpError('')
+    setAddCpResult(null)
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/check-inn?inn=${addCpInn.trim()}`)
+      const data = await res.json()
+      if (data.found) { setAddCpResult(data.data) }
+      else { setAddCpError(data.message ?? 'Организация не найдена в DaData') }
+    } catch { setAddCpError('Ошибка соединения') }
+    finally { setAddCpLoading(false) }
+  }
+
+  const saveCp = async () => {
+    if (!addCpResult) return
+    setAddCpSaving(true)
+    setAddCpError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addCpResult),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSelectedCounterparty(data.counterparty)
+        setCpSearch(data.counterparty.short_name ?? data.counterparty.full_name)
+        setShowAddCpModal(false)
+        setAddCpInn('')
+        setAddCpResult(null)
+        setCpNotFound(false)
+        setShowCpSuggestions(false)
+      } else {
+        setAddCpError(data.error ?? 'Ошибка сохранения')
+      }
+    } finally { setAddCpSaving(false) }
+  }
   const [extraFields, setExtraFields] = useState<Record<string, string>>({})
   const [contractDate, setContractDate] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -6063,12 +6134,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
     load()
   }, [contract.company_prefix])
 
-  // Загружаем контрагентов
-  useEffect(() => {
-    fetch(`${baseUrl}/api/counterparties`)
-      .then(r => r.json())
-      .then(d => setCounterparties(d.counterparties ?? []))
-  }, [])
+  
 
   // Дата сегодня по умолчанию
   useEffect(() => {

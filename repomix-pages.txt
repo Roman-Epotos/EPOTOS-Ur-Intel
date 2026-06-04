@@ -4654,6 +4654,69 @@ export default function NewContractPage() {
   const [counterpartySuggestions, setCounterpartySuggestions] = useState<{id: string, short_name: string | null, full_name: string, inn: string}[]>([])
   const [showCounterpartySuggestions, setShowCounterpartySuggestions] = useState(false)
   const [counterpartySearchLoading, setCounterpartySearchLoading] = useState(false)
+  const [counterpartyNotFound, setCounterpartyNotFound] = useState(false)
+
+  // Мини-модалка добавления контрагента
+  const [showAddCpModal, setShowAddCpModal] = useState(false)
+  const [addCpInn, setAddCpInn] = useState('')
+  const [addCpLoading, setAddCpLoading] = useState(false)
+  const [addCpResult, setAddCpResult] = useState<{
+    inn: string; kpp: string | null; ogrn: string | null; full_name: string;
+    short_name: string | null; legal_address: string | null; status: string;
+    director_name: string | null; director_title: string | null;
+  } | null>(null)
+  const [addCpError, setAddCpError] = useState('')
+  const [addCpSaving, setAddCpSaving] = useState(false)
+
+  const searchCounterpartyByInn = async () => {
+    if (!addCpInn.trim()) return
+    setAddCpLoading(true)
+    setAddCpError('')
+    setAddCpResult(null)
+    try {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties/check-inn?inn=${addCpInn.trim()}`)
+      const data = await res.json()
+      if (data.found) {
+        setAddCpResult(data.data)
+      } else {
+        setAddCpError(data.message ?? 'Организация не найдена в DaData')
+      }
+    } catch {
+      setAddCpError('Ошибка соединения')
+    } finally {
+      setAddCpLoading(false)
+    }
+  }
+
+  const saveNewCounterparty = async () => {
+    if (!addCpResult) return
+    setAddCpSaving(true)
+    setAddCpError('')
+    try {
+      const res = await fetch('https://epotos-ur-intel.vercel.app/api/counterparties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addCpResult),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const cp = data.counterparty
+        const displayName = cp.short_name ?? cp.full_name
+        setCounterpartySearch(displayName)
+        setForm(p => ({ ...p, counterparty: displayName }))
+        setCounterpartyId(cp.id)
+        setShowAddCpModal(false)
+        setAddCpInn('')
+        setAddCpResult(null)
+        setCounterpartyNotFound(false)
+        setShowCounterpartySuggestions(false)
+      } else {
+        setAddCpError(data.error ?? 'Ошибка сохранения')
+      }
+    } finally {
+      setAddCpSaving(false)
+    }
+  }
 
   // Связанный документ
   const [isChild, setIsChild] = useState(false)
@@ -4707,13 +4770,20 @@ export default function NewContractPage() {
   }, [form.company_prefix, form.type, isChild, parentSource, parentContractId])
 
   const searchCounterparties = async (q: string) => {
-    if (q.length < 2) { setCounterpartySuggestions([]); return }
+    if (q.length < 2) {
+      setCounterpartySuggestions([])
+      setCounterpartyNotFound(false)
+      return
+    }
     setCounterpartySearchLoading(true)
+    setCounterpartyNotFound(false)
     try {
-      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}`)
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}&limit=10`)
       const data = await res.json()
-      setCounterpartySuggestions(data.counterparties ?? [])
+      const list = data.counterparties ?? []
+      setCounterpartySuggestions(list)
       setShowCounterpartySuggestions(true)
+      setCounterpartyNotFound(list.length === 0)
     } finally {
       setCounterpartySearchLoading(false)
     }
@@ -5068,11 +5138,71 @@ export default function NewContractPage() {
                         <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
                       </button>
                     ))}
+                  </div>
+                )}
+                {counterpartyNotFound && counterpartySearch.length >= 2 && (
+                  <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
+                    <p className="text-sm text-orange-700 mb-2">⚠️ Контрагент не найден в реестре</p>
+                    <p className="text-xs text-gray-500 mb-2">Сначала добавьте контрагента в базу, затем выберите его в этом поле.</p>
                     <button type="button"
-                      onMouseDown={() => setShowCounterpartySuggestions(false)}
-                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50">
-                      + Ввести вручную
+                      onMouseDown={() => { setShowAddCpModal(true); setShowCounterpartySuggestions(false); setCounterpartyNotFound(false) }}
+                      className="w-full bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700">
+                      + Добавить контрагента в реестр
                     </button>
+                  </div>
+                )}
+
+                {/* Модалка добавления контрагента */}
+                {showAddCpModal && (
+                  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                      <h3 className="text-base font-semibold text-gray-900 mb-4">Добавить контрагента</h3>
+
+                      {!addCpResult ? (
+                        <>
+                          <p className="text-sm text-gray-500 mb-3">Введите ИНН организации — данные будут загружены из DaData.</p>
+                          <div className="flex gap-2 mb-3">
+                            <input
+                              value={addCpInn}
+                              onChange={e => setAddCpInn(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && searchCounterpartyByInn()}
+                              placeholder="ИНН (10 или 12 цифр)"
+                              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                            />
+                            <button type="button" onClick={searchCounterpartyByInn} disabled={addCpLoading}
+                              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
+                              {addCpLoading ? '...' : 'Найти'}
+                            </button>
+                          </div>
+                          {addCpError && <p className="text-sm text-red-600">{addCpError}</p>}
+                        </>
+                      ) : (
+                        <>
+                          <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-1">
+                            <p className="text-sm font-medium text-gray-900">{addCpResult.short_name ?? addCpResult.full_name}</p>
+                            <p className="text-xs text-gray-500">ИНН: {addCpResult.inn}{addCpResult.kpp ? ` / КПП: ${addCpResult.kpp}` : ''}</p>
+                            <p className="text-xs text-gray-500">Адрес: {addCpResult.legal_address ?? '—'}</p>
+                            <p className="text-xs text-gray-500">Руководитель: {addCpResult.director_name ?? '—'}</p>
+                          </div>
+                          {addCpError && <p className="text-sm text-red-600 mb-2">{addCpError}</p>}
+                          <div className="flex gap-2">
+                            <button type="button" onClick={saveNewCounterparty} disabled={addCpSaving}
+                              className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
+                              {addCpSaving ? 'Сохранение...' : 'Добавить в реестр'}
+                            </button>
+                            <button type="button" onClick={() => setAddCpResult(null)}
+                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                              Назад
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                      <button type="button" onClick={() => { setShowAddCpModal(false); setAddCpInn(''); setAddCpResult(null); setAddCpError('') }}
+                        className="w-full mt-3 text-sm text-gray-400 hover:text-gray-600">
+                        Отмена
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
