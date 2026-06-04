@@ -257,16 +257,62 @@ export default function CounterpartyPage() {
               {counterparty.contracts?.length === 0 ? (
                 <p className="text-xs text-gray-400">Документов нет</p>
               ) : (
-                <div className="space-y-2">
-                  {counterparty.contracts?.map(c => (
-                    <div key={c.id}
-                      onClick={() => router.push(`/contracts/${c.id}`)}
-                      className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors">
-                      <p className="text-xs font-medium text-gray-900">{c.number}</p>
-                      <p className="text-xs text-gray-500 truncate">{c.title}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{c.status}</p>
+                <div className="space-y-3">
+                  {/* На согласовании */}
+                  {(counterparty.contracts?.filter(c => c.status === 'на_согласовании') ?? []).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-yellow-700 mb-1.5">
+                        🕐 На согласовании ({counterparty.contracts?.filter(c => c.status === 'на_согласовании').length})
+                      </p>
+                      <div className="space-y-1">
+                        {counterparty.contracts?.filter(c => c.status === 'на_согласовании').map(c => (
+                          <div key={c.id}
+                            onClick={() => router.push(`/contracts/${c.id}`)}
+                            className="cursor-pointer hover:bg-yellow-50 rounded-lg p-2 transition-colors border border-yellow-100">
+                            <p className="text-xs font-medium text-gray-900">{c.number}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.title}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
+                  {/* Действующие */}
+                  {(counterparty.contracts?.filter(c => ['подписан','на_исполнении'].includes(c.status)) ?? []).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-green-700 mb-1.5">
+                        ✅ Действующие ({counterparty.contracts?.filter(c => ['подписан','на_исполнении'].includes(c.status)).length})
+                      </p>
+                      <div className="space-y-1">
+                        {counterparty.contracts?.filter(c => ['подписан','на_исполнении'].includes(c.status)).map(c => (
+                          <div key={c.id}
+                            onClick={() => router.push(`/contracts/${c.id}`)}
+                            className="cursor-pointer hover:bg-green-50 rounded-lg p-2 transition-colors border border-green-100">
+                            <p className="text-xs font-medium text-gray-900">{c.number}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.title}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Остальные (черновики, согласованы и др.) */}
+                  {(counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)) ?? []).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1.5">
+                        📋 Прочие ({counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)).length})
+                      </p>
+                      <div className="space-y-1">
+                        {counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)).map(c => (
+                          <div key={c.id}
+                            onClick={() => router.push(`/contracts/${c.id}`)}
+                            className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors border border-gray-100">
+                            <p className="text-xs font-medium text-gray-900">{c.number}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.title}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{c.status}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
