@@ -4076,6 +4076,9 @@ interface Message {
   file_url?: string | null
   file_name?: string | null
   file_type?: string | null
+  reply_to_id?: string | null
+  reply_to_author?: string | null
+  reply_to_text?: string | null
 }
 
 interface Session {
@@ -4195,6 +4198,42 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState('')
+  const [replyTo, setReplyTo] = useState<{ id: string; author_name: string; message: string } | null>(null)
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!session) return
+    await fetch(`${baseUrl}/api/approvals/${session.id}/messages`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: messageId,
+        bitrix_user_id: user?.id ? parseInt(user.id) : null,
+      }),
+    })
+    setSession(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        approval_messages: prev.approval_messages.filter(m => m.id !== messageId),
+      }
+    })
+  }
+
+  const canDeleteMessage = (msg: Message): boolean => {
+    const userId = user?.id ? parseInt(user.id) : null
+    if (!userId || msg.bitrix_user_id !== userId) return false
+    const msgs = session?.approval_messages ?? []
+    const lastMsg = [...msgs].reverse().find(m => !m.is_ai)
+    if (!lastMsg || lastMsg.id !== msg.id) return false
+    const afterMine = msgs.filter(m =>
+      m.id !== msg.id &&
+      m.bitrix_user_id !== userId &&
+      new Date(m.created_at) > new Date(msg.created_at)
+    )
+    if (afterMine.length > 0) return false
+    const diffMin = (Date.now() - new Date(msg.created_at).getTime()) / 60000
+    return diffMin <= 5
+  }
   const [newParticipantName, setNewParticipantName] = useState('')
   const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
   const [addingParticipant, setAddingParticipant] = useState(false)
@@ -4590,9 +4629,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         message: message.trim(),
         author_name: user?.name ?? 'Гость',
         bitrix_user_id: user?.id ? parseInt(user.id) : null,
+        reply_to_id: replyTo?.id ?? null,
+        reply_to_author: replyTo?.author_name ?? null,
+        reply_to_text: replyTo ? replyTo.message.slice(0, 100) : null,
       }),
     })
     setMessage('')
+    setReplyTo(null)
     setSendingMessage(false)
   }
 
@@ -5619,8 +5662,21 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               </div>
                             </div>
                           ) : (
-                            <div className="relative group/msg inline-block">
-                              <div className={`text-sm rounded-xl px-3 py-2 inline-block max-w-sm ${
+                            <div className="relative group/msg inline-block max-w-sm">
+                              {/* Цитата */}
+                              {msg.reply_to_id && (
+                                <div className={`text-xs rounded-t-xl px-3 py-1.5 border-l-2 border-blue-400 mb-0.5 ${
+                                  msg.bitrix_user_id === parseInt(user?.id ?? '0')
+                                    ? 'bg-blue-600 text-blue-100'
+                                    : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                  <span className="font-bold text-blue-300">{msg.reply_to_author}</span>
+                                  <p className="truncate opacity-80">{msg.reply_to_text}</p>
+                                </div>
+                              )}
+                              <div className={`text-sm rounded-xl px-3 py-2 inline-block w-full ${
+                                msg.reply_to_id ? 'rounded-tl-none' : ''
+                              } ${
                                 msg.bitrix_user_id === parseInt(user?.id ?? '0')
                                   ? 'bg-blue-500 text-white'
                                   : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
@@ -5638,15 +5694,32 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   </a>
                                 )}
                               </div>
-                              <div className="absolute bottom-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
-                                
+                              <div className="absolute -top-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
+                                {!msg.is_ai && (
+                                  <button
+                                    onClick={() => setReplyTo({ id: msg.id, author_name: msg.author_name, message: msg.message })}
+                                    title="Ответить"
+                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                    style={{fontSize:'10px'}}>
+                                    ↩
+                                  </button>
+                                )}
                                 {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
                                   <button
                                     onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
                                     title="Редактировать"
-                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 active:bg-opacity-60 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
                                     style={{fontSize:'10px'}}>
                                     ✏️
+                                  </button>
+                                )}
+                                {canDeleteMessage(msg) && (
+                                  <button
+                                    onClick={() => handleDeleteMessage(msg.id)}
+                                    title="Удалить"
+                                    className="bg-red-500 bg-opacity-70 hover:bg-opacity-90 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                    style={{fontSize:'10px'}}>
+                                    🗑
                                   </button>
                                 )}
                               </div>
@@ -5668,6 +5741,16 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           width={300}
                           height={350}
                         />
+                      </div>
+                    )}
+                    {replyTo && (
+                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-blue-700">{replyTo.author_name}</p>
+                          <p className="text-xs text-blue-500 truncate">{replyTo.message.slice(0, 80)}</p>
+                        </div>
+                        <button onClick={() => setReplyTo(null)}
+                          className="text-blue-400 hover:text-blue-700 ml-2 text-sm font-bold flex-shrink-0">✕</button>
                       </div>
                     )}
                     <div className="flex gap-2 border-t border-gray-100 pt-4">
