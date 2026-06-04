@@ -19,6 +19,20 @@ export async function GET(request: NextRequest) {
         .select('*, contracts(id, number, title, status, created_at)')
         .eq('id', id)
         .single()
+
+      // Дополнительно загружаем документы по текстовому совпадению если counterparty_id не заполнен
+      if (data && data.contracts?.length === 0) {
+        const searchName = data.short_name ?? data.full_name
+        const { data: extraContracts } = await supabase
+          .from('contracts')
+          .select('id, number, title, status, created_at')
+          .ilike('counterparty', `%${searchName}%`)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+        if (extraContracts?.length) {
+          data.contracts = extraContracts
+        }
+      }
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
       return NextResponse.json({ counterparty: data })
     }
