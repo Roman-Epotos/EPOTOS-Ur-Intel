@@ -91,7 +91,12 @@ export async function POST(request: NextRequest) {
       .insert(fields)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error) {
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('counterparties_inn_kpp_unique')) {
+        return NextResponse.json({ error: 'Контрагент с таким ИНН уже добавлен в базу. Найдите его в реестре контрагентов.' }, { status: 409 })
+      }
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     return NextResponse.json({ success: true, counterparty: data })
 
   } catch (err) {
