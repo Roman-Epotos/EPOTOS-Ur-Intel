@@ -78,62 +78,72 @@ async function extractTextFromXlsx(fileUrl: string): Promise<string> {
 
 async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
   const prompts: Record<string, string> = {
-    legal_review: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Any of these companies may appear as a party to the document - do NOT treat their absence as a risk. Analyze the following document and provide a structured analysis in JSON format. All text values in JSON must be in Russian language. If the document is not a contract (e.g. a letter, act, invoice), adapt your analysis accordingly.
+    legal_review: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
 
-Document text:
+ВАЖНЫЕ ПРАВИЛА АНАЛИЗА:
+1. Компании ГК ЭПОТОС в роли стороны договора — НЕ являются риском, не упоминай их присутствие как проблему
+2. Пробелы, переносы строк, форматирование текста — НЕ являются юридическими рисками, игнорируй их полностью
+3. Стандартные формулировки типовых договоров — НЕ риск
+4. Анализируй ТОЛЬКО реальные юридические риски: невыгодные условия, дисбаланс ответственности, отсутствие важных защитных условий, неоднозначные формулировки
+
+Текст документа:
 ${text.slice(0, 8000)}
 
-Return ONLY valid JSON without markdown:
+Верни ТОЛЬКО валидный JSON без markdown:
 {
   "red_flags": [
-    {"severity": "high|medium|low", "title": "risk title in Russian", "description": "description in Russian", "recommendation": "recommendation in Russian"}
+    {"severity": "high|medium|low", "title": "название риска", "description": "описание проблемы", "recommendation": "рекомендация"}
   ],
   "warnings": [
-    {"title": "title in Russian", "description": "description in Russian"}
+    {"title": "название", "description": "описание"}
   ],
   "positives": [
-    {"title": "title in Russian", "description": "description in Russian"}
+    {"title": "название", "description": "описание"}
   ],
   "overall_risk": "high|medium|low",
-  "summary": "brief conclusion in Russian"
+  "summary": "краткий вывод 2-3 предложения"
 }`,
 
-    passport: `You are a legal expert for EPOTOS Group of Companies (ГК ЭПОТОС). The group includes: ООО Техно, ООО НПП ЭПОТОС, ООО СПТ, ООО ОС, ООО Эпотос-К. Create a passport summary for the following contract in JSON format. All text values in JSON must be in Russian language.
+    passport: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
 
-Contract text:
+ВАЖНО: Составь паспорт документа — краткую выжимку ключевых условий. Игнорируй форматирование и пробелы, работай только со смысловым содержанием.
+
+Текст документа:
 ${text.slice(0, 8000)}
 
-Return ONLY valid JSON without markdown:
+Верни ТОЛЬКО валидный JSON без markdown:
 {
-  "essence": "contract essence in 2-3 sentences in Russian",
+  "essence": "суть документа в 2-3 предложениях",
   "parties": {
-    "our_obligations": ["obligation 1 in Russian", "obligation 2 in Russian"],
-    "counterparty_obligations": ["obligation 1 in Russian", "obligation 2 in Russian"]
+    "our_obligations": ["обязательство 1", "обязательство 2"],
+    "counterparty_obligations": ["обязательство 1", "обязательство 2"]
   },
   "key_terms": {
-    "amount": "contract amount in Russian",
-    "payment_terms": "payment terms in Russian",
-    "start_date": "start date in Russian",
-    "end_date": "end date in Russian",
-    "auto_renewal": "auto-renewal terms or none in Russian"
+    "amount": "сумма договора",
+    "payment_terms": "условия оплаты",
+    "start_date": "дата начала",
+    "end_date": "дата окончания",
+    "auto_renewal": "условия пролонгации или отсутствует"
   },
-  "termination": "termination conditions in Russian",
-  "control_points": ["control point 1 in Russian", "control point 2 in Russian"],
-  "attention_zones": ["attention zone 1 in Russian", "attention zone 2 in Russian"]
+  "termination": "условия расторжения",
+  "control_points": ["точка контроля 1", "точка контроля 2"],
+  "attention_zones": ["зона внимания 1", "зона внимания 2"]
 }`,
 
-    document_review: `You are a document analyst for EPOTOS Group of Companies (ГК ЭПОТОС). Analyze the following document and provide a structured summary in JSON format. All text values must be in Russian language.
+    document_review: `Ты аналитик документов ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
 
-Document text:
+ВАЖНО: Игнорируй форматирование, пробелы и переносы строк — анализируй только смысловое содержание документа.
+
+Текст документа:
 ${text.slice(0, 8000)}
 
-Return ONLY valid JSON without markdown:
+Верни ТОЛЬКО валидный JSON без markdown:
 {
-  "summary": "brief document summary in 2-3 sentences in Russian",
-  "purpose": "document purpose and what action is required in Russian",
-  "attention_points": ["important point 1 in Russian", "important point 2 in Russian"],
-  "recommendations": ["recommendation 1 in Russian", "recommendation 2 in Russian"],
-  "document_type": "detected document type in Russian",
+  "summary": "краткое резюме документа 2-3 предложения",
+  "purpose": "цель документа и какое действие требуется",
+  "attention_points": ["важный момент 1", "важный момент 2"],
+  "recommendations": ["рекомендация 1", "рекомендация 2"],
+  "document_type": "тип документа",
   "urgency": "high|medium|low"
 }`
   }
@@ -207,9 +217,11 @@ export async function POST(request: NextRequest) {
     let textOrUrl: string
 
     if (fileName.endsWith('.pdf')) {
-      console.log('PDF mode - extracting text with unpdf')
-      textOrUrl = await extractTextFromPdf(file_url)
-      console.log('PDF text length:', textOrUrl.length)
+      await supabase
+        .from('ai_analysis')
+        .update({ status: 'error', result_json: { error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' } })
+        .eq('id', analysis.id)
+      return NextResponse.json({ error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' }, { status: 400 })
     } else if (fileName.endsWith('.doc')) {
       return NextResponse.json({
         error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'

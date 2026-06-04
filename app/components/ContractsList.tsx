@@ -308,7 +308,11 @@ export default function ContractsList() {
                     {contract.number}
                   </Link>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">{contract.title}</td>
+                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.title}
+                  </Link>
+                </td>
                 <td className="px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">
                   {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
