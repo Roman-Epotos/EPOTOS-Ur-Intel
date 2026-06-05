@@ -26,6 +26,8 @@ const ADMIN_TABS = [
   { id: 'templates', label: 'Шаблоны документов' },
   { id: 'requisites', label: 'Реквизиты компаний' },
   { id: 'gc_roles', label: 'Роли ГК' },
+  { id: 'directors', label: '👔 Генеральные директора' },
+  { id: 'edo_specialists', label: '📋 Специалисты ЭДО' },
   { id: 'deleted', label: '🗑 Удалённые документы' },
 ]
 
@@ -133,6 +135,22 @@ export default function AdminPage() {
   const [deletedError, setDeletedError] = useState('')
   const [deletedSuccess, setDeletedSuccess] = useState('')
 
+  // Генеральные директора
+  const [directors, setDirectors] = useState<{id: string, company_prefix: string, bitrix_user_id: number, user_name: string, position: string, is_default: boolean}[]>([])
+  const [directorsLoading, setDirectorsLoading] = useState(false)
+  const [directorForm, setDirectorForm] = useState({ company_prefix: 'ТХ', bitrix_user_id: '', user_name: '', position: 'Генеральный директор', is_default: false })
+  const [directorSaving, setDirectorSaving] = useState(false)
+  const [directorError, setDirectorError] = useState('')
+  const [directorSuccess, setDirectorSuccess] = useState('')
+
+  // Специалисты ЭДО
+  const [edoSpecialists, setEdoSpecialists] = useState<{id: string, company_prefix: string, bitrix_user_id: number, user_name: string, position: string}[]>([])
+  const [edoLoading, setEdoLoading] = useState(false)
+  const [edoForm, setEdoForm] = useState({ company_prefix: 'ТХ', bitrix_user_id: '', user_name: '', position: '' })
+  const [edoSaving, setEdoSaving] = useState(false)
+  const [edoError, setEdoError] = useState('')
+  const [edoSuccess, setEdoSuccess] = useState('')
+
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
   useEffect(() => {
@@ -191,6 +209,22 @@ useEffect(() => {
       fetch(`${baseUrl}/api/deleted-contracts?bitrix_user_id=${user?.id}`)
         .then(r => r.json())
         .then(d => { setDeletedContracts(d.contracts ?? []); setDeletedLoading(false) })
+    }
+  }, [adminTab])
+
+  // Загружаем директоров и специалистов ЭДО
+  useEffect(() => {
+    if (adminTab === 'directors') {
+      setDirectorsLoading(true)
+      fetch(`${baseUrl}/api/company-directors`)
+        .then(r => r.json())
+        .then(d => { setDirectors(d.directors ?? []); setDirectorsLoading(false) })
+    }
+    if (adminTab === 'edo_specialists') {
+      setEdoLoading(true)
+      fetch(`${baseUrl}/api/edo-specialists`)
+        .then(r => r.json())
+        .then(d => { setEdoSpecialists(d.specialists ?? []); setEdoLoading(false) })
     }
   }, [adminTab])
 
@@ -960,6 +994,198 @@ useEffect(() => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Вкладка — Генеральные директора */}
+        {adminTab === 'directors' && (
+          <div className="space-y-4">
+            {directorError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{directorError}</div>}
+            {directorSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{directorSuccess}</div>}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Генеральные директора по компаниям</h2>
+              {/* Форма добавления */}
+              <div className="grid grid-cols-2 gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Компания</label>
+                  <select value={directorForm.company_prefix} onChange={e => setDirectorForm(p => ({...p, company_prefix: e.target.value}))}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
+                    {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">ID в Битрикс24</label>
+                  <input type="number" value={directorForm.bitrix_user_id} onChange={e => setDirectorForm(p => ({...p, bitrix_user_id: e.target.value}))}
+                    placeholder="Например: 1"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">ФИО</label>
+                  <input value={directorForm.user_name} onChange={e => setDirectorForm(p => ({...p, user_name: e.target.value}))}
+                    placeholder="Чащина Елена Петровна"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Должность</label>
+                  <input value={directorForm.position} onChange={e => setDirectorForm(p => ({...p, position: e.target.value}))}
+                    placeholder="Генеральный директор"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="dir_default" checked={directorForm.is_default}
+                    onChange={e => setDirectorForm(p => ({...p, is_default: e.target.checked}))} />
+                  <label htmlFor="dir_default" className="text-xs text-gray-600">По умолчанию для компании</label>
+                </div>
+                <div className="flex items-end">
+                  <button onClick={async () => {
+                    if (!directorForm.bitrix_user_id || !directorForm.user_name) { setDirectorError('Заполните ID и ФИО'); return }
+                    setDirectorSaving(true); setDirectorError(''); setDirectorSuccess('')
+                    const res = await fetch(`${baseUrl}/api/company-directors`, {
+                      method: 'POST', headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({...directorForm, bitrix_user_id: parseInt(directorForm.bitrix_user_id)})
+                    })
+                    const data = await res.json()
+                    if (data.success) {
+                      setDirectorSuccess('Добавлено')
+                      setDirectorForm({ company_prefix: 'ТХ', bitrix_user_id: '', user_name: '', position: 'Генеральный директор', is_default: false })
+                      const r = await fetch(`${baseUrl}/api/company-directors`)
+                      const d = await r.json()
+                      setDirectors(d.directors ?? [])
+                    } else { setDirectorError(data.error ?? 'Ошибка') }
+                    setDirectorSaving(false)
+                  }} disabled={directorSaving}
+                    className="w-full bg-gray-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                    {directorSaving ? 'Сохранение...' : '+ Добавить'}
+                  </button>
+                </div>
+              </div>
+              {/* Список */}
+              {directorsLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
+                <div className="space-y-2">
+                  {COMPANIES.map(company => {
+                    const companyDirs = directors.filter(d => d.company_prefix === company.id)
+                    if (companyDirs.length === 0) return null
+                    return (
+                      <div key={company.id} className="mb-4">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
+                        {companyDirs.map(d => (
+                          <div key={d.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 rounded-lg mb-1">
+                            <div>
+                              <span className="text-sm font-medium text-gray-900">{d.user_name}</span>
+                              <span className="text-xs text-gray-400 ml-2">{d.position}</span>
+                              {d.is_default && <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">по умолчанию</span>}
+                              <span className="text-xs text-gray-400 ml-2">ID: {d.bitrix_user_id}</span>
+                            </div>
+                            <button onClick={async () => {
+                              setDirectorError(''); setDirectorSuccess('')
+                              const res = await fetch(`${baseUrl}/api/company-directors?id=${d.id}`, { method: 'DELETE' })
+                              const data = await res.json()
+                              if (data.success) {
+                                setDirectors(prev => prev.filter(x => x.id !== d.id))
+                                setDirectorSuccess('Удалено')
+                              } else { setDirectorError(data.error ?? 'Ошибка') }
+                            }} className="text-xs text-red-500 hover:text-red-700">Удалить</button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Вкладка — Специалисты ЭДО */}
+        {adminTab === 'edo_specialists' && (
+          <div className="space-y-4">
+            {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{edoError}</div>}
+            {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{edoSuccess}</div>}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
+              {/* Форма добавления */}
+              <div className="grid grid-cols-2 gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Компания</label>
+                  <select value={edoForm.company_prefix} onChange={e => setEdoForm(p => ({...p, company_prefix: e.target.value}))}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
+                    {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">ID в Битрикс24</label>
+                  <input type="number" value={edoForm.bitrix_user_id} onChange={e => setEdoForm(p => ({...p, bitrix_user_id: e.target.value}))}
+                    placeholder="Например: 158"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">ФИО</label>
+                  <input value={edoForm.user_name} onChange={e => setEdoForm(p => ({...p, user_name: e.target.value}))}
+                    placeholder="Наумова Елена"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Должность</label>
+                  <input value={edoForm.position} onChange={e => setEdoForm(p => ({...p, position: e.target.value}))}
+                    placeholder="Главный бухгалтер"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button onClick={async () => {
+                    if (!edoForm.bitrix_user_id || !edoForm.user_name) { setEdoError('Заполните ID и ФИО'); return }
+                    setEdoSaving(true); setEdoError(''); setEdoSuccess('')
+                    const res = await fetch(`${baseUrl}/api/edo-specialists`, {
+                      method: 'POST', headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({...edoForm, bitrix_user_id: parseInt(edoForm.bitrix_user_id)})
+                    })
+                    const data = await res.json()
+                    if (data.success) {
+                      setEdoSuccess('Добавлено')
+                      setEdoForm({ company_prefix: 'ТХ', bitrix_user_id: '', user_name: '', position: '' })
+                      const r = await fetch(`${baseUrl}/api/edo-specialists`)
+                      const d = await r.json()
+                      setEdoSpecialists(d.specialists ?? [])
+                    } else { setEdoError(data.error ?? 'Ошибка') }
+                    setEdoSaving(false)
+                  }} disabled={edoSaving}
+                    className="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                    {edoSaving ? 'Сохранение...' : '+ Добавить'}
+                  </button>
+                </div>
+              </div>
+              {/* Список */}
+              {edoLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
+                <div className="space-y-2">
+                  {COMPANIES.map(company => {
+                    const companySpecs = edoSpecialists.filter(s => s.company_prefix === company.id)
+                    if (companySpecs.length === 0) return null
+                    return (
+                      <div key={company.id} className="mb-4">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
+                        {companySpecs.map(s => (
+                          <div key={s.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 rounded-lg mb-1">
+                            <div>
+                              <span className="text-sm font-medium text-gray-900">{s.user_name}</span>
+                              <span className="text-xs text-gray-400 ml-2">{s.position}</span>
+                              <span className="text-xs text-gray-400 ml-2">ID: {s.bitrix_user_id}</span>
+                            </div>
+                            <button onClick={async () => {
+                              setEdoError(''); setEdoSuccess('')
+                              const res = await fetch(`${baseUrl}/api/edo-specialists?id=${s.id}`, { method: 'DELETE' })
+                              const data = await res.json()
+                              if (data.success) {
+                                setEdoSpecialists(prev => prev.filter(x => x.id !== s.id))
+                                setEdoSuccess('Удалено')
+                              } else { setEdoError(data.error ?? 'Ошибка') }
+                            }} className="text-xs text-red-500 hover:text-red-700">Удалить</button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
