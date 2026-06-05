@@ -10,7 +10,7 @@ const STAGES = [
   { id: 'finance', label: 'Финансовый департамент' },
   { id: 'accounting', label: 'Бухгалтерия' },
   { id: 'director', label: 'Генеральный директор' },
-  { id: 'edo', label: '📋 Специалисты ЭДО' },
+  { id: 'edo', label: 'Специалисты ЭДО' },
   { id: 'custom', label: 'Дополнительные' },
 ]
 
@@ -443,7 +443,7 @@ useEffect(() => {
               ))}
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            {activeStage !== 'edo' && <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
               <h2 className="text-sm font-medium text-gray-700 mb-4">
                 Текущий список — {STAGES.find(s => s.id === activeStage)?.label}
               </h2>
@@ -468,9 +468,9 @@ useEffect(() => {
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
 
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
+            {activeStage !== 'edo' && <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить участника</h2>
               <form onSubmit={handleAdd} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -525,7 +525,7 @@ useEffect(() => {
                   Добавить
                 </button>
               </form>
-            </div>
+            </div>}
           {activeStage === 'edo' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
               <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
