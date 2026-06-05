@@ -527,35 +527,71 @@ useEffect(() => {
               </form>
             </div>}
           {activeStage === 'edo' && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
-              <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
-            <div className="grid grid-cols-2 gap-3 mb-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Компания</label>
-                <select value={edoForm.company_prefix} onChange={e => setEdoForm(p => ({...p, company_prefix: e.target.value}))}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
-                  {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+            <div className="space-y-6">
+              {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{edoError}</div>}
+              {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{edoSuccess}</div>}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-medium text-gray-700 mb-4">Текущий список — Специалисты ЭДО</h2>
+                {edoLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
+                  <div className="space-y-4">
+                    {COMPANIES.map(company => {
+                      const specs = edoSpecialists.filter(s => s.company_prefix === company.id)
+                      if (specs.length === 0) return null
+                      return (
+                        <div key={company.id}>
+                          <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
+                          {specs.map(s => (
+                            <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-1">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{s.user_name}</p>
+                                <p className="text-xs text-gray-500">{s.position} · Битрикс ID: {s.bitrix_user_id}</p>
+                              </div>
+                              <button onClick={async () => {
+                                setEdoError(''); setEdoSuccess('')
+                                const res = await fetch(`${baseUrl}/api/edo-specialists?id=${s.id}`, { method: 'DELETE' })
+                                const data = await res.json()
+                                if (data.success) {
+                                  setEdoSpecialists(prev => prev.filter(x => x.id !== s.id))
+                                  setEdoSuccess('Удалено')
+                                } else { setEdoError(data.error ?? 'Ошибка') }
+                              }} className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">Удалить</button>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">ID в Битрикс24</label>
-                <input type="number" value={edoForm.bitrix_user_id} onChange={e => setEdoForm(p => ({...p, bitrix_user_id: e.target.value}))}
-                  placeholder="Например: 158"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">ФИО</label>
-                <input value={edoForm.user_name} onChange={e => setEdoForm(p => ({...p, user_name: e.target.value}))}
-                  placeholder="Наумова Елена"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Должность</label>
-                <input value={edoForm.position} onChange={e => setEdoForm(p => ({...p, position: e.target.value}))}
-                  placeholder="Главный бухгалтер"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div className="col-span-2 flex justify-end">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить специалиста ЭДО</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Компания <span className="text-red-500">*</span></label>
+                    <select value={edoForm.company_prefix} onChange={e => setEdoForm(p => ({...p, company_prefix: e.target.value}))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                      {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Битрикс24 ID <span className="text-red-500">*</span></label>
+                    <input type="number" value={edoForm.bitrix_user_id} onChange={e => setEdoForm(p => ({...p, bitrix_user_id: e.target.value}))}
+                      placeholder="например: 158"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
+                    <input value={edoForm.user_name} onChange={e => setEdoForm(p => ({...p, user_name: e.target.value}))}
+                      placeholder="Наумова Елена"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Должность</label>
+                    <input value={edoForm.position} onChange={e => setEdoForm(p => ({...p, position: e.target.value}))}
+                      placeholder="Главный бухгалтер"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                </div>
                 <button onClick={async () => {
                   if (!edoForm.bitrix_user_id || !edoForm.user_name) { setEdoError('Заполните ID и ФИО'); return }
                   setEdoSaving(true); setEdoError(''); setEdoSuccess('')
@@ -573,42 +609,10 @@ useEffect(() => {
                   } else { setEdoError(data.error ?? 'Ошибка') }
                   setEdoSaving(false)
                 }} disabled={edoSaving}
-                  className="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
-                  {edoSaving ? 'Сохранение...' : '+ Добавить'}
+                  className="mt-4 bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  {edoSaving ? 'Сохранение...' : 'Добавить'}
                 </button>
               </div>
-            </div>
-            {edoLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
-              <div className="space-y-4">
-                {COMPANIES.map(company => {
-                  const specs = edoSpecialists.filter(s => s.company_prefix === company.id)
-                  if (specs.length === 0) return null
-                  return (
-                    <div key={company.id}>
-                      <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
-                      {specs.map(s => (
-                        <div key={s.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 rounded-lg mb-1">
-                          <div>
-                            <span className="text-sm font-medium text-gray-900">{s.user_name}</span>
-                            <span className="text-xs text-gray-400 ml-2">{s.position}</span>
-                            <span className="text-xs text-gray-400 ml-2">ID: {s.bitrix_user_id}</span>
-                          </div>
-                          <button onClick={async () => {
-                            setEdoError(''); setEdoSuccess('')
-                            const res = await fetch(`${baseUrl}/api/edo-specialists?id=${s.id}`, { method: 'DELETE' })
-                            const data = await res.json()
-                            if (data.success) {
-                              setEdoSpecialists(prev => prev.filter(x => x.id !== s.id))
-                              setEdoSuccess('Удалено')
-                            } else { setEdoError(data.error ?? 'Ошибка') }
-                          }} className="text-xs text-red-500 hover:text-red-700">Удалить</button>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
             </div>
           )}
           </div>
@@ -704,35 +708,71 @@ useEffect(() => {
               </div>
             </div>
           {activeStage === 'edo' && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
-              <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
-            <div className="grid grid-cols-2 gap-3 mb-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Компания</label>
-                <select value={edoForm.company_prefix} onChange={e => setEdoForm(p => ({...p, company_prefix: e.target.value}))}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
-                  {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+            <div className="space-y-6">
+              {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{edoError}</div>}
+              {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{edoSuccess}</div>}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-medium text-gray-700 mb-4">Текущий список — Специалисты ЭДО</h2>
+                {edoLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
+                  <div className="space-y-4">
+                    {COMPANIES.map(company => {
+                      const specs = edoSpecialists.filter(s => s.company_prefix === company.id)
+                      if (specs.length === 0) return null
+                      return (
+                        <div key={company.id}>
+                          <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
+                          {specs.map(s => (
+                            <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-1">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{s.user_name}</p>
+                                <p className="text-xs text-gray-500">{s.position} · Битрикс ID: {s.bitrix_user_id}</p>
+                              </div>
+                              <button onClick={async () => {
+                                setEdoError(''); setEdoSuccess('')
+                                const res = await fetch(`${baseUrl}/api/edo-specialists?id=${s.id}`, { method: 'DELETE' })
+                                const data = await res.json()
+                                if (data.success) {
+                                  setEdoSpecialists(prev => prev.filter(x => x.id !== s.id))
+                                  setEdoSuccess('Удалено')
+                                } else { setEdoError(data.error ?? 'Ошибка') }
+                              }} className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">Удалить</button>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">ID в Битрикс24</label>
-                <input type="number" value={edoForm.bitrix_user_id} onChange={e => setEdoForm(p => ({...p, bitrix_user_id: e.target.value}))}
-                  placeholder="Например: 158"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">ФИО</label>
-                <input value={edoForm.user_name} onChange={e => setEdoForm(p => ({...p, user_name: e.target.value}))}
-                  placeholder="Наумова Елена"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Должность</label>
-                <input value={edoForm.position} onChange={e => setEdoForm(p => ({...p, position: e.target.value}))}
-                  placeholder="Главный бухгалтер"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-              </div>
-              <div className="col-span-2 flex justify-end">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-medium text-gray-700 mb-4">Добавить специалиста ЭДО</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Компания <span className="text-red-500">*</span></label>
+                    <select value={edoForm.company_prefix} onChange={e => setEdoForm(p => ({...p, company_prefix: e.target.value}))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                      {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Битрикс24 ID <span className="text-red-500">*</span></label>
+                    <input type="number" value={edoForm.bitrix_user_id} onChange={e => setEdoForm(p => ({...p, bitrix_user_id: e.target.value}))}
+                      placeholder="например: 158"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
+                    <input value={edoForm.user_name} onChange={e => setEdoForm(p => ({...p, user_name: e.target.value}))}
+                      placeholder="Наумова Елена"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Должность</label>
+                    <input value={edoForm.position} onChange={e => setEdoForm(p => ({...p, position: e.target.value}))}
+                      placeholder="Главный бухгалтер"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                </div>
                 <button onClick={async () => {
                   if (!edoForm.bitrix_user_id || !edoForm.user_name) { setEdoError('Заполните ID и ФИО'); return }
                   setEdoSaving(true); setEdoError(''); setEdoSuccess('')
@@ -750,42 +790,10 @@ useEffect(() => {
                   } else { setEdoError(data.error ?? 'Ошибка') }
                   setEdoSaving(false)
                 }} disabled={edoSaving}
-                  className="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
-                  {edoSaving ? 'Сохранение...' : '+ Добавить'}
+                  className="mt-4 bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  {edoSaving ? 'Сохранение...' : 'Добавить'}
                 </button>
               </div>
-            </div>
-            {edoLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : (
-              <div className="space-y-4">
-                {COMPANIES.map(company => {
-                  const specs = edoSpecialists.filter(s => s.company_prefix === company.id)
-                  if (specs.length === 0) return null
-                  return (
-                    <div key={company.id}>
-                      <p className="text-xs font-semibold text-gray-500 mb-2">{company.name}</p>
-                      {specs.map(s => (
-                        <div key={s.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 rounded-lg mb-1">
-                          <div>
-                            <span className="text-sm font-medium text-gray-900">{s.user_name}</span>
-                            <span className="text-xs text-gray-400 ml-2">{s.position}</span>
-                            <span className="text-xs text-gray-400 ml-2">ID: {s.bitrix_user_id}</span>
-                          </div>
-                          <button onClick={async () => {
-                            setEdoError(''); setEdoSuccess('')
-                            const res = await fetch(`${baseUrl}/api/edo-specialists?id=${s.id}`, { method: 'DELETE' })
-                            const data = await res.json()
-                            if (data.success) {
-                              setEdoSpecialists(prev => prev.filter(x => x.id !== s.id))
-                              setEdoSuccess('Удалено')
-                            } else { setEdoError(data.error ?? 'Ошибка') }
-                          }} className="text-xs text-red-500 hover:text-red-700">Удалить</button>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
             </div>
           )}
           </div>
