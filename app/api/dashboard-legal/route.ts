@@ -94,11 +94,15 @@ export async function GET(request: NextRequest) {
     const { data: overdueChecklist } = await overdueChecklistQuery
 
     // 5. Динамика создания документов за период
-    const { data: recentContracts } = await supabase
+    let recentContractsQuery = supabase
       .from('contracts')
       .select('created_at, company_prefix, status')
       .gte('created_at', fromDateStr)
       .order('created_at', { ascending: true })
+    if (companyPrefix) {
+      recentContractsQuery = recentContractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: recentContracts } = await recentContractsQuery
 
     // Группируем по неделям
     const weeklyMap: Record<string, number> = {}

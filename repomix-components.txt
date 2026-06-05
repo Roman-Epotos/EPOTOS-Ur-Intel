@@ -3601,411 +3601,6 @@ export default function Header() {
 }
 </file>
 
-<file path="app/components/ContractsList.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
-
-function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
-  const [hasNew, setHasNew] = useState(false)
-
-  const refresh = () => {
-    if (!lastMessageAt) { setHasNew(false); return }
-    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
-    if (!lastReadStr) { setHasNew(true); return }
-    const lastRead = new Date(lastReadStr).getTime()
-    const lastMsg = new Date(lastMessageAt).getTime()
-    setHasNew(lastMsg > lastRead)
-  }
-
-  useEffect(() => {
-    refresh()
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  }, [contractId, lastMessageAt])
-
-  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
-  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
-  return (
-    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-      💬 new
-    </span>
-  )
-}
-
-interface Contract {
-  id: string
-  number: string
-  title: string
-  counterparty: string
-  status: string
-  amount: number | null
-  end_date: string | null
-  author_bitrix_id: number | null
-  has_files?: boolean
-  file_type?: string | null
-  unread_messages?: number
-  last_message_at?: string | null
-  created_at: string
-  customer_number?: string | null
-}
-
-interface UserRole {
-  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'finance_company' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
-  companies: string[]
-}
-
-const statusLabel: Record<string, string> = {
-  черновик: 'Черновик',
-  на_согласовании: 'На согласовании',
-  согласован: 'Согласован',
-  отклонён: 'Отклонён',
-  загружен_частично: 'Документы загружены частично',
-  подписан: 'Подписанные документы загружены',
-  на_исполнении: 'На контроле исполнения',
-  архив: 'Архив',
-}
-
-const statusColor: Record<string, string> = {
-  черновик: 'bg-gray-100 text-gray-700',
-  на_согласовании: 'bg-yellow-100 text-yellow-800',
-  согласован: 'bg-blue-100 text-blue-800',
-  отклонён: 'bg-red-100 text-red-700',
-  загружен_частично: 'bg-orange-100 text-orange-800',
-  подписан: 'bg-green-100 text-green-800',
-  на_исполнении: 'bg-emerald-100 text-emerald-800',
-  архив: 'bg-gray-200 text-gray-500',
-}
-
-export default function ContractsList() {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [contracts, setContracts] = useState<Contract[]>([])
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [search, setSearch] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('all')
-  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
-  const [counterpartySearch, setCounterpartySearch] = useState('')
-  const [showCounterpartyDropdown, setShowCounterpartyDropdown] = useState(false)
-  const [counterparties, setCounterparties] = useState<string[]>([])
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-  // Realtime подписка на новые договоры
-  useEffect(() => {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-
-    const channel = supabase
-      .channel('contracts-changes')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'contracts',
-      }, () => {
-        if (!user?.id) return
-        const load = async () => {
-          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-          const roleData = await roleRes.json()
-          const params = new URLSearchParams()
-          params.append('bitrix_user_id', user.id)
-          params.append('role', roleData.role)
-          if (roleData.companies.length > 0) {
-            params.append('companies', roleData.companies.join(','))
-          }
-          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-          const contractsData = await contractsRes.json()
-          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
-            const aTime = a.last_message_at ?? a.created_at
-            const bTime = b.last_message_at ?? b.created_at
-            return new Date(bTime).getTime() - new Date(aTime).getTime()
-          })
-          setContracts(sorted)
-          const unique = [...new Set(sorted.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
-          setCounterparties(unique.sort())
-        }
-        load()
-      })
-      .subscribe()
-
-    // Подписка на новые сообщения в чатах
-    const msgChannel = supabase
-      .channel('approval-messages-changes')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'approval_messages',
-      }, () => {
-        if (!user?.id) return
-        const reload = async () => {
-          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-          const roleData = await roleRes.json()
-          const params = new URLSearchParams()
-          params.append('bitrix_user_id', user.id)
-          params.append('role', roleData.role)
-          if (roleData.companies.length > 0) {
-            params.append('companies', roleData.companies.join(','))
-          }
-          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-          const contractsData = await contractsRes.json()
-          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
-            const aTime = a.last_message_at ?? a.created_at
-            const bTime = b.last_message_at ?? b.created_at
-            return new Date(bTime).getTime() - new Date(aTime).getTime()
-          })
-          setContracts(sorted)
-        }
-        reload()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-      supabase.removeChannel(msgChannel)
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        // Получаем роль пользователя
-        const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-        const roleData = await roleRes.json()
-        setUserRole(roleData)
-
-        // Получаем договоры в зависимости от роли
-        const params = new URLSearchParams()
-        params.append('bitrix_user_id', user.id)
-        params.append('role', roleData.role)
-        if (roleData.companies.length > 0) {
-          params.append('companies', roleData.companies.join(','))
-        }
-
-        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-        const contractsData = await contractsRes.json()
-        const allContracts = (contractsData.contracts ?? []).sort((a: Contract & { last_message_at?: string | null }, b: Contract & { last_message_at?: string | null }) => {
-          const aTime = a.last_message_at ?? a.created_at
-          const bTime = b.last_message_at ?? b.created_at
-          return new Date(bTime).getTime() - new Date(aTime).getTime()
-        })
-        setContracts(allContracts)
-        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
-        setCounterparties(unique.sort())
-      } catch {
-        console.error('Ошибка загрузки')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-  }, [user?.id])
-
-  if (authLoading || loading) return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-6 py-4 text-sm text-gray-400">Загрузка...</div>
-    </div>
-  )
-
-  if (!user) return null
-
-  // Фильтрация
-  const filtered = contracts.filter(c => {
-    if (filter !== 'all' && c.status !== filter) return false
-    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
-    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
-    if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
-        !c.title.toLowerCase().includes(search.toLowerCase()) &&
-        !c.counterparty.toLowerCase().includes(search.toLowerCase()) &&
-        !(c.customer_number ?? '').toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
-
-  const roleLabels: Record<string, string> = {
-    developer: 'Все документы (Разработчик)',
-    admin: 'Все документы (Администратор)',
-    gc_manager: 'Все документы (Менеджер ГК)',
-    finance_gc: 'Все документы (Финансовый контроль ГК)',
-    legal_gc: 'Все документы (Юридический отдел ГК)',
-    director: 'Договоры компании',
-    legal: 'Договоры на юридическом сопровождении',
-    finance: 'Договоры финансового сопровождения',
-    user: 'Мои договоры',
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 60px)'}}>
-      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-700">
-            {roleLabels[userRole?.role ?? 'user']}
-          </h2>
-          <span className="text-xs text-gray-400">{filtered.length} записей</span>
-        </div>
-
-        <div className="flex gap-2 flex-wrap mt-3">
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск по номеру, названию, контрагенту, номеру заказчика..."
-            className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
-          <select
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-          >
-            <option value="all">Все статусы</option>
-            <option value="черновик">Черновики</option>
-            <option value="на_согласовании">На согласовании</option>
-            <option value="согласован">Согласованные</option>
-            <option value="загружен_частично">Документы загружены частично</option>
-            <option value="подписан">Подписанные документы загружены</option>
-            <option value="на_исполнении">На контроле исполнения</option>
-            <option value="архив">Архив</option>
-          </select>
-          <select
-            value={companyFilter}
-            onChange={e => setCompanyFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-          >
-            <option value="all">Все компании</option>
-            <option value="ТХ">ООО Техно</option>
-            <option value="НПП">НПП ЭПОТОС</option>
-            <option value="СПТ">ООО СПТ</option>
-            <option value="ОС">ООО ОС</option>
-            <option value="Э-К">ООО Эпотос-К</option>
-          </select>
-          <div className="relative">
-            <input
-              type="text"
-              value={counterpartySearch}
-              onChange={e => {
-                setCounterpartySearch(e.target.value)
-                setShowCounterpartyDropdown(true)
-                if (!e.target.value) setCounterpartyFilter('all')
-              }}
-              onFocus={() => setShowCounterpartyDropdown(true)}
-              onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
-              placeholder="Фильтр по контрагенту..."
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-56"
-            />
-            {counterpartyFilter !== 'all' && (
-              <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
-                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-700 text-xs">✕</button>
-            )}
-            {showCounterpartyDropdown && counterparties.filter(c =>
-              c.toLowerCase().includes(counterpartySearch.toLowerCase())
-            ).length > 0 && (
-              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                {counterparties
-                  .filter(c => c.toLowerCase().includes(counterpartySearch.toLowerCase()))
-                  .map(c => (
-                    <button key={c} type="button"
-                      onMouseDown={() => {
-                        setCounterpartyFilter(c)
-                        setCounterpartySearch(c)
-                        setShowCounterpartyDropdown(false)
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
-                      {c}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto overflow-x-auto">
-      {filtered.length === 0 ? (
-        <div className="px-6 py-12 text-center">
-          <p className="text-gray-400 text-sm">Документов не найдено</p>
-          {userRole?.role === 'user' && contracts.length === 0 && (
-            <Link href="/contracts/new"
-              className="mt-3 inline-block text-sm text-gray-900 underline">
-              Создать первый документ
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-<table className="w-full min-w-[900px]">
-          <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-              <th className="px-6 py-3 font-medium">Номер</th>
-              <th className="px-6 py-3 font-medium">Название</th>
-              <th className="px-6 py-3 font-medium">Контрагент</th>
-              <th className="px-6 py-3 font-medium">Сумма</th>
-              <th className="px-6 py-3 font-medium">Срок</th>
-              <th className="px-6 py-3 font-medium">Файлы</th>
-              <th className="px-6 py-3 font-medium">Чат</th>
-              <th className="px-6 py-3 font-medium">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(contract => (
-              <tr key={contract.id}
-                className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                    {contract.number}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                    {contract.title}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
-                <td className="px-6 py-4">
-                  {contract.has_files && contract.file_type ? (
-                    <img
-                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
-                      alt={contract.file_type}
-                      className="w-6 h-6"
-                    />
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
-                    const now = new Date().toISOString()
-                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
-                  }}>
-                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
-                  </a>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                    {statusLabel[contract.status] ?? contract.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      )}
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/components/GenerateFromTemplate.tsx">
 'use client'
 
@@ -4770,6 +4365,411 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
   }
 
   return null
+}
+</file>
+
+<file path="app/components/ContractsList.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
+  const [hasNew, setHasNew] = useState(false)
+
+  const refresh = () => {
+    if (!lastMessageAt) { setHasNew(false); return }
+    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
+    if (!lastReadStr) { setHasNew(true); return }
+    const lastRead = new Date(lastReadStr).getTime()
+    const lastMsg = new Date(lastMessageAt).getTime()
+    setHasNew(lastMsg > lastRead)
+  }
+
+  useEffect(() => {
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [contractId, lastMessageAt])
+
+  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
+  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+      💬 new
+    </span>
+  )
+}
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+  end_date: string | null
+  author_bitrix_id: number | null
+  has_files?: boolean
+  file_type?: string | null
+  unread_messages?: number
+  last_message_at?: string | null
+  created_at: string
+  customer_number?: string | null
+}
+
+interface UserRole {
+  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'finance_company' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
+  companies: string[]
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  согласован: 'Согласован',
+  отклонён: 'Отклонён',
+  загружен_частично: 'Документы загружены частично',
+  подписан: 'Подписанные документы загружены',
+  на_исполнении: 'На контроле исполнения',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  согласован: 'bg-blue-100 text-blue-800',
+  отклонён: 'bg-red-100 text-red-700',
+  загружен_частично: 'bg-orange-100 text-orange-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-emerald-100 text-emerald-800',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+export default function ContractsList() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('all')
+  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
+  const [counterpartySearch, setCounterpartySearch] = useState('')
+  const [showCounterpartyDropdown, setShowCounterpartyDropdown] = useState(false)
+  const [counterparties, setCounterparties] = useState<string[]>([])
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  // Realtime подписка на новые договоры
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('contracts-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'contracts',
+      }, () => {
+        if (!user?.id) return
+        const load = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
+          const unique = [...new Set(sorted.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+          setCounterparties(unique.sort())
+        }
+        load()
+      })
+      .subscribe()
+
+    // Подписка на новые сообщения в чатах
+    const msgChannel = supabase
+      .channel('approval-messages-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'approval_messages',
+      }, () => {
+        if (!user?.id) return
+        const reload = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
+        }
+        reload()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(msgChannel)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        // Получаем роль пользователя
+        const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+        const roleData = await roleRes.json()
+        setUserRole(roleData)
+
+        // Получаем договоры в зависимости от роли
+        const params = new URLSearchParams()
+        params.append('bitrix_user_id', user.id)
+        params.append('role', roleData.role)
+        if (roleData.companies.length > 0) {
+          params.append('companies', roleData.companies.join(','))
+        }
+
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+        const contractsData = await contractsRes.json()
+        const allContracts = (contractsData.contracts ?? []).sort((a: Contract & { last_message_at?: string | null }, b: Contract & { last_message_at?: string | null }) => {
+          const aTime = a.last_message_at ?? a.created_at
+          const bTime = b.last_message_at ?? b.created_at
+          return new Date(bTime).getTime() - new Date(aTime).getTime()
+        })
+        setContracts(allContracts)
+        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+        setCounterparties(unique.sort())
+      } catch {
+        console.error('Ошибка загрузки')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [user?.id])
+
+  if (authLoading || loading) return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 text-sm text-gray-400">Загрузка...</div>
+    </div>
+  )
+
+  if (!user) return null
+
+  // Фильтрация
+  const filtered = contracts.filter(c => {
+    if (filter !== 'all' && c.status !== filter) return false
+    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
+    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
+    if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
+        !c.title.toLowerCase().includes(search.toLowerCase()) &&
+        !c.counterparty.toLowerCase().includes(search.toLowerCase()) &&
+        !(c.customer_number ?? '').toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  const roleLabels: Record<string, string> = {
+    developer: 'Все документы (Разработчик)',
+    admin: 'Все документы (Администратор)',
+    gc_manager: 'Все документы (Менеджер ГК)',
+    finance_gc: 'Все документы (Финансовый контроль ГК)',
+    legal_gc: 'Все документы (Юридический отдел ГК)',
+    director: 'Договоры компании',
+    legal: 'Договоры на юридическом сопровождении',
+    finance: 'Договоры финансового сопровождения',
+    user: 'Мои договоры',
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 60px)'}}>
+      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-700">
+            {roleLabels[userRole?.role ?? 'user']}
+          </h2>
+          <span className="text-xs text-gray-400">{filtered.length} записей</span>
+        </div>
+
+        <div className="flex gap-2 flex-wrap mt-3">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск: номер, название, контрагент, № заказчика..."
+            className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все статусы</option>
+            <option value="черновик">Черновики</option>
+            <option value="на_согласовании">На согласовании</option>
+            <option value="согласован">Согласованные</option>
+            <option value="загружен_частично">Документы загружены частично</option>
+            <option value="подписан">Подписанные документы загружены</option>
+            <option value="на_исполнении">На контроле исполнения</option>
+            <option value="архив">Архив</option>
+          </select>
+          <select
+            value={companyFilter}
+            onChange={e => setCompanyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все компании</option>
+            <option value="ТХ">ООО Техно</option>
+            <option value="НПП">НПП ЭПОТОС</option>
+            <option value="СПТ">ООО СПТ</option>
+            <option value="ОС">ООО ОС</option>
+            <option value="Э-К">ООО Эпотос-К</option>
+          </select>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={counterpartySearch}
+              onChange={e => {
+                setCounterpartySearch(e.target.value)
+                setShowCounterpartyDropdown(true)
+                if (!e.target.value) setCounterpartyFilter('all')
+              }}
+              onFocus={() => setShowCounterpartyDropdown(true)}
+              onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
+              placeholder="Фильтр по контрагенту..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+            />
+            {counterpartyFilter !== 'all' && (
+              <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
+                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-700 text-xs">✕</button>
+            )}
+            {showCounterpartyDropdown && counterparties.filter(c =>
+              c.toLowerCase().includes(counterpartySearch.toLowerCase())
+            ).length > 0 && (
+              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                {counterparties
+                  .filter(c => c.toLowerCase().includes(counterpartySearch.toLowerCase()))
+                  .map(c => (
+                    <button key={c} type="button"
+                      onMouseDown={() => {
+                        setCounterpartyFilter(c)
+                        setCounterpartySearch(c)
+                        setShowCounterpartyDropdown(false)
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                      {c}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
+      {filtered.length === 0 ? (
+        <div className="px-6 py-12 text-center">
+          <p className="text-gray-400 text-sm">Документов не найдено</p>
+          {userRole?.role === 'user' && contracts.length === 0 && (
+            <Link href="/contracts/new"
+              className="mt-3 inline-block text-sm text-gray-900 underline">
+              Создать первый документ
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+<table className="w-full min-w-[900px]">
+          <thead>
+            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+              <th className="px-6 py-3 font-medium">Номер</th>
+              <th className="px-6 py-3 font-medium">Название</th>
+              <th className="px-6 py-3 font-medium">Контрагент</th>
+              <th className="px-6 py-3 font-medium">Сумма</th>
+              <th className="px-6 py-3 font-medium">Срок</th>
+              <th className="px-6 py-3 font-medium">Файлы</th>
+              <th className="px-6 py-3 font-medium">Чат</th>
+              <th className="px-6 py-3 font-medium">Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(contract => (
+              <tr key={contract.id}
+                className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
+                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.number}
+                  </Link>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.title}
+                  </Link>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">
+                  {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
+                <td className="px-6 py-4">
+                  {contract.has_files && contract.file_type ? (
+                    <img
+                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
+                      alt={contract.file_type}
+                      className="w-6 h-6"
+                    />
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
+                    const now = new Date().toISOString()
+                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
+                  }}>
+                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
+                  </a>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                    {statusLabel[contract.status] ?? contract.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+      </div>
+    </div>
+  )
 }
 </file>
 
