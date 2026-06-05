@@ -85,6 +85,8 @@ export default function ContractsList() {
   const [search, setSearch] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [counterpartyFilter, setCounterpartyFilter] = useState('all')
+  const [counterpartySearch, setCounterpartySearch] = useState('')
+  const [showCounterpartyDropdown, setShowCounterpartyDropdown] = useState(false)
   const [counterparties, setCounterparties] = useState<string[]>([])
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
@@ -278,16 +280,44 @@ export default function ContractsList() {
             <option value="ОС">ООО ОС</option>
             <option value="Э-К">ООО Эпотос-К</option>
           </select>
-          <select
-            value={counterpartyFilter}
-            onChange={e => setCounterpartyFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-32"
-          >
-            <option value="all">Все контрагенты</option>
-            {counterparties.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <input
+              type="text"
+              value={counterpartySearch}
+              onChange={e => {
+                setCounterpartySearch(e.target.value)
+                setShowCounterpartyDropdown(true)
+                if (!e.target.value) setCounterpartyFilter('all')
+              }}
+              onFocus={() => setShowCounterpartyDropdown(true)}
+              onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
+              placeholder="Фильтр по контрагенту..."
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-48"
+            />
+            {counterpartyFilter !== 'all' && (
+              <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
+                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-700 text-xs">✕</button>
+            )}
+            {showCounterpartyDropdown && counterparties.filter(c =>
+              c.toLowerCase().includes(counterpartySearch.toLowerCase())
+            ).length > 0 && (
+              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                {counterparties
+                  .filter(c => c.toLowerCase().includes(counterpartySearch.toLowerCase()))
+                  .map(c => (
+                    <button key={c} type="button"
+                      onMouseDown={() => {
+                        setCounterpartyFilter(c)
+                        setCounterpartySearch(c)
+                        setShowCounterpartyDropdown(false)
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                      {c}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
