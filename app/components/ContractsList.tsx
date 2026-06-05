@@ -252,7 +252,7 @@ export default function ContractsList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск по номеру, названию, контрагенту, номеру заказчика..."
-            className="flex-1 min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
           <select
             value={filter}
@@ -292,7 +292,7 @@ export default function ContractsList() {
               onFocus={() => setShowCounterpartyDropdown(true)}
               onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
               placeholder="Фильтр по контрагенту..."
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-48"
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-56"
             />
             {counterpartyFilter !== 'all' && (
               <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
