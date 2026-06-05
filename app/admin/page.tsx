@@ -10,6 +10,7 @@ const STAGES = [
   { id: 'finance', label: 'Финансовый департамент' },
   { id: 'accounting', label: 'Бухгалтерия' },
   { id: 'director', label: 'Генеральный директор' },
+  { id: 'edo', label: '📋 Специалисты ЭДО' },
   { id: 'custom', label: 'Дополнительные' },
 ]
 
@@ -27,7 +28,7 @@ const ADMIN_TABS = [
   { id: 'requisites', label: 'Реквизиты компаний' },
   { id: 'gc_roles', label: 'Роли ГК' },
   
-  { id: 'edo_specialists', label: '📋 Специалисты ЭДО' },
+  
   { id: 'deleted', label: '🗑 Удалённые документы' },
 ]
 
@@ -525,11 +526,9 @@ useEffect(() => {
                 </button>
               </form>
             </div>
-          {/* Секция — Специалисты ЭДО */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
-            <h2 className="text-sm font-medium text-gray-700 mb-4">📋 Специалисты ЭДО по компаниям</h2>
-            {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-3">{edoError}</div>}
-            {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-3">{edoSuccess}</div>}
+          {activeStage === 'edo' && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
             <div className="grid grid-cols-2 gap-3 mb-4 p-4 bg-gray-50 rounded-lg">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Компания</label>
@@ -610,7 +609,8 @@ useEffect(() => {
                 })}
               </div>
             )}
-          </div>
+            </div>
+          )}
           </div>
         )}
 
@@ -703,11 +703,9 @@ useEffect(() => {
                 </button>
               </div>
             </div>
-          {/* Секция — Специалисты ЭДО */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
-            <h2 className="text-sm font-medium text-gray-700 mb-4">📋 Специалисты ЭДО по компаниям</h2>
-            {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-3">{edoError}</div>}
-            {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-3">{edoSuccess}</div>}
+          {activeStage === 'edo' && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Специалисты ЭДО по компаниям</h2>
             <div className="grid grid-cols-2 gap-3 mb-4 p-4 bg-gray-50 rounded-lg">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Компания</label>
@@ -788,7 +786,8 @@ useEffect(() => {
                 })}
               </div>
             )}
-          </div>
+            </div>
+          )}
           </div>
         )}
 
