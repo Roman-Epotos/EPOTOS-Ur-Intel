@@ -236,8 +236,8 @@ export default function ContractsList() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-100">
+    <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 120px)'}}>
+      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-700">
             {roleLabels[userRole?.role ?? 'user']}
@@ -291,6 +291,7 @@ export default function ContractsList() {
         </div>
       </div>
 
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
       {filtered.length === 0 ? (
         <div className="px-6 py-12 text-center">
           <p className="text-gray-400 text-sm">Документов не найдено</p>
@@ -365,6 +366,7 @@ export default function ContractsList() {
         </table>
         </div>
       )}
+      </div>
     </div>
   )
 }
