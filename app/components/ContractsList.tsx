@@ -251,7 +251,7 @@ export default function ContractsList() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск по номеру, названию, контрагенту, номеру заказчика..."
+            placeholder="Поиск: номер, название, контрагент, № заказчика..."
             className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
           <select
