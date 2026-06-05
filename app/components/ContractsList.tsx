@@ -280,7 +280,7 @@ export default function ContractsList() {
             <option value="ОС">ООО ОС</option>
             <option value="Э-К">ООО Эпотос-К</option>
           </select>
-          <div className="relative">
+          <div className="relative flex-1">
             <input
               type="text"
               value={counterpartySearch}
@@ -292,7 +292,7 @@ export default function ContractsList() {
               onFocus={() => setShowCounterpartyDropdown(true)}
               onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
               placeholder="Фильтр по контрагенту..."
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white min-w-56"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
             />
             {counterpartyFilter !== 'all' && (
               <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
