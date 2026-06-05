@@ -10,11 +10,12 @@ const DEVELOPER_ID = 30
 const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
 
 const GC_ROLE_PRIORITY: Record<string, number> = {
-  developer:  1,
-  admin:      2,
-  gc_manager: 3,
-  finance_gc: 4,
-  legal_gc:   5,
+  developer:       1,
+  admin:           2,
+  gc_manager:      3,
+  finance_gc:      4,
+  finance_company: 5,
+  legal_gc:        6,
 }
 
 export async function GET(request: NextRequest) {

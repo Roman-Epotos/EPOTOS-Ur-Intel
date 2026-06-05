@@ -90,6 +90,7 @@ export default function AdminPage() {
     { value: 'admin', label: 'Администратор' },
     { value: 'gc_manager', label: 'Менеджер ГК' },
     { value: 'finance_gc', label: 'Финансист ГК' },
+    { value: 'finance_company', label: 'Бухгалтер компании' },
     { value: 'legal_gc', label: 'Юрист ГК' },
   ]
 

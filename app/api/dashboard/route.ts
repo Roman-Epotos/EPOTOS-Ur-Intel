@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
       .eq('bitrix_user_id', userId)
       .single()
 
-    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
     const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
 
     const { data: legalSetting } = await supabase

@@ -49,7 +49,7 @@ interface Contract {
 }
 
 interface UserRole {
-  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
+  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'finance_company' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
   companies: string[]
 }
 

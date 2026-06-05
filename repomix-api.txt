@@ -1614,82 +1614,6 @@ export async function GET() {
 }
 </file>
 
-<file path="app/api/company-directors/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const company_prefix = searchParams.get('company_prefix')
-
-    let query = supabase
-      .from('company_directors')
-      .select('*')
-      .order('company_prefix')
-      .order('is_default', { ascending: false })
-
-    if (company_prefix) {
-      query = query.eq('company_prefix', company_prefix)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ directors: data ?? [] })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { company_prefix, bitrix_user_id, user_name, position, is_default } = body
-
-    if (!company_prefix || !bitrix_user_id || !user_name) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
-    }
-
-    const { data, error } = await supabase
-      .from('company_directors')
-      .insert({ company_prefix, bitrix_user_id, user_name, position: position ?? 'Генеральный директор', is_default: is_default ?? false })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true, director: data })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'ID не указан' }, { status: 400 })
-
-    const { error } = await supabase
-      .from('company_directors')
-      .delete()
-      .eq('id', id)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/company-requisites/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2328,7 +2252,7 @@ export async function GET(request: NextRequest) {
       .eq('bitrix_user_id', userId)
       .single()
 
-    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
     const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
 
     const { data: legalSetting } = await supabase
@@ -2366,82 +2290,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/edo-specialists/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const company_prefix = searchParams.get('company_prefix')
-
-    let query = supabase
-      .from('edo_specialists')
-      .select('*')
-      .order('company_prefix')
-      .order('created_at')
-
-    if (company_prefix) {
-      query = query.eq('company_prefix', company_prefix)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ specialists: data ?? [] })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { company_prefix, bitrix_user_id, user_name, position } = body
-
-    if (!company_prefix || !bitrix_user_id || !user_name) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
-    }
-
-    const { data, error } = await supabase
-      .from('edo_specialists')
-      .insert({ company_prefix, bitrix_user_id, user_name, position: position ?? '' })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true, specialist: data })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'ID не указан' }, { status: 400 })
-
-    const { error } = await supabase
-      .from('edo_specialists')
-      .delete()
-      .eq('id', id)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -2819,7 +2667,7 @@ const supabase = createClient(
 )
 
 const DEVELOPER_ID = 30
-const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
+const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
 
 // GET — список ролей ГК
 export async function GET() {
@@ -3097,11 +2945,12 @@ const DEVELOPER_ID = 30
 const ALL_COMPANIES = ['ТХ', 'НПП', 'СПТ', 'ОС', 'Э-К']
 
 const GC_ROLE_PRIORITY: Record<string, number> = {
-  developer:  1,
-  admin:      2,
-  gc_manager: 3,
-  finance_gc: 4,
-  legal_gc:   5,
+  developer:       1,
+  admin:           2,
+  gc_manager:      3,
+  finance_gc:      4,
+  finance_company: 5,
+  legal_gc:        6,
 }
 
 export async function GET(request: NextRequest) {
@@ -3858,6 +3707,82 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/company-directors/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const company_prefix = searchParams.get('company_prefix')
+
+    let query = supabase
+      .from('company_directors')
+      .select('*')
+      .order('company_prefix')
+      .order('is_default', { ascending: false })
+
+    if (company_prefix) {
+      query = query.eq('company_prefix', company_prefix)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ directors: data ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { company_prefix, bitrix_user_id, user_name, position, is_default } = body
+
+    if (!company_prefix || !bitrix_user_id || !user_name) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('company_directors')
+      .insert({ company_prefix, bitrix_user_id, user_name, position: position ?? 'Генеральный директор', is_default: is_default ?? false })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, director: data })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'ID не указан' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('company_directors')
+      .delete()
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/contract-checklist/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4327,6 +4252,209 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, items_count: items.length })
 
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/edo-specialists/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const company_prefix = searchParams.get('company_prefix')
+
+    let query = supabase
+      .from('edo_specialists')
+      .select('*')
+      .order('company_prefix')
+      .order('created_at')
+
+    if (company_prefix) {
+      query = query.eq('company_prefix', company_prefix)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ specialists: data ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { company_prefix, bitrix_user_id, user_name, position } = body
+
+    if (!company_prefix || !bitrix_user_id || !user_name) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('edo_specialists')
+      .insert({ company_prefix, bitrix_user_id, user_name, position: position ?? '' })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, specialist: data })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'ID не указан' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('edo_specialists')
+      .delete()
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/generate-from-template/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { template_id, fields, contract_id } = body
+
+    if (!template_id || !fields) {
+      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
+    }
+
+    // 1. Получаем шаблон из БД
+    const { data: template, error: tplError } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('id', template_id)
+      .eq('is_active', true)
+      .single()
+
+    if (tplError || !template) {
+      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
+    }
+
+    // 2. Скачиваем .docx шаблон из Supabase Storage
+    const fileRes = await fetch(template.file_url)
+    if (!fileRes.ok) {
+      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
+    }
+    const arrayBuffer = await fileRes.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // 3. Простая замена меток {{field}} в XML напрямую
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(buffer)
+
+    // Безопасные значения полей
+    const safeFields: Record<string, string> = {}
+    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
+    }
+
+    // Заменяем метки во всех XML файлах документа
+    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
+
+    for (const xmlFile of xmlFiles) {
+      const file = zip.file(xmlFile)
+      if (!file) continue
+      let content = await file.async('string')
+      // Заменяем каждую метку
+      for (const [key, value] of Object.entries(safeFields)) {
+        content = content.split(`{{${key}}}`).join(value)
+      }
+      zip.file(xmlFile, content)
+    }
+
+    const output = await zip.generateAsync({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    // 4. Логируем генерацию
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: `Сгенерирован документ из шаблона: ${template.name}`,
+        details: `Файл: ${template.name}.docx`,
+        user_name: body.user_name ?? 'Пользователь',
+      })
+    }
+
+    // 5. Возвращаем файл
+    return new NextResponse(new Uint8Array(output), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
+      },
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    console.error('generate-from-template error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// GET — список шаблонов для компании и типа документа
+export async function GET(request: NextRequest) {
+  try {
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const docType = request.nextUrl.searchParams.get('type')
+
+    let query = supabase
+      .from('document_templates')
+      .select('id, name, type, company_prefix, file_name, created_at')
+      .eq('is_active', true)
+      .order('name')
+
+    if (companyPrefix) {
+      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
+    }
+    if (docType) {
+      query = query.eq('type', docType)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    return NextResponse.json({ templates: data ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -5646,133 +5774,6 @@ export async function DELETE(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/generate-from-template/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-export const runtime = 'nodejs'
-export const maxDuration = 60
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { template_id, fields, contract_id } = body
-
-    if (!template_id || !fields) {
-      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
-    }
-
-    // 1. Получаем шаблон из БД
-    const { data: template, error: tplError } = await supabase
-      .from('document_templates')
-      .select('*')
-      .eq('id', template_id)
-      .eq('is_active', true)
-      .single()
-
-    if (tplError || !template) {
-      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
-    }
-
-    // 2. Скачиваем .docx шаблон из Supabase Storage
-    const fileRes = await fetch(template.file_url)
-    if (!fileRes.ok) {
-      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
-    }
-    const arrayBuffer = await fileRes.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    // 3. Простая замена меток {{field}} в XML напрямую
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(buffer)
-
-    // Безопасные значения полей
-    const safeFields: Record<string, string> = {}
-    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
-      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
-    }
-
-    // Заменяем метки во всех XML файлах документа
-    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
-                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
-
-    for (const xmlFile of xmlFiles) {
-      const file = zip.file(xmlFile)
-      if (!file) continue
-      let content = await file.async('string')
-      // Заменяем каждую метку
-      for (const [key, value] of Object.entries(safeFields)) {
-        content = content.split(`{{${key}}}`).join(value)
-      }
-      zip.file(xmlFile, content)
-    }
-
-    const output = await zip.generateAsync({
-      type: 'nodebuffer',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    })
-
-    // 4. Логируем генерацию
-    if (contract_id) {
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: `Сгенерирован документ из шаблона: ${template.name}`,
-        details: `Файл: ${template.name}.docx`,
-        user_name: body.user_name ?? 'Пользователь',
-      })
-    }
-
-    // 5. Возвращаем файл
-    return new NextResponse(new Uint8Array(output), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
-      },
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    console.error('generate-from-template error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// GET — список шаблонов для компании и типа документа
-export async function GET(request: NextRequest) {
-  try {
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const docType = request.nextUrl.searchParams.get('type')
-
-    let query = supabase
-      .from('document_templates')
-      .select('id, name, type, company_prefix, file_name, created_at')
-      .eq('is_active', true)
-      .order('name')
-
-    if (companyPrefix) {
-      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
-    }
-    if (docType) {
-      query = query.eq('type', docType)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-    return NextResponse.json({ templates: data ?? [] })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/counterparties/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5952,7 +5953,7 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
+    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'finance_company', 'legal_gc'].includes(role)) {
       // Роли ГК видят все договоры
     } else if (role === 'director' || role === 'legal' || role === 'finance') {
       // ГД и юристы видят договоры своих компаний

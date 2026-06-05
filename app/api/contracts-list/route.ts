@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'legal_gc'].includes(role)) {
+    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'finance_company', 'legal_gc'].includes(role)) {
       // Роли ГК видят все договоры
     } else if (role === 'director' || role === 'legal' || role === 'finance') {
       // ГД и юристы видят договоры своих компаний

@@ -7,7 +7,7 @@ const supabase = createClient(
 )
 
 const DEVELOPER_ID = 30
-const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'legal_gc']
+const ALLOWED_ROLES = ['admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
 
 // GET — список ролей ГК
 export async function GET() {
