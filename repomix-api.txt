@@ -473,208 +473,6 @@ export async function DELETE(
 }
 </file>
 
-<file path="app/api/approvals/[sessionId]/edo/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-const baseNotifyUrl = 'https://epotos-ur-intel.vercel.app'
-
-async function sendEdoNotify(recipients: number[], type: string, document_id: string, document_number: string, extra_message: string) {
-  try {
-    await fetch(`${baseNotifyUrl}/api/bitrix-notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipients, type: 'document_approved', document_id, document_title: extra_message, document_number }),
-    })
-  } catch { /* игнорируем ошибки уведомлений */ }
-}
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { action, bitrix_user_id, user_name, contract_id, contract_number } = body
-
-    // Получаем сессию
-    const { data: session } = await supabase
-      .from('approval_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-
-    if (!session) return NextResponse.json({ error: 'Сессия не найдена' }, { status: 404 })
-
-    // --- Запрос разрешения у ГД ---
-    if (action === 'request') {
-      const { edo_director_bitrix_id, edo_director_name } = body
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update({
-          edo_requested: true,
-          edo_requested_by_id: bitrix_user_id,
-          edo_requested_by_name: user_name,
-          edo_requested_at: new Date().toISOString(),
-          edo_director_bitrix_id,
-          edo_director_name,
-        })
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `📧 ${user_name} запросил разрешение на подписание через ЭДО у ${edo_director_name}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомление ГД
-      await sendEdoNotify([edo_director_bitrix_id], 'edo_request', contract_id, contract_number ?? '', `${user_name} запрашивает разрешение на подписание документа ${contract_number} через ЭДО. Откройте карточку документа.`)
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Запрос на ЭДО',
-        details: `${user_name} запросил разрешение на ЭДО у ${edo_director_name}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    // --- Решение ГД ---
-    if (action === 'director_decision') {
-      const { decision } = body
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update({
-          edo_director_decision: decision,
-          edo_director_decided_at: new Date().toISOString(),
-        })
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      const decisionText = decision === 'approved' ? 'разрешил подписание через ЭДО' : 'отклонил подписание через ЭДО'
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомляем инициатора и участников
-      const { data: participants } = await supabase
-        .from('approval_participants')
-        .select('bitrix_user_id')
-        .eq('session_id', sessionId)
-        .not('bitrix_user_id', 'is', null)
-
-      const recipientIds = (participants ?? [])
-        .map(p => p.bitrix_user_id)
-        .filter((id): id is number => id !== null)
-
-      if (session.initiated_by_bitrix_id) recipientIds.push(session.initiated_by_bitrix_id)
-
-      const uniqueIds = [...new Set(recipientIds)]
-      if (uniqueIds.length > 0) {
-        await sendEdoNotify(uniqueIds, 'edo_decision', contract_id, contract_number ?? '', `${user_name} ${decisionText} по документу ${contract_number}`)
-      }
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: decision === 'approved' ? 'ЭДО разрешено' : 'ЭДО отклонено',
-        details: `${user_name} ${decisionText}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    // --- Выбор метода подписания ---
-    if (action === 'set_method') {
-      const { method, edo_specialist_bitrix_id, edo_specialist_name } = body
-
-      const updates: Record<string, unknown> = {
-        signing_method: method,
-        signing_method_set_by_id: bitrix_user_id,
-        signing_method_set_by_name: user_name,
-        signing_method_set_at: new Date().toISOString(),
-      }
-
-      if (method === 'edo') {
-        updates.edo_specialist_bitrix_id = edo_specialist_bitrix_id
-        updates.edo_specialist_name = edo_specialist_name
-        updates.edo_task_sent_at = new Date().toISOString()
-      }
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update(updates)
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      // Меняем статус договора на «на_подписи_в_эдо» если выбрано ЭДО
-      if (method === 'edo') {
-        await supabase
-          .from('contracts')
-          .update({ status: 'на_подписи_в_эдо' })
-          .eq('id', contract_id)
-      }
-
-      const methodText = method === 'edo'
-        ? `выбрал подписание через ЭДО (специалист: ${edo_specialist_name})`
-        : 'выбрал простую подпись'
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `🖊 ${user_name} ${methodText}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомление специалисту ЭДО
-      if (method === 'edo' && edo_specialist_bitrix_id) {
-        await sendEdoNotify([edo_specialist_bitrix_id], 'edo_task', contract_id, contract_number ?? '', `Вам направлен документ ${contract_number} для подписания через ЭДО. Подписание согласовано генеральным директором.`)
-      }
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: method === 'edo' ? 'Выбрано ЭДО' : 'Выбрана простая подпись',
-        details: `${user_name} ${methodText}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/approvals/[sessionId]/participants/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -2526,6 +2324,133 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
+<file path="app/api/generate-from-template/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { template_id, fields, contract_id } = body
+
+    if (!template_id || !fields) {
+      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
+    }
+
+    // 1. Получаем шаблон из БД
+    const { data: template, error: tplError } = await supabase
+      .from('document_templates')
+      .select('*')
+      .eq('id', template_id)
+      .eq('is_active', true)
+      .single()
+
+    if (tplError || !template) {
+      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
+    }
+
+    // 2. Скачиваем .docx шаблон из Supabase Storage
+    const fileRes = await fetch(template.file_url)
+    if (!fileRes.ok) {
+      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
+    }
+    const arrayBuffer = await fileRes.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // 3. Простая замена меток {{field}} в XML напрямую
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(buffer)
+
+    // Безопасные значения полей
+    const safeFields: Record<string, string> = {}
+    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
+      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
+    }
+
+    // Заменяем метки во всех XML файлах документа
+    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
+
+    for (const xmlFile of xmlFiles) {
+      const file = zip.file(xmlFile)
+      if (!file) continue
+      let content = await file.async('string')
+      // Заменяем каждую метку
+      for (const [key, value] of Object.entries(safeFields)) {
+        content = content.split(`{{${key}}}`).join(value)
+      }
+      zip.file(xmlFile, content)
+    }
+
+    const output = await zip.generateAsync({
+      type: 'nodebuffer',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    // 4. Логируем генерацию
+    if (contract_id) {
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: `Сгенерирован документ из шаблона: ${template.name}`,
+        details: `Файл: ${template.name}.docx`,
+        user_name: body.user_name ?? 'Пользователь',
+      })
+    }
+
+    // 5. Возвращаем файл
+    return new NextResponse(new Uint8Array(output), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
+      },
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    console.error('generate-from-template error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// GET — список шаблонов для компании и типа документа
+export async function GET(request: NextRequest) {
+  try {
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const docType = request.nextUrl.searchParams.get('type')
+
+    let query = supabase
+      .from('document_templates')
+      .select('id, name, type, company_prefix, file_name, created_at')
+      .eq('is_active', true)
+      .order('name')
+
+    if (companyPrefix) {
+      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
+    }
+    if (docType) {
+      query = query.eq('type', docType)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    return NextResponse.json({ templates: data ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/my-documents/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3374,6 +3299,208 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ messages: data ?? [] })
+}
+</file>
+
+<file path="app/api/approvals/[sessionId]/edo/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+const baseNotifyUrl = 'https://epotos-ur-intel.vercel.app'
+
+async function sendEdoNotify(recipients: number[], type: string, document_id: string, document_number: string, extra_message: string) {
+  try {
+    await fetch(`${baseNotifyUrl}/api/bitrix-notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipients, type: 'document_approved', document_id, document_title: extra_message, document_number }),
+    })
+  } catch { /* игнорируем ошибки уведомлений */ }
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { action, bitrix_user_id, user_name, contract_id, contract_number } = body
+
+    // Получаем сессию
+    const { data: session } = await supabase
+      .from('approval_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single()
+
+    if (!session) return NextResponse.json({ error: 'Сессия не найдена' }, { status: 404 })
+
+    // --- Запрос разрешения у ГД ---
+    if (action === 'request') {
+      const { edo_director_bitrix_id, edo_director_name } = body
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update({
+          edo_requested: true,
+          edo_requested_by_id: bitrix_user_id,
+          edo_requested_by_name: user_name,
+          edo_requested_at: new Date().toISOString(),
+          edo_director_bitrix_id,
+          edo_director_name,
+        })
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `📧 ${user_name} запросил разрешение на подписание через ЭДО у ${edo_director_name}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Уведомление ГД
+      await sendEdoNotify([edo_director_bitrix_id], 'edo_request', contract_id, contract_number ?? '', `${user_name} запрашивает разрешение на подписание документа ${contract_number} через ЭДО. Откройте карточку документа.`)
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Запрос на ЭДО',
+        details: `${user_name} запросил разрешение на ЭДО у ${edo_director_name}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // --- Решение ГД ---
+    if (action === 'director_decision') {
+      const { decision } = body
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update({
+          edo_director_decision: decision,
+          edo_director_decided_at: new Date().toISOString(),
+        })
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      const decisionText = decision === 'approved' ? 'разрешил подписание через ЭДО' : 'отклонил подписание через ЭДО'
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Уведомляем инициатора и участников
+      const { data: participants } = await supabase
+        .from('approval_participants')
+        .select('bitrix_user_id')
+        .eq('session_id', sessionId)
+        .not('bitrix_user_id', 'is', null)
+
+      const recipientIds = (participants ?? [])
+        .map(p => p.bitrix_user_id)
+        .filter((id): id is number => id !== null)
+
+      if (session.initiated_by_bitrix_id) recipientIds.push(session.initiated_by_bitrix_id)
+
+      const uniqueIds = [...new Set(recipientIds)]
+      if (uniqueIds.length > 0) {
+        await sendEdoNotify(uniqueIds, 'edo_decision', contract_id, contract_number ?? '', `${user_name} ${decisionText} по документу ${contract_number}`)
+      }
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: decision === 'approved' ? 'ЭДО разрешено' : 'ЭДО отклонено',
+        details: `${user_name} ${decisionText}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // --- Выбор метода подписания ---
+    if (action === 'set_method') {
+      const { method, edo_specialist_bitrix_id, edo_specialist_name } = body
+
+      const updates: Record<string, unknown> = {
+        signing_method: method,
+        signing_method_set_by_id: bitrix_user_id,
+        signing_method_set_by_name: user_name,
+        signing_method_set_at: new Date().toISOString(),
+      }
+
+      if (method === 'edo') {
+        updates.edo_specialist_bitrix_id = edo_specialist_bitrix_id
+        updates.edo_specialist_name = edo_specialist_name
+        updates.edo_task_sent_at = new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update(updates)
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      // Меняем статус договора на «на_подписи_в_эдо» если выбрано ЭДО
+      if (method === 'edo') {
+        await supabase
+          .from('contracts')
+          .update({ status: 'на_подписи_в_эдо' })
+          .eq('id', contract_id)
+      }
+
+      const methodText = method === 'edo'
+        ? `выбрал подписание через ЭДО (специалист: ${edo_specialist_name})`
+        : 'выбрал простую подпись'
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `🖊 ${user_name} ${methodText}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Уведомление специалисту ЭДО
+      if (method === 'edo' && edo_specialist_bitrix_id) {
+        await sendEdoNotify([edo_specialist_bitrix_id], 'edo_task', contract_id, contract_number ?? '', `Вам направлен документ ${contract_number} для подписания через ЭДО. Подписание согласовано генеральным директором.`)
+      }
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: method === 'edo' ? 'Выбрано ЭДО' : 'Выбрана простая подпись',
+        details: `${user_name} ${methodText}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
@@ -4294,133 +4421,6 @@ export async function DELETE(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/generate-from-template/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-export const runtime = 'nodejs'
-export const maxDuration = 60
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { template_id, fields, contract_id } = body
-
-    if (!template_id || !fields) {
-      return NextResponse.json({ error: 'template_id и fields обязательны' }, { status: 400 })
-    }
-
-    // 1. Получаем шаблон из БД
-    const { data: template, error: tplError } = await supabase
-      .from('document_templates')
-      .select('*')
-      .eq('id', template_id)
-      .eq('is_active', true)
-      .single()
-
-    if (tplError || !template) {
-      return NextResponse.json({ error: 'Шаблон не найден' }, { status: 404 })
-    }
-
-    // 2. Скачиваем .docx шаблон из Supabase Storage
-    const fileRes = await fetch(template.file_url)
-    if (!fileRes.ok) {
-      return NextResponse.json({ error: 'Не удалось загрузить файл шаблона' }, { status: 500 })
-    }
-    const arrayBuffer = await fileRes.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    // 3. Простая замена меток {{field}} в XML напрямую
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(buffer)
-
-    // Безопасные значения полей
-    const safeFields: Record<string, string> = {}
-    for (const [k, v] of Object.entries(fields as Record<string, unknown>)) {
-      safeFields[k] = (v !== undefined && v !== null && v !== '') ? String(v) : '____________'
-    }
-
-    // Заменяем метки во всех XML файлах документа
-    const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
-                      'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
-
-    for (const xmlFile of xmlFiles) {
-      const file = zip.file(xmlFile)
-      if (!file) continue
-      let content = await file.async('string')
-      // Заменяем каждую метку
-      for (const [key, value] of Object.entries(safeFields)) {
-        content = content.split(`{{${key}}}`).join(value)
-      }
-      zip.file(xmlFile, content)
-    }
-
-    const output = await zip.generateAsync({
-      type: 'nodebuffer',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    })
-
-    // 4. Логируем генерацию
-    if (contract_id) {
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: `Сгенерирован документ из шаблона: ${template.name}`,
-        details: `Файл: ${template.name}.docx`,
-        user_name: body.user_name ?? 'Пользователь',
-      })
-    }
-
-    // 5. Возвращаем файл
-    return new NextResponse(new Uint8Array(output), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(template.name)}.docx"`,
-      },
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    console.error('generate-from-template error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// GET — список шаблонов для компании и типа документа
-export async function GET(request: NextRequest) {
-  try {
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const docType = request.nextUrl.searchParams.get('type')
-
-    let query = supabase
-      .from('document_templates')
-      .select('id, name, type, company_prefix, file_name, created_at')
-      .eq('is_active', true)
-      .order('name')
-
-    if (companyPrefix) {
-      query = query.or(`company_prefix.eq.${companyPrefix},company_prefix.is.null`)
-    }
-    if (docType) {
-      query = query.eq('type', docType)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-    return NextResponse.json({ templates: data ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -5878,105 +5878,6 @@ export async function POST(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/deleted-contracts/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const ADMIN_IDS = [30, 1148]
-
-// GET — список удалённых документов
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  if (!bitrixUserId || !ADMIN_IDS.includes(parseInt(bitrixUserId))) {
-    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
-  }
-
-  const { data, error } = await supabase
-    .from('contracts')
-    .select('*')
-    .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ contracts: data ?? [] })
-}
-
-// POST — восстановить документ
-export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const { contract_id, bitrix_user_id, user_name } = body
-
-  if (!ADMIN_IDS.includes(parseInt(bitrix_user_id))) {
-    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
-  }
-
-  const { error } = await supabase
-    .from('contracts')
-    .update({
-      deleted_at: null,
-      deleted_by_bitrix_id: null,
-      deleted_by_name: null,
-      delete_reason: null,
-    })
-    .eq('id', contract_id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-  await supabase.from('contract_logs').insert({
-    contract_id,
-    action: 'Документ восстановлен',
-    details: `Восстановлен администратором`,
-    user_name: user_name ?? 'Администратор',
-  })
-
-  return NextResponse.json({ success: true })
-}
-
-// DELETE — безвозвратное удаление
-export async function DELETE(request: NextRequest) {
-  const body = await request.json()
-  const { contract_id, bitrix_user_id } = body
-
-  if (!ADMIN_IDS.includes(parseInt(bitrix_user_id))) {
-    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
-  }
-
-  // Удаляем файлы из Storage
-  const { data: versions } = await supabase
-    .from('versions')
-    .select('file_url')
-    .eq('contract_id', contract_id)
-
-  const { data: attachments } = await supabase
-    .from('document_attachments')
-    .select('file_url')
-    .eq('contract_id', contract_id)
-
-  const filePaths = [
-    ...(versions ?? []).map((v: { file_url: string }) => v.file_url.split('/contracts/')[1]).filter(Boolean),
-    ...(attachments ?? []).map((a: { file_url: string }) => a.file_url.split('/contracts/')[1]).filter(Boolean),
-  ]
-
-  if (filePaths.length > 0) {
-    await supabase.storage.from('contracts').remove(filePaths)
-  }
-
-  // Физически удаляем документ (каскадно удалятся все связанные записи)
-  const { error } = await supabase
-    .from('contracts')
-    .delete()
-    .eq('id', contract_id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ success: true })
-}
-</file>
-
 <file path="app/api/counterparties/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -6100,6 +6001,105 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
   }
+}
+</file>
+
+<file path="app/api/deleted-contracts/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const ADMIN_IDS = [30, 1148]
+
+// GET — список удалённых документов
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  if (!bitrixUserId || !ADMIN_IDS.includes(parseInt(bitrixUserId))) {
+    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
+  }
+
+  const { data, error } = await supabase
+    .from('contracts')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json({ contracts: data ?? [] })
+}
+
+// POST — восстановить документ
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  const { contract_id, bitrix_user_id, user_name } = body
+
+  if (!ADMIN_IDS.includes(parseInt(bitrix_user_id))) {
+    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
+  }
+
+  const { error } = await supabase
+    .from('contracts')
+    .update({
+      deleted_at: null,
+      deleted_by_bitrix_id: null,
+      deleted_by_name: null,
+      delete_reason: null,
+    })
+    .eq('id', contract_id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  await supabase.from('contract_logs').insert({
+    contract_id,
+    action: 'Документ восстановлен',
+    details: `Восстановлен администратором`,
+    user_name: user_name ?? 'Администратор',
+  })
+
+  return NextResponse.json({ success: true })
+}
+
+// DELETE — безвозвратное удаление
+export async function DELETE(request: NextRequest) {
+  const body = await request.json()
+  const { contract_id, bitrix_user_id } = body
+
+  if (!ADMIN_IDS.includes(parseInt(bitrix_user_id))) {
+    return NextResponse.json({ error: 'Нет прав' }, { status: 403 })
+  }
+
+  // Удаляем файлы из Storage
+  const { data: versions } = await supabase
+    .from('versions')
+    .select('file_url')
+    .eq('contract_id', contract_id)
+
+  const { data: attachments } = await supabase
+    .from('document_attachments')
+    .select('file_url')
+    .eq('contract_id', contract_id)
+
+  const filePaths = [
+    ...(versions ?? []).map((v: { file_url: string }) => v.file_url.split('/contracts/')[1]).filter(Boolean),
+    ...(attachments ?? []).map((a: { file_url: string }) => a.file_url.split('/contracts/')[1]).filter(Boolean),
+  ]
+
+  if (filePaths.length > 0) {
+    await supabase.storage.from('contracts').remove(filePaths)
+  }
+
+  // Физически удаляем документ (каскадно удалятся все связанные записи)
+  const { error } = await supabase
+    .from('contracts')
+    .delete()
+    .eq('id', contract_id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json({ success: true })
 }
 </file>
 

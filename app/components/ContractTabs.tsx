@@ -1595,6 +1595,105 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         initiatedByBitrixId={session.initiated_by_bitrix_id}
                         onCancelled={() => { loadSession() }}
                       />
+
+                      {/* Способ подписания */}
+                      {!['подписан','на_исполнении'].includes(contractStatus) && (
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 mt-2">
+                          <h3 className="text-xs font-semibold text-gray-700 mb-3">🖊 Способ подписания</h3>
+                          {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 mb-2">{edoError}</div>}
+                          {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mb-2">{edoSuccess}</div>}
+
+                          {/* Шаг 1: Запрос разрешения */}
+                          {!session.edo_requested && !session.signing_method && (
+                            <div>
+                              <p className="text-xs text-gray-500 mb-2">Для подписания через ЭДО необходимо получить разрешение генерального директора.</p>
+                              {(ADMIN_IDS.includes(userId) || contract.author_bitrix_id === userId || ['legal_gc','legal','finance_gc','finance_company'].some(r => currentUserRole === r)) && (
+                                <div className="space-y-2">
+                                  <select value={selectedEdoDirectorId ?? ''} onChange={e => setSelectedEdoDirectorId(parseInt(e.target.value))}
+                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+                                    <option value="">— Выберите ГД —</option>
+                                    {edoDirectors.map(d => <option key={d.bitrix_user_id} value={d.bitrix_user_id}>{d.user_name}</option>)}
+                                  </select>
+                                  <button onClick={handleEdoRequest} disabled={edoLoading || !selectedEdoDirectorId}
+                                    className="w-full bg-blue-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                                    {edoLoading ? 'Отправка...' : 'Запросить разрешение на ЭДО'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Шаг 2: Ожидание решения ГД */}
+                          {session.edo_requested && !session.edo_director_decision && (
+                            <div>
+                              <p className="text-xs text-gray-500 mb-2">Запрос отправлен: <span className="font-medium">{session.edo_director_name}</span></p>
+                              {userId === session.edo_director_bitrix_id && (
+                                <div className="space-y-2">
+                                  <button onClick={() => handleEdoDecision('approved')} disabled={edoLoading}
+                                    className="w-full bg-green-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">
+                                    ✅ Разрешить ЭДО
+                                  </button>
+                                  <button onClick={() => handleEdoDecision('rejected')} disabled={edoLoading}
+                                    className="w-full bg-red-500 text-white text-xs px-3 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50">
+                                    ❌ Отклонить
+                                  </button>
+                                </div>
+                              )}
+                              {userId !== session.edo_director_bitrix_id && (
+                                <p className="text-xs text-gray-400 italic">Ожидается решение генерального директора...</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Шаг 3: Выбор метода бухгалтером */}
+                          {session && session.edo_director_decision && !session.signing_method && (
+                            <div>
+                              {session.edo_director_decision === 'approved' ? (
+                                <div>
+                                  <p className="text-xs text-green-700 font-medium mb-2">✅ ЭДО разрешено генеральным директором</p>
+                                  {['finance_gc','finance_company'].some(r => currentUserRole === r) && (
+                                    <div className="space-y-2">
+                                      <button onClick={() => handleEdoSendTask('simple')} disabled={edoLoading}
+                                        className="w-full bg-gray-700 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                                        ✍️ Простая подпись
+                                      </button>
+                                      {edoSpecialists.length > 0 && (
+                                        <div>
+                                          <select value={selectedEdoSpecialistId ?? ''} onChange={e => setSelectedEdoSpecialistId(parseInt(e.target.value))}
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white mb-1">
+                                            <option value="">— Специалист ЭДО —</option>
+                                            {edoSpecialists.map(s => <option key={s.bitrix_user_id} value={s.bitrix_user_id}>{s.user_name}</option>)}
+                                          </select>
+                                          <button onClick={() => handleEdoSendTask('edo')} disabled={edoLoading || !selectedEdoSpecialistId}
+                                            className="w-full bg-blue-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                                            {edoLoading ? 'Отправка...' : '📧 Отправить на ЭДО'}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-red-600 font-medium">❌ ЭДО отклонено. Используйте простую подпись.</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Шаг 4: Метод выбран */}
+                          {session && session.signing_method && (
+                            <div>
+                              {session.signing_method === 'edo' ? (
+                                <div>
+                                  <p className="text-xs text-blue-700 font-medium">📧 Подписание через ЭДО</p>
+                                  <p className="text-xs text-gray-500 mt-1">Специалист: {session.edo_specialist_name}</p>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-700 font-medium">✍️ Простая подпись</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1629,19 +1728,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
             </div>
           )}
 
-          {/* Блок ЭДО */}
-          {activeTab === 'approval' && hasActiveSession && session && !['подписан','на_исполнении'].includes(contractStatus) && (
-            <div className="px-6 pb-6">
-              <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-800 mb-4">🖊 Способ подписания</h3>
-                {edoError && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-3">{edoError}</div>}
-                {edoSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 mb-3">{edoSuccess}</div>}
+          
 
                 {/* Шаг 1: Запрос разрешения у ГД */}
-                {!session.edo_requested && !session.signing_method && (
+                {session && !session.edo_requested && !session.signing_method && (
                   <div>
                     <p className="text-xs text-gray-500 mb-3">Для подписания через ЭДО необходимо получить разрешение генерального директора.</p>
-                    {(contract.author_bitrix_id === userId || ['legal_gc','legal','finance_gc','finance_company'].some(r => currentUserRole === r)) && (
+                    {(ADMIN_IDS.includes(userId) || contract.author_bitrix_id === userId || ['legal_gc','legal','finance_gc','finance_company'].some(r => currentUserRole === r)) && (
                       <div className="space-y-3">
                         <div>
                           <label className="text-xs font-medium text-gray-600 block mb-1">Генеральный директор</label>
@@ -1661,7 +1754,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                 )}
 
                 {/* Шаг 2: Ожидание решения ГД */}
-                {session.edo_requested && !session.edo_director_decision && (
+                {session && session.edo_requested && !session.edo_director_decision && (
                   <div>
                     <p className="text-xs text-gray-500 mb-3">Запрос отправлен: <span className="font-medium">{session.edo_director_name}</span></p>
                     <p className="text-xs text-gray-400 mb-4">Ожидается решение генерального директора...</p>
@@ -1682,7 +1775,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                 )}
 
                 {/* Шаг 3: ГД принял решение — бухгалтер выбирает метод */}
-                {session.edo_director_decision && !session.signing_method && (
+                {session && session.edo_director_decision && !session.signing_method && (
                   <div>
                     {session.edo_director_decision === 'approved' ? (
                       <div>
@@ -1729,25 +1822,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                   </div>
                 )}
 
-                {/* Шаг 4: Метод выбран */}
-                {session.signing_method && (
-                  <div>
-                    {session.signing_method === 'edo' ? (
-                      <div>
-                        <p className="text-xs text-blue-700 font-medium mb-1">📧 Подписание через ЭДО</p>
-                        <p className="text-xs text-gray-500">Специалист: {session.edo_specialist_name}</p>
-                        {session.edo_task_sent_at && <p className="text-xs text-gray-400">Задание отправлено: {new Date(session.edo_task_sent_at).toLocaleString('ru-RU')}</p>}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-700 font-medium">✍️ Выбрана простая подпись</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Генерация */}
+                {/* Генерация */}
           {activeTab === 'generate' && (
             <div className="p-6">
               <GenerateFromTemplate contract={contract} onUploaded={loadAttachments} />
