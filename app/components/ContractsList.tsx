@@ -46,6 +46,7 @@ interface Contract {
   unread_messages?: number
   last_message_at?: string | null
   created_at: string
+  customer_number?: string | null
 }
 
 interface UserRole {
@@ -217,7 +218,8 @@ export default function ContractsList() {
     if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
     if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
         !c.title.toLowerCase().includes(search.toLowerCase()) &&
-        !c.counterparty.toLowerCase().includes(search.toLowerCase())) return false
+        !c.counterparty.toLowerCase().includes(search.toLowerCase()) &&
+        !(c.customer_number ?? '').toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
@@ -247,7 +249,7 @@ export default function ContractsList() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск по номеру, названию..."
+            placeholder="Поиск по номеру, названию, контрагенту, номеру заказчика..."
             className="flex-1 min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
           <select
