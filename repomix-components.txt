@@ -4227,12 +4227,16 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     if (!contract.company_prefix) return
     Promise.all([
       fetch(`${baseUrl}/api/edo-specialists?company_prefix=${contract.company_prefix}`).then(r => r.json()),
-      fetch(`${baseUrl}/api/company-directors?company_prefix=${contract.company_prefix}`).then(r => r.json()),
+      fetch(`${baseUrl}/api/approval-settings?stage=director&company_prefix=${contract.company_prefix}`).then(r => r.json()),
     ]).then(([edoData, dirData]) => {
       setEdoSpecialists(edoData.specialists ?? [])
-      setEdoDirectors(dirData.directors ?? [])
-      const defaultDir = (dirData.directors ?? []).find((d: {is_default: boolean}) => d.is_default)
-      if (defaultDir) setSelectedEdoDirectorId(defaultDir.bitrix_user_id)
+      const dirs = (dirData.participants ?? []).map((p: {bitrix_user_id: number, user_name: string}) => ({
+        bitrix_user_id: p.bitrix_user_id,
+        user_name: p.user_name,
+        position: 'Генеральный директор',
+      }))
+      setEdoDirectors(dirs)
+      if (dirs.length > 0) setSelectedEdoDirectorId(dirs[0].bitrix_user_id)
     })
   }, [contract.company_prefix])
   const [replyTo, setReplyTo] = useState<{ id: string; author_name: string; message: string } | null>(null)
