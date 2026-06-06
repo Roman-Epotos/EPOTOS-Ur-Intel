@@ -3394,122 +3394,6 @@ export async function GET(request: NextRequest) {
 }
 </file>
 
-<file path="app/api/bitrix-notify/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
-
-// Типы уведомлений
-export type NotifyType =
-  | 'document_created'      // Создан документ
-  | 'sent_for_approval'     // Отправлен на согласование
-  | 'approval_required'     // Требуется согласование
-  | 'document_approved'     // Документ согласован
-  | 'document_rejected'     // Документ отклонён
-  | 'documents_uploaded'    // Загружены подписанные документы
-  | 'checklist_generated'   // Сгенерирован чек-лист
-  | 'checklist_deadline'    // Дедлайн пункта чек-листа
-  | 'edo_request'           // Запрос разрешения на ЭДО
-  | 'edo_decision'          // Решение ГД по ЭДО
-  | 'edo_task'              // Задание специалисту ЭДО
-
-interface NotifyParams {
-  to_bitrix_id: number      // ID получателя в Битрикс24
-  type: NotifyType
-  document_title: string
-  document_number: string
-  document_id: string
-  extra?: string            // Дополнительная информация
-}
-
-function buildMessage(params: NotifyParams): string {
-  const link = `https://epotos-ur-intel.vercel.app/?contract_id=${params.document_id}`
-  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
-
-  const messages: Record<NotifyType, string> = {
-    document_created:     `📄 Создан новый документ: ${doc}`,
-    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
-    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
-    document_approved:    `✅ Документ согласован: ${doc}`,
-    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
-    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
-    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
-    edo_request:          `📧 Запрос на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
-    edo_decision:         `🖊 Решение по ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
-    edo_task:             `📬 Задание на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
-  }
-
-  return messages[params.type] ?? `Уведомление по документу: ${doc}`
-}
-
-// Отправка одного уведомления
-async function sendNotify(toId: number, message: string): Promise<boolean> {
-  if (!WEBHOOK_URL) {
-    console.error('BITRIX_WEBHOOK_URL не задан')
-    return false
-  }
-
-  try {
-    const url = `${WEBHOOK_URL}im.notify.system.add.json`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        USER_ID: toId,
-        MESSAGE: message,
-      }),
-    })
-    const data = await res.json()
-    return data.result !== undefined
-  } catch (err) {
-    console.error('Ошибка отправки уведомления Битрикс24:', err)
-    return false
-  }
-}
-
-// POST — отправить уведомление
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { recipients, type, document_title, document_number, document_id, extra } = body
-
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
-    }
-
-    if (!type || !document_id) {
-      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
-    }
-
-    const results = await Promise.all(
-      recipients.map(async (bitrixId: number) => {
-        const message = buildMessage({
-          to_bitrix_id: bitrixId,
-          type,
-          document_title: document_title ?? 'Документ',
-          document_number: document_number ?? '',
-          document_id,
-          extra,
-        })
-        const success = await sendNotify(bitrixId, message)
-        return { bitrixId, success }
-      })
-    )
-
-    const failed = results.filter(r => !r.success)
-    return NextResponse.json({
-      success: true,
-      sent: results.length - failed.length,
-      failed: failed.length,
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
 <file path="app/api/company-directors/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -4425,115 +4309,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/my-documents/route.ts">
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  try {
-    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
-      .select(`
-        id,
-        role,
-        status,
-        stage,
-        session_id,
-        approval_sessions!inner (
-          id,
-          contract_id,
-          deadline,
-          initiated_by_name,
-          contracts!inner (
-            id,
-            number,
-            title,
-            counterparty,
-            status,
-            amount
-          )
-        )
-      `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-      .filter('approval_sessions.contracts.deleted_at', 'is', null)
-
-    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
-    const { data: myDrafts } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
-      .in('document_category', ['contract', 'document'])
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-
-    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id,
-        deadline,
-        status,
-        created_at,
-        contracts!inner (
-          id,
-          number,
-          title,
-          counterparty,
-          status,
-          amount
-        )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .filter('contracts.deleted_at', 'is', null)
-      .order('created_at', { ascending: false })
-// Фильтруем — только основные документы (не вложения)
-    const filteredApprovals = (myApprovals ?? []).filter(p => {
-      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
-      const category = sessions?.contracts?.document_category
-      return category !== 'attachment'
-    })
-    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
-    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
-    // Документы на подписи в ЭДО где пользователь автор или участник согласования
-    const { data: myEdo } = await supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, status, amount, company_prefix')
-      .eq('status', 'на_подписи_в_эдо')
-      .is('deleted_at', null)
-      .or(`author_bitrix_id.eq.${userId}`)
-      .order('updated_at', { ascending: false })
-
-    return NextResponse.json({
-      required_approvals: requiredApprovals,
-      optional_approvals: optionalApprovals,
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-      my_edo: myEdo ?? [],
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -5669,6 +5444,122 @@ ${templateInstruction}
 }
 </file>
 
+<file path="app/api/bitrix-notify/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
+
+// Типы уведомлений
+export type NotifyType =
+  | 'document_created'      // Создан документ
+  | 'sent_for_approval'     // Отправлен на согласование
+  | 'approval_required'     // Требуется согласование
+  | 'document_approved'     // Документ согласован
+  | 'document_rejected'     // Документ отклонён
+  | 'documents_uploaded'    // Загружены подписанные документы
+  | 'checklist_generated'   // Сгенерирован чек-лист
+  | 'checklist_deadline'    // Дедлайн пункта чек-листа
+  | 'edo_request'           // Запрос разрешения на ЭДО
+  | 'edo_decision'          // Решение ГД по ЭДО
+  | 'edo_task'              // Задание специалисту ЭДО
+
+interface NotifyParams {
+  to_bitrix_id: number      // ID получателя в Битрикс24
+  type: NotifyType
+  document_title: string
+  document_number: string
+  document_id: string
+  extra?: string            // Дополнительная информация
+}
+
+function buildMessage(params: NotifyParams): string {
+  const link = `https://epotos-ur-intel.vercel.app/?contract_id=${params.document_id}`
+  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
+
+  const messages: Record<NotifyType, string> = {
+    document_created:     `📄 Создан новый документ: ${doc}`,
+    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
+    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
+    document_approved:    `✅ Документ согласован: ${doc}`,
+    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
+    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
+    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
+    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
+    edo_request:          `📧 Запрос на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_decision:         `🖊 Решение по ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_task:             `📬 Задание на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+  }
+
+  return messages[params.type] ?? `Уведомление по документу: ${doc}`
+}
+
+// Отправка одного уведомления
+async function sendNotify(toId: number, message: string): Promise<boolean> {
+  if (!WEBHOOK_URL) {
+    console.error('BITRIX_WEBHOOK_URL не задан')
+    return false
+  }
+
+  try {
+    const url = `${WEBHOOK_URL}im.notify.system.add.json`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        USER_ID: toId,
+        MESSAGE: message,
+      }),
+    })
+    const data = await res.json()
+    return data.result !== undefined
+  } catch (err) {
+    console.error('Ошибка отправки уведомления Битрикс24:', err)
+    return false
+  }
+}
+
+// POST — отправить уведомление
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { recipients, type, document_title, document_number, document_id, extra } = body
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
+    }
+
+    if (!type || !document_id) {
+      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
+    }
+
+    const results = await Promise.all(
+      recipients.map(async (bitrixId: number) => {
+        const message = buildMessage({
+          to_bitrix_id: bitrixId,
+          type,
+          document_title: document_title ?? 'Документ',
+          document_number: document_number ?? '',
+          document_id,
+          extra,
+        })
+        const success = await sendNotify(bitrixId, message)
+        return { bitrixId, success }
+      })
+    )
+
+    const failed = results.filter(r => !r.success)
+    return NextResponse.json({
+      success: true,
+      sent: results.length - failed.length,
+      failed: failed.length,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
 <file path="app/api/contracts/[contractId]/route.ts">
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -6211,6 +6102,115 @@ export async function DELETE(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ success: true })
+}
+</file>
+
+<file path="app/api/my-documents/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
+      .select(`
+        id,
+        role,
+        status,
+        stage,
+        session_id,
+        approval_sessions!inner (
+          id,
+          contract_id,
+          deadline,
+          initiated_by_name,
+          contracts!inner (
+            id,
+            number,
+            title,
+            counterparty,
+            status,
+            amount
+          )
+        )
+      `)
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+      .filter('approval_sessions.contracts.deleted_at', 'is', null)
+
+    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
+    const { data: myDrafts } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
+      .in('document_category', ['contract', 'document'])
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id,
+        deadline,
+        status,
+        created_at,
+        contracts!inner (
+          id,
+          number,
+          title,
+          counterparty,
+          status,
+          amount
+        )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .filter('contracts.deleted_at', 'is', null)
+      .order('created_at', { ascending: false })
+// Фильтруем — только основные документы (не вложения)
+    const filteredApprovals = (myApprovals ?? []).filter(p => {
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const category = sessions?.contracts?.document_category
+      return category !== 'attachment'
+    })
+    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
+    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    // Документы на подписи в ЭДО где пользователь автор или участник согласования
+    const { data: myEdo } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, status, amount, company_prefix')
+      .eq('status', 'на_подписи_в_эдо')
+      .is('deleted_at', null)
+      .or(`author_bitrix_id.eq.${userId}`)
+      .order('updated_at', { ascending: false })
+
+    return NextResponse.json({
+      required_approvals: requiredApprovals,
+      optional_approvals: optionalApprovals,
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+      my_edo: myEdo ?? [],
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 </file>
 
