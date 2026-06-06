@@ -265,6 +265,7 @@ export default function ContractsList() {
             <option value="черновик">Черновики</option>
             <option value="на_согласовании">На согласовании</option>
             <option value="согласован">Согласованные</option>
+            <option value="на_подписи_в_эдо">На подписи в ЭДО</option>
             <option value="загружен_частично">Документы загружены частично</option>
             <option value="подписан">Подписанные документы загружены</option>
             <option value="на_исполнении">На контроле исполнения</option>

@@ -6,6 +6,7 @@ import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 interface Stats {
   total: number
   on_approval: number
+  edo: number
   signed: number
   drafts: number
   pending_my_action: number
@@ -37,6 +38,7 @@ export default function PersonalStats() {
         setStats({
           total: contracts.length,
           on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
           signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
           drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
           pending_my_action: pendingActions,
@@ -50,7 +52,7 @@ export default function PersonalStats() {
   }, [user?.id])
 
   if (authLoading || !stats) return (
-    <div className="grid grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-5 gap-4 mb-8">
       {[1, 2, 3, 4].map(i => (
         <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
           <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
@@ -63,12 +65,13 @@ export default function PersonalStats() {
   const items = [
     { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
     { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
     { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
     { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
   ]
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-5 gap-4 mb-8">
       {items.map(stat => (
         <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
           <p className="text-sm text-gray-500">{stat.label}</p>
