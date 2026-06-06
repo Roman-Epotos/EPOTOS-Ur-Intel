@@ -83,11 +83,21 @@ export async function GET(request: NextRequest) {
     })
     const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
     const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    // Документы на подписи в ЭДО где пользователь автор или участник согласования
+    const { data: myEdo } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, status, amount, company_prefix')
+      .eq('status', 'на_подписи_в_эдо')
+      .is('deleted_at', null)
+      .or(`author_bitrix_id.eq.${userId}`)
+      .order('updated_at', { ascending: false })
+
     return NextResponse.json({
       required_approvals: requiredApprovals,
       optional_approvals: optionalApprovals,
       my_drafts: myDrafts ?? [],
       my_initiated: myInitiated ?? [],
+      my_edo: myEdo ?? [],
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'

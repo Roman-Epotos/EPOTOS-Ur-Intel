@@ -12,6 +12,9 @@ export type NotifyType =
   | 'documents_uploaded'    // Загружены подписанные документы
   | 'checklist_generated'   // Сгенерирован чек-лист
   | 'checklist_deadline'    // Дедлайн пункта чек-листа
+  | 'edo_request'           // Запрос разрешения на ЭДО
+  | 'edo_decision'          // Решение ГД по ЭДО
+  | 'edo_task'              // Задание специалисту ЭДО
 
 interface NotifyParams {
   to_bitrix_id: number      // ID получателя в Битрикс24
@@ -35,6 +38,9 @@ function buildMessage(params: NotifyParams): string {
     documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
     checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
     checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
+    edo_request:          `📧 Запрос на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_decision:         `🖊 Решение по ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_task:             `📬 Задание на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
   }
 
   return messages[params.type] ?? `Уведомление по документу: ${doc}`

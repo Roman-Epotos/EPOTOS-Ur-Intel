@@ -42,6 +42,7 @@ interface MyDocsData {
   optional_approvals: ApprovalItem[]
   my_drafts: Contract[]
   my_initiated: SessionItem[]
+  my_edo: Contract[]
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -109,7 +110,8 @@ export default function MyDocuments() {
 
   const hasAnything = totalActions > 0 ||
     (data?.my_drafts.length ?? 0) > 0 ||
-    (data?.my_initiated.length ?? 0) > 0
+    (data?.my_initiated.length ?? 0) > 0 ||
+    (data?.my_edo.length ?? 0) > 0
 
   if (!hasAnything) return null
 
@@ -131,6 +133,12 @@ export default function MyDocuments() {
       label: 'Мои черновики',
       count: data?.my_drafts.length ?? 0,
       show: (data?.my_drafts.length ?? 0) > 0
+    },
+    {
+      id: 'edo',
+      label: 'На подписи в ЭДО',
+      count: data?.my_edo.length ?? 0,
+      show: (data?.my_edo.length ?? 0) > 0
     },
   ].filter(t => t.show)
 
@@ -281,6 +289,29 @@ export default function MyDocuments() {
                   </p>
                 </div>
                 <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'edo' && (
+          <div className="space-y-2">
+            {data?.my_edo.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
               </Link>
             ))}
           </div>

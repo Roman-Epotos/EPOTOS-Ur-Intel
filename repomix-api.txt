@@ -3409,6 +3409,9 @@ export type NotifyType =
   | 'documents_uploaded'    // Загружены подписанные документы
   | 'checklist_generated'   // Сгенерирован чек-лист
   | 'checklist_deadline'    // Дедлайн пункта чек-листа
+  | 'edo_request'           // Запрос разрешения на ЭДО
+  | 'edo_decision'          // Решение ГД по ЭДО
+  | 'edo_task'              // Задание специалисту ЭДО
 
 interface NotifyParams {
   to_bitrix_id: number      // ID получателя в Битрикс24
@@ -3432,6 +3435,9 @@ function buildMessage(params: NotifyParams): string {
     documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
     checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
     checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
+    edo_request:          `📧 Запрос на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_decision:         `🖊 Решение по ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
+    edo_task:             `📬 Задание на подписание через ЭДО: ${doc}${params.extra ? `\n${params.extra}` : ''}`,
   }
 
   return messages[params.type] ?? `Уведомление по документу: ${doc}`
@@ -4510,11 +4516,21 @@ export async function GET(request: NextRequest) {
     })
     const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
     const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    // Документы на подписи в ЭДО где пользователь автор или участник согласования
+    const { data: myEdo } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, status, amount, company_prefix')
+      .eq('status', 'на_подписи_в_эдо')
+      .is('deleted_at', null)
+      .or(`author_bitrix_id.eq.${userId}`)
+      .order('updated_at', { ascending: false })
+
     return NextResponse.json({
       required_approvals: requiredApprovals,
       optional_approvals: optionalApprovals,
       my_drafts: myDrafts ?? [],
       my_initiated: myInitiated ?? [],
+      my_edo: myEdo ?? [],
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
