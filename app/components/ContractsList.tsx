@@ -61,6 +61,7 @@ const statusLabel: Record<string, string> = {
   отклонён: 'Отклонён',
   загружен_частично: 'Документы загружены частично',
   подписан: 'Подписанные документы загружены',
+  на_подписи_в_эдо: 'На подписи в ЭДО',
   на_исполнении: 'На контроле исполнения',
   архив: 'Архив',
 }
@@ -71,6 +72,7 @@ const statusColor: Record<string, string> = {
   согласован: 'bg-blue-100 text-blue-800',
   отклонён: 'bg-red-100 text-red-700',
   загружен_частично: 'bg-orange-100 text-orange-800',
+  на_подписи_в_эдо: 'bg-purple-100 text-purple-800',
   подписан: 'bg-green-100 text-green-800',
   на_исполнении: 'bg-emerald-100 text-emerald-800',
   архив: 'bg-gray-200 text-gray-500',
