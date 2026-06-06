@@ -23,7 +23,7 @@ interface NotifyParams {
 }
 
 function buildMessage(params: NotifyParams): string {
-  const link = `https://epotos-ur-intel.vercel.app/contracts/${params.document_id}`
+  const link = `https://epotos-ur-intel.vercel.app/?contract_id=${params.document_id}`
   const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
 
   const messages: Record<NotifyType, string> = {

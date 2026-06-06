@@ -49,7 +49,7 @@ export function useBitrixAuth() {
             // Если есть contract_id — редиректим на документ, иначе на главную
             const contractId = params.get('contract_id')
             if (contractId) {
-              window.history.replaceState({}, '', `/contracts/${contractId}`)
+              window.location.replace(`/contracts/${contractId}`)
             } else {
               window.history.replaceState({}, '', '/')
             }
