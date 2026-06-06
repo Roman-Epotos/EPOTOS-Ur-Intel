@@ -13,6 +13,16 @@ export interface BitrixUser {
   member_id: string
 }
 
+// Объявляем тип для BX24 SDK
+declare global {
+  interface Window {
+    BX24?: {
+      setTitle: (count: number) => void
+      init: (callback: () => void) => void
+    }
+  }
+}
+
 export function useBitrixAuth() {
   const [user, setUser] = useState<BitrixUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,8 +54,16 @@ export function useBitrixAuth() {
 
           if (data.success) {
             setUser(data.user)
-            // Сохраняем в sessionStorage
             sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
+
+            // Обновляем last_seen_at и бейдж
+            await fetch('https://epotos-ur-intel.vercel.app/api/badge-count', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ bitrix_user_id: parseInt(data.user.id) }),
+            })
+            await updateBitrixBadge(data.user.id)
+
             // Если есть contract_id — редиректим на документ, иначе на главную
             const contractId = params.get('contract_id')
             if (contractId) {
@@ -58,7 +76,9 @@ export function useBitrixAuth() {
           // Проверяем sessionStorage
           const stored = sessionStorage.getItem('bitrix_user')
           if (stored) {
-            setUser(JSON.parse(stored))
+            const storedUser = JSON.parse(stored)
+            setUser(storedUser)
+            await updateBitrixBadge(storedUser.id)
           }
         }
       } catch (err) {
@@ -71,10 +91,25 @@ export function useBitrixAuth() {
     authenticate()
   }, [])
 
+  const updateBitrixBadge = async (userId: string) => {
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/badge-count?bitrix_user_id=${userId}`)
+      const data = await res.json()
+      const count = data.count ?? 0
+      if (window.BX24?.setTitle) {
+        window.BX24.setTitle(count)
+      }
+    } catch {
+      // игнорируем ошибки бейджа
+    }
+  }
+
   const logout = () => {
     sessionStorage.removeItem('bitrix_user')
     setUser(null)
+    if (window.BX24?.setTitle) window.BX24.setTitle(0)
   }
 
-  return { user, loading, logout }
+  return { user, loading, logout, updateBitrixBadge }
 }
