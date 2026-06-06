@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq('bitrix_user_id', userId)
       .eq('status', 'pending')
+      .filter('approval_sessions.contracts.deleted_at', 'is', null)
 
     // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
     const { data: myDrafts } = await supabase
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
       .eq('author_bitrix_id', userId)
       .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
       .in('document_category', ['contract', 'document'])
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
@@ -71,6 +73,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq('initiated_by_bitrix_id', userId)
       .eq('status', 'active')
+      .filter('contracts.deleted_at', 'is', null)
       .order('created_at', { ascending: false })
 // Фильтруем — только основные документы (не вложения)
     const filteredApprovals = (myApprovals ?? []).filter(p => {

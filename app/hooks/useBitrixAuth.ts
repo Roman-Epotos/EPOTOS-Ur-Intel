@@ -56,13 +56,7 @@ export function useBitrixAuth() {
             setUser(data.user)
             sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
 
-            // Обновляем last_seen_at и бейдж
-            await fetch('https://epotos-ur-intel.vercel.app/api/badge-count', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ bitrix_user_id: parseInt(data.user.id) }),
-            })
-            await updateBitrixBadge(data.user.id)
+            
 
             // Если есть contract_id — редиректим на документ, иначе на главную
             const contractId = params.get('contract_id')
@@ -78,7 +72,6 @@ export function useBitrixAuth() {
           if (stored) {
             const storedUser = JSON.parse(stored)
             setUser(storedUser)
-            await updateBitrixBadge(storedUser.id)
           }
         }
       } catch (err) {
@@ -91,21 +84,7 @@ export function useBitrixAuth() {
     authenticate()
   }, [])
 
-  const updateBitrixBadge = async (userId: string) => {
-    try {
-      const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const res = await fetch(`${baseUrl}/api/badge-count?bitrix_user_id=${userId}`)
-      const data = await res.json()
-      const count = data.count ?? 0
-      if (window.BX24) {
-        window.BX24.init(() => {
-          window.BX24?.setTitle(count)
-        })
-      }
-    } catch {
-      // игнорируем ошибки бейджа
-    }
-  }
+  
 
   const logout = () => {
     sessionStorage.removeItem('bitrix_user')
@@ -113,5 +92,5 @@ export function useBitrixAuth() {
     if (window.BX24?.setTitle) window.BX24.setTitle(0)
   }
 
-  return { user, loading, logout, updateBitrixBadge }
+  return { user, loading, logout }
 }
