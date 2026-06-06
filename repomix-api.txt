@@ -54,6 +54,7 @@ app/api/approvals/[sessionId]/participants/route.ts
 app/api/approvals/route.ts
 app/api/attachments/route.ts
 app/api/backup/route.ts
+app/api/badge-count/route.ts
 app/api/bitrix-notify/route.ts
 app/api/bitrix-tasks/route.ts
 app/api/bitrix-users/route.ts
@@ -1205,116 +1206,6 @@ export async function GET() {
       errors: errors.length > 0 ? errors : null,
     })
 
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-</file>
-
-<file path="app/api/bitrix-notify/route.ts">
-import { NextRequest, NextResponse } from 'next/server'
-
-const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
-
-// Типы уведомлений
-export type NotifyType =
-  | 'document_created'      // Создан документ
-  | 'sent_for_approval'     // Отправлен на согласование
-  | 'approval_required'     // Требуется согласование
-  | 'document_approved'     // Документ согласован
-  | 'document_rejected'     // Документ отклонён
-  | 'documents_uploaded'    // Загружены подписанные документы
-  | 'checklist_generated'   // Сгенерирован чек-лист
-  | 'checklist_deadline'    // Дедлайн пункта чек-листа
-
-interface NotifyParams {
-  to_bitrix_id: number      // ID получателя в Битрикс24
-  type: NotifyType
-  document_title: string
-  document_number: string
-  document_id: string
-  extra?: string            // Дополнительная информация
-}
-
-function buildMessage(params: NotifyParams): string {
-  const link = `https://epotos-ur-intel.vercel.app/?contract_id=${params.document_id}`
-  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
-
-  const messages: Record<NotifyType, string> = {
-    document_created:     `📄 Создан новый документ: ${doc}`,
-    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
-    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
-    document_approved:    `✅ Документ согласован: ${doc}`,
-    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
-    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
-    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
-  }
-
-  return messages[params.type] ?? `Уведомление по документу: ${doc}`
-}
-
-// Отправка одного уведомления
-async function sendNotify(toId: number, message: string): Promise<boolean> {
-  if (!WEBHOOK_URL) {
-    console.error('BITRIX_WEBHOOK_URL не задан')
-    return false
-  }
-
-  try {
-    const url = `${WEBHOOK_URL}im.notify.system.add.json`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        USER_ID: toId,
-        MESSAGE: message,
-      }),
-    })
-    const data = await res.json()
-    return data.result !== undefined
-  } catch (err) {
-    console.error('Ошибка отправки уведомления Битрикс24:', err)
-    return false
-  }
-}
-
-// POST — отправить уведомление
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { recipients, type, document_title, document_number, document_id, extra } = body
-
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
-    }
-
-    if (!type || !document_id) {
-      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
-    }
-
-    const results = await Promise.all(
-      recipients.map(async (bitrixId: number) => {
-        const message = buildMessage({
-          to_bitrix_id: bitrixId,
-          type,
-          document_title: document_title ?? 'Документ',
-          document_number: document_number ?? '',
-          document_id,
-          extra,
-        })
-        const success = await sendNotify(bitrixId, message)
-        return { bitrixId, success }
-      })
-    )
-
-    const failed = results.filter(r => !r.success)
-    return NextResponse.json({
-      success: true,
-      sent: results.length - failed.length,
-      failed: failed.length,
-    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -3505,6 +3396,203 @@ export async function PATCH(
     }
 
     return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/badge-count/route.ts">
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { bitrix_user_id } = body
+    if (!bitrix_user_id) return NextResponse.json({ success: false })
+
+    await supabase
+      .from('user_badge_seen')
+      .upsert({
+        bitrix_user_id,
+        last_seen_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'bitrix_user_id' })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const userId = request.nextUrl.searchParams.get('bitrix_user_id')
+    if (!userId) return NextResponse.json({ count: 0 })
+
+    const bitrixId = parseInt(userId)
+
+    // 1. Документы ожидающие согласования пользователя
+    const { data: pendingApprovals } = await supabase
+      .from('approval_participants')
+      .select('id')
+      .eq('bitrix_user_id', bitrixId)
+      .eq('status', 'pending')
+      .eq('role', 'required')
+
+    // 2. Новые сообщения в чатах где участвует пользователь
+    // Берём сессии где пользователь участник
+    const { data: userSessions } = await supabase
+      .from('approval_participants')
+      .select('session_id')
+      .eq('bitrix_user_id', bitrixId)
+
+    const sessionIds = (userSessions ?? []).map(s => s.session_id)
+
+    let newMessages = 0
+    if (sessionIds.length > 0) {
+      // Берём время последнего визита из stored_at
+      const lastSeenKey = `last_seen_${bitrixId}`
+      const { data: lastSeenData } = await supabase
+        .from('user_badge_seen')
+        .select('last_seen_at')
+        .eq('bitrix_user_id', bitrixId)
+        .single()
+
+      const lastSeenAt = lastSeenData?.last_seen_at ?? '2020-01-01T00:00:00Z'
+
+      const { data: newMsgs } = await supabase
+        .from('approval_messages')
+        .select('id')
+        .in('session_id', sessionIds)
+        .neq('bitrix_user_id', bitrixId)
+        .gt('created_at', lastSeenAt)
+        .is('is_ai', false)
+
+      newMessages = (newMsgs ?? []).length
+    }
+
+    const count = (pendingApprovals?.length ?? 0) + (newMessages > 0 ? 1 : 0)
+
+    return NextResponse.json({ count })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message, count: 0 }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/bitrix-notify/route.ts">
+import { NextRequest, NextResponse } from 'next/server'
+
+const WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL
+
+// Типы уведомлений
+export type NotifyType =
+  | 'document_created'      // Создан документ
+  | 'sent_for_approval'     // Отправлен на согласование
+  | 'approval_required'     // Требуется согласование
+  | 'document_approved'     // Документ согласован
+  | 'document_rejected'     // Документ отклонён
+  | 'documents_uploaded'    // Загружены подписанные документы
+  | 'checklist_generated'   // Сгенерирован чек-лист
+  | 'checklist_deadline'    // Дедлайн пункта чек-листа
+
+interface NotifyParams {
+  to_bitrix_id: number      // ID получателя в Битрикс24
+  type: NotifyType
+  document_title: string
+  document_number: string
+  document_id: string
+  extra?: string            // Дополнительная информация
+}
+
+function buildMessage(params: NotifyParams): string {
+  const link = `https://epotos-ur-intel.vercel.app/?contract_id=${params.document_id}`
+  const doc = `[URL=${link}]${params.document_number} — ${params.document_title}[/URL]`
+
+  const messages: Record<NotifyType, string> = {
+    document_created:     `📄 Создан новый документ: ${doc}`,
+    sent_for_approval:    `📨 Документ отправлен на согласование: ${doc}`,
+    approval_required:    `⚡ Требуется ваше согласование: ${doc}`,
+    document_approved:    `✅ Документ согласован: ${doc}`,
+    document_rejected:    `❌ Документ отклонён: ${doc}${params.extra ? `\nПричина: ${params.extra}` : ''}`,
+    documents_uploaded:   `📎 Загружены подписанные документы: ${doc}`,
+    checklist_generated:  `📋 Сгенерирован чек-лист исполнения: ${doc}`,
+    checklist_deadline:   `⏰ Дедлайн пункта чек-листа: ${params.extra ?? ''}\nДокумент: ${doc}`,
+  }
+
+  return messages[params.type] ?? `Уведомление по документу: ${doc}`
+}
+
+// Отправка одного уведомления
+async function sendNotify(toId: number, message: string): Promise<boolean> {
+  if (!WEBHOOK_URL) {
+    console.error('BITRIX_WEBHOOK_URL не задан')
+    return false
+  }
+
+  try {
+    const url = `${WEBHOOK_URL}im.notify.system.add.json`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        USER_ID: toId,
+        MESSAGE: message,
+      }),
+    })
+    const data = await res.json()
+    return data.result !== undefined
+  } catch (err) {
+    console.error('Ошибка отправки уведомления Битрикс24:', err)
+    return false
+  }
+}
+
+// POST — отправить уведомление
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { recipients, type, document_title, document_number, document_id, extra } = body
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return NextResponse.json({ error: 'recipients обязателен' }, { status: 400 })
+    }
+
+    if (!type || !document_id) {
+      return NextResponse.json({ error: 'type и document_id обязательны' }, { status: 400 })
+    }
+
+    const results = await Promise.all(
+      recipients.map(async (bitrixId: number) => {
+        const message = buildMessage({
+          to_bitrix_id: bitrixId,
+          type,
+          document_title: document_title ?? 'Документ',
+          document_number: document_number ?? '',
+          document_id,
+          extra,
+        })
+        const success = await sendNotify(bitrixId, message)
+        return { bitrixId, success }
+      })
+    )
+
+    const failed = results.filter(r => !r.success)
+    return NextResponse.json({
+      success: true,
+      sent: results.length - failed.length,
+      failed: failed.length,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })

@@ -97,8 +97,10 @@ export function useBitrixAuth() {
       const res = await fetch(`${baseUrl}/api/badge-count?bitrix_user_id=${userId}`)
       const data = await res.json()
       const count = data.count ?? 0
-      if (window.BX24?.setTitle) {
-        window.BX24.setTitle(count)
+      if (window.BX24) {
+        window.BX24.init(() => {
+          window.BX24?.setTitle(count)
+        })
       }
     } catch {
       // игнорируем ошибки бейджа
