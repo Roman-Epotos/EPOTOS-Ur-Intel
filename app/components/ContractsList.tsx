@@ -240,7 +240,7 @@ export default function ContractsList() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 60px)'}}>
+    <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full">
       <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-700">
