@@ -59,37 +59,40 @@ export default function Header() {
   }, [user])
 
   return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
-        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+    <div className="flex items-center justify-between mb-4 md:mb-8">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">Эпотос-ЮрИнтел</h1>
+        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
         <Link
           href="/contracts/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
         >
-          + Новый документ
+          <span className="hidden md:inline">+ Новый документ</span>
+          <span className="md:hidden">+ Новый</span>
         </Link>
         <Link
           href="/dashboard"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
-          🖥️ Рабочий стол
+          <span className="hidden md:inline">🖥️ Рабочий стол</span>
+          <span className="md:hidden">🖥️</span>
         </Link>
         <Link
           href="/counterparties"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
-          🏢 Контрагенты
+          <span className="hidden md:inline">🏢 Контрагенты</span>
+          <span className="md:hidden">🏢</span>
         </Link>
 
         {/* Профиль пользователя */}
-        
         <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-          ❓ Помощь
+          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+          ❓
+          <span className="hidden md:inline"> Помощь</span>
           {helpUnread > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
               {helpUnread}
@@ -98,26 +101,26 @@ export default function Header() {
         </Link>
         {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
           <Link href="/admin"
-            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
             Настройки
           </Link>
         )}
         {!loading && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 md:gap-3">
             {user ? (
               <div className="flex items-center gap-2">
                 {user.avatar ? (
                   <img
                     src={user.avatar}
                     alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
                   />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
                     {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                 )}
-                <div className="text-right">
+                <div className="hidden md:block text-right">
                   <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
                   <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
                 </div>

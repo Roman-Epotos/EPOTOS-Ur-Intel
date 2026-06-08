@@ -52,7 +52,7 @@ export default function PersonalStats() {
   }, [user?.id])
 
   if (authLoading || !stats) return (
-    <div className="grid grid-cols-5 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
       {[1, 2, 3, 4].map(i => (
         <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
           <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
@@ -71,7 +71,7 @@ export default function PersonalStats() {
   ]
 
   return (
-    <div className="grid grid-cols-5 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
       {items.map(stat => (
         <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
           <p className="text-sm text-gray-500">{stat.label}</p>
