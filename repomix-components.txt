@@ -2426,1071 +2426,6 @@ export default function DeleteContractButton({
 }
 </file>
 
-<file path="app/components/MyDocuments.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
-
-interface Contract {
-  id: string
-  number: string
-  title: string
-  counterparty: string
-  status: string
-  amount: number | null
-}
-
-interface ApprovalItem {
-  id: string
-  role: string
-  status: string
-  stage: string
-  session_id: string
-  approval_sessions: {
-    id: string
-    contract_id: string
-    deadline: string
-    initiated_by_name: string
-    contracts: Contract
-  }
-}
-
-interface SessionItem {
-  id: string
-  deadline: string
-  status: string
-  created_at: string
-  contracts: Contract
-}
-
-interface MyDocsData {
-  required_approvals: ApprovalItem[]
-  optional_approvals: ApprovalItem[]
-  my_drafts: Contract[]
-  my_initiated: SessionItem[]
-  my_edo: Contract[]
-}
-
-const STAGE_LABELS: Record<string, string> = {
-  legal: 'Юридический',
-  finance: 'Финансовый',
-  accounting: 'Бухгалтерия',
-  director: 'Директор',
-  custom: 'Доп.',
-}
-
-export default function MyDocuments() {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [data, setData] = useState<MyDocsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('approvals')
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        const res = await fetch(
-          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}`
-        )
-        const json = await res.json()
-        setData(json)
-      } catch {
-        console.error('Ошибка загрузки моих документов')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-
-    // Realtime подписка
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-
-    const channel = supabase
-      .channel('my-docs-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'approval_participants',
-      }, () => load())
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'contracts',
-      }, () => load())
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [user?.id])
-
-  if (authLoading || loading) return null
-
-  if (!user) return null
-
-  const totalActions = (data?.required_approvals.length ?? 0) +
-    (data?.optional_approvals.length ?? 0)
-
-  const hasAnything = totalActions > 0 ||
-    (data?.my_drafts.length ?? 0) > 0 ||
-    (data?.my_initiated.length ?? 0) > 0 ||
-    (data?.my_edo.length ?? 0) > 0
-
-  if (!hasAnything) return null
-
-  const tabs = [
-    {
-      id: 'approvals',
-      label: 'Требуют действия',
-      count: totalActions,
-      show: totalActions > 0
-    },
-    {
-      id: 'initiated',
-      label: 'Я инициатор',
-      count: data?.my_initiated.length ?? 0,
-      show: (data?.my_initiated.length ?? 0) > 0
-    },
-    {
-      id: 'drafts',
-      label: 'Мои черновики',
-      count: data?.my_drafts.length ?? 0,
-      show: (data?.my_drafts.length ?? 0) > 0
-    },
-    {
-      id: 'edo',
-      label: 'На подписи в ЭДО',
-      count: data?.my_edo.length ?? 0,
-      show: (data?.my_edo.length ?? 0) > 0
-    },
-  ].filter(t => t.show)
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 mb-6">
-      <div className="px-6 py-4 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-900">
-            Мои документы
-            {totalActions > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {totalActions}
-              </span>
-            )}
-          </h2>
-        </div>
-
-        {/* Вкладки */}
-        <div className="flex gap-2 mt-3">
-          {tabs.map(tab => (
-            <button key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}>
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
-                  ? 'bg-white text-gray-900'
-                  : 'bg-gray-400 text-white'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-4">
-
-        {/* Требуют действия */}
-        {activeTab === 'approvals' && (
-          <div className="space-y-2">
-            {data?.required_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Согласовать
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {STAGE_LABELS[item.stage] ?? item.stage}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {data?.optional_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Ознакомиться
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {totalActions === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">
-                Нет документов требующих действий
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Я инициатор */}
-        {activeTab === 'initiated' && (
-          <div className="space-y-2">
-            {data?.my_initiated.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      На согласовании
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.contracts.number} — {item.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Мои черновики */}
-        {activeTab === 'drafts' && (
-          <div className="space-y-2">
-            {data?.my_drafts.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'edo' && (
-          <div className="space-y-2">
-            {data?.my_edo.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/PersonalStats.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Stats {
-  total: number
-  on_approval: number
-  edo: number
-  signed: number
-  drafts: number
-  pending_my_action: number
-}
-
-export default function PersonalStats() {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [stats, setStats] = useState<Stats | null>(null)
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        const [contractsRes, myDocsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
-          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}`),
-        ])
-
-        const contractsData = await contractsRes.json()
-        const myDocsData = await myDocsRes.json()
-
-        const contracts = contractsData.contracts ?? []
-        const pendingActions = (myDocsData.required_approvals?.length ?? 0) +
-          (myDocsData.optional_approvals?.length ?? 0)
-
-        setStats({
-          total: contracts.length,
-          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
-          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
-          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
-          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
-          pending_my_action: pendingActions,
-        })
-      } catch {
-        console.error('Ошибка загрузки статистики')
-      }
-    }
-
-    load()
-  }, [user?.id])
-
-  if (authLoading || !stats) return (
-    <div className="grid grid-cols-5 gap-4 mb-8">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
-          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
-        </div>
-      ))}
-    </div>
-  )
-
-  const items = [
-    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
-    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
-    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
-    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
-    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
-  ]
-
-  return (
-    <div className="grid grid-cols-5 gap-4 mb-8">
-      {items.map(stat => (
-        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
-          <p className="text-sm text-gray-500">{stat.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/RelatedDocuments.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-interface RelatedContract {
-  id: string
-  number: string
-  title: string
-  type: string
-  status: string
-  created_at: string
-  counterparty: string
-}
-
-interface Props {
-  contractId: string
-  contractNumber: string
-  contractStatus: string
-  parentContractId: string | null
-  parentContractExternal: string | null
-  isChild: boolean
-  currentUserId: number
-  currentUserRole: string
-  currentUserCompanies: string[]
-}
-
-const statusColor: Record<string, string> = {
-  черновик: 'bg-gray-100 text-gray-600',
-  на_согласовании: 'bg-yellow-100 text-yellow-800',
-  согласован: 'bg-blue-100 text-blue-800',
-  подписан: 'bg-green-100 text-green-800',
-  на_исполнении: 'bg-purple-100 text-purple-800',
-  отклонён: 'bg-red-100 text-red-700',
-}
-
-const statusLabel: Record<string, string> = {
-  черновик: 'Черновик',
-  на_согласовании: 'На согласовании',
-  согласован: 'Согласован',
-  подписан: 'Подписан',
-  на_исполнении: 'На исполнении',
-  отклонён: 'Отклонён',
-}
-
-const CAN_LINK_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
-
-export default function RelatedDocuments({
-  contractId, contractNumber, contractStatus,
-  parentContractId, parentContractExternal, isChild,
-  currentUserId, currentUserRole, currentUserCompanies,
-}: Props) {
-  const [children, setChildren] = useState<RelatedContract[]>([])
-  const [parent, setParent] = useState<RelatedContract | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  // Привязка
-  const [showLinkModal, setShowLinkModal] = useState(false)
-  const [linkSource, setLinkSource] = useState<'system' | 'external'>('system')
-  const [linkSearch, setLinkSearch] = useState('')
-  const [linkSearchLoading, setLinkSearchLoading] = useState(false)
-  const [linkSuggestions, setLinkSuggestions] = useState<RelatedContract[]>([])
-  const [selectedParent, setSelectedParent] = useState<RelatedContract | null>(null)
-  const [externalNumber, setExternalNumber] = useState('')
-  const [linking, setLinking] = useState(false)
-  const [linkSuccess, setLinkSuccess] = useState('')
-  const [linkError, setLinkError] = useState('')
-
-  const canLink = CAN_LINK_ROLES.includes(currentUserRole)
-
-  useEffect(() => {
-    loadRelated()
-  }, [contractId])
-
-  const loadRelated = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`${baseUrl}/api/related-contracts?contract_id=${contractId}`)
-      const data = await res.json()
-      setChildren(data.children ?? [])
-      setParent(data.parent ?? null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const searchParents = async (q: string) => {
-    if (q.length < 2) { setLinkSuggestions([]); return }
-    setLinkSearchLoading(true)
-    try {
-      const res = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${currentUserId}&parent_only=true&search=${encodeURIComponent(q)}`)
-      const data = await res.json()
-      setLinkSuggestions((data.contracts ?? []).filter((c: RelatedContract) => c.id !== contractId))
-    } finally {
-      setLinkSearchLoading(false)
-    }
-  }
-
-  const handleLink = async () => {
-    setLinking(true)
-    setLinkError('')
-    setLinkSuccess('')
-    const res = await fetch(`${baseUrl}/api/related-contracts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contract_id: contractId,
-        parent_contract_id: linkSource === 'system' ? selectedParent?.id : null,
-        parent_contract_external: linkSource === 'external' ? externalNumber : null,
-        is_child: true,
-        user_id: currentUserId,
-      }),
-    })
-    const data = await res.json()
-    if (data.success) {
-      setLinkSuccess('Документ успешно привязан!')
-      setShowLinkModal(false)
-      loadRelated()
-    } else {
-      setLinkError(data.error ?? 'Ошибка привязки')
-    }
-    setLinking(false)
-  }
-
-  const handleUnlink = async () => {
-    if (!confirm('Отвязать этот документ от родительского?')) return
-    const res = await fetch(`${baseUrl}/api/related-contracts`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contract_id: contractId, user_id: currentUserId }),
-    })
-    const data = await res.json()
-    if (data.success) loadRelated()
-  }
-
-  if (loading) return (
-    <div className="p-6">
-      <p className="text-sm text-gray-400">Загрузка...</p>
-    </div>
-  )
-
-  return (
-    <div className="p-6 space-y-6">
-
-      {linkSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{linkSuccess}</div>}
-
-      {/* Родительский документ */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">📄 Основной документ</h2>
-          {canLink && (
-            <button onClick={() => setShowLinkModal(true)}
-              className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-              {isChild ? '🔄 Перепривязать' : '🔗 Привязать к документу'}
-            </button>
-          )}
-        </div>
-
-        {parent ? (
-          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
-            <div>
-              <Link href={`/contracts/${parent.id}`}
-                className="text-sm font-medium text-blue-600 hover:underline">
-                {parent.number}
-              </Link>
-              <p className="text-sm text-gray-700 mt-0.5">{parent.title}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{parent.counterparty}</p>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[parent.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                {statusLabel[parent.status] ?? parent.status}
-              </span>
-              {canLink && (
-                <button onClick={handleUnlink}
-                  className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">
-                  Отвязать
-                </button>
-              )}
-            </div>
-          </div>
-        ) : parentContractExternal ? (
-          <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
-            <p className="text-sm text-gray-700">📎 Дополнительный документ к договору <strong>{parentContractExternal}</strong></p>
-            <p className="text-xs text-gray-500 mt-1">Основной договор создан вне системы ЮрИнтел</p>
-            {canLink && (
-              <button onClick={handleUnlink}
-                className="text-xs text-red-500 mt-2 hover:underline">
-                Отвязать
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-sm text-gray-400">Этот документ не привязан к основному</p>
-            {canLink && (
-              <button onClick={() => setShowLinkModal(true)}
-                className="text-xs text-blue-600 mt-2 hover:underline">
-                Привязать →
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Дочерние документы */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
-          🔗 Дочерние документы
-          {children.length > 0 && (
-            <span className="ml-2 bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full">{children.length}</span>
-          )}
-        </h2>
-
-        {children.length === 0 ? (
-          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-sm text-gray-400">Дочерних документов пока нет</p>
-            <p className="text-xs text-gray-400 mt-1">Спецификации, доп.соглашения и другие документы, привязанные к этому, появятся здесь</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {children.map(c => (
-              <div key={c.id} className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
-                <div>
-                  <Link href={`/contracts/${c.id}`}
-                    className="text-sm font-medium text-blue-600 hover:underline">
-                    {c.number}
-                  </Link>
-                  <p className="text-sm text-gray-700 mt-0.5">{c.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{c.type} · {new Date(c.created_at).toLocaleDateString('ru-RU')}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                  {statusLabel[c.status] ?? c.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Модальное окно привязки */}
-      {showLinkModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Привязать к основному документу</h3>
-
-            {linkError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{linkError}</div>}
-
-            <div className="flex gap-2">
-              <button onClick={() => setLinkSource('system')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'system' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
-                🔍 Найти в системе
-              </button>
-              <button onClick={() => setLinkSource('external')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'external' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
-                ✏️ Документ вне системы
-              </button>
-            </div>
-
-            {linkSource === 'system' && (
-              <div className="relative">
-                <input
-                  type="text"
-                  value={linkSearch}
-                  onChange={e => { setLinkSearch(e.target.value); searchParents(e.target.value) }}
-                  placeholder="Поиск по номеру, названию или контрагенту..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
-                {linkSearchLoading && <p className="text-xs text-gray-400 mt-1">Поиск...</p>}
-                {linkSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                    {linkSuggestions.map(c => (
-                      <button key={c.id} type="button"
-                        onClick={() => { setSelectedParent(c); setLinkSuggestions([]); setLinkSearch(`${c.number} — ${c.title}`) }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                        <p className="text-sm font-medium text-gray-900">{c.number}</p>
-                        <p className="text-xs text-gray-500">{c.title} · {c.counterparty}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedParent && (
-                  <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                    <span className="text-green-600 text-sm">✓</span>
-                    <p className="text-sm text-gray-900 font-medium">{selectedParent.number}</p>
-                    <button type="button" onClick={() => { setSelectedParent(null); setLinkSearch('') }}
-                      className="ml-auto text-xs text-gray-400 hover:text-gray-600">✕</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {linkSource === 'external' && (
-              <input
-                type="text"
-                value={externalNumber}
-                onChange={e => setExternalNumber(e.target.value)}
-                placeholder="Введите номер основного договора..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <button onClick={handleLink} disabled={linking || (linkSource === 'system' && !selectedParent) || (linkSource === 'external' && !externalNumber.trim())}
-                className="flex-1 bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-                {linking ? 'Привязываем...' : '🔗 Привязать'}
-              </button>
-              <button onClick={() => { setShowLinkModal(false); setLinkError('') }}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/SignedDocumentUploadModal.tsx">
-'use client'
-
-import { useState } from 'react'
-
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-interface FileOption {
-  id: string
-  file_name: string
-  type: 'version' | 'attachment'
-  version_number?: number
-}
-
-interface Discrepancy {
-  section: string
-  type: string
-  agreed_text: string
-  signed_text: string
-  severity: 'высокая' | 'средняя' | 'низкая'
-}
-
-interface CompareResult {
-  match: boolean
-  summary: string
-  discrepancies: Discrepancy[]
-}
-
-interface Props {
-  contractId: string
-  userName: string
-  userBitrixId: string
-  fileOptions: FileOption[]
-  onSuccess: () => void
-  onClose: () => void
-}
-
-const severityColor: Record<string, string> = {
-  высокая: 'bg-red-50 border-red-300 text-red-800',
-  средняя: 'bg-yellow-50 border-yellow-300 text-yellow-800',
-  низкая: 'bg-blue-50 border-blue-200 text-blue-800',
-}
-
-const severityLabel: Record<string, string> = {
-  высокая: '🔴 Высокая',
-  средняя: '🟡 Средняя',
-  низкая: '🔵 Низкая',
-}
-
-export default function SignedDocumentUploadModal({
-  contractId, userName, userBitrixId, fileOptions, onSuccess, onClose
-}: Props) {
-  const [step, setStep] = useState<'select' | 'comparing' | 'result' | 'uploading'>('select')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [compareFileId, setCompareFileId] = useState(fileOptions[0]?.id ?? '')
-  const [compareFileType, setCompareFileType] = useState<'version' | 'attachment'>(fileOptions[0]?.type ?? 'version')
-  const [signedDate, setSignedDate] = useState('')
-  const [compareResult, setCompareResult] = useState<CompareResult | null>(null)
-  const [discrepancyComment, setDiscrepancyComment] = useState('')
-  const [error, setError] = useState('')
-  const [tempFileUrl, setTempFileUrl] = useState('')
-  const [tempFileName, setTempFileName] = useState('')
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setSelectedFile(file)
-    setError('')
-  }
-
-  const handleCompare = async () => {
-    if (!selectedFile) { setError('Выберите файл'); return }
-    if (!compareFileId) { setError('Выберите документ для сравнения'); return }
-
-    setStep('comparing')
-    setError('')
-
-    try {
-      // Сначала загружаем файл временно для получения URL
-      const fd = new FormData()
-      fd.append('file', selectedFile)
-      fd.append('contract_id', contractId)
-      fd.append('user_name', userName)
-      fd.append('user_bitrix_id', userBitrixId)
-      fd.append('temp_upload', 'true')
-
-      const uploadRes = await fetch(`${baseUrl}/api/signed-documents`, { method: 'POST', body: fd })
-      const uploadData = await uploadRes.json()
-
-      if (uploadData.error) { setError(uploadData.error); setStep('select'); return }
-
-      setTempFileUrl(uploadData.temp_url)
-      setTempFileName(selectedFile.name)
-
-      // Запускаем AI сравнение
-      const compareRes = await fetch(`${baseUrl}/api/ai-document-compare`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contract_id: contractId,
-          signed_file_url: uploadData.temp_url,
-          signed_file_name: selectedFile.name,
-          compare_file_id: compareFileId,
-          compare_file_type: compareFileType,
-        }),
-      })
-
-      const compareData = await compareRes.json()
-      if (compareData.error) { setError(compareData.error); setStep('select'); return }
-
-      setCompareResult(compareData.result)
-      setStep('result')
-    } catch {
-      setError('Ошибка при сравнении документов')
-      setStep('select')
-    }
-  }
-
-  const handleUpload = async (withDiscrepancies: boolean) => {
-    if (withDiscrepancies && !discrepancyComment.trim()) {
-      setError('Укажите причину загрузки документа с расхождениями')
-      return
-    }
-
-    setStep('uploading')
-    setError('')
-
-    const fd = new FormData()
-    fd.append('contract_id', contractId)
-    fd.append('user_name', userName)
-    fd.append('user_bitrix_id', userBitrixId)
-    fd.append('confirm_upload', 'true')
-    fd.append('temp_file_url', tempFileUrl)
-    fd.append('temp_file_name', tempFileName)
-    if (signedDate) fd.append('signed_date', signedDate)
-    if (withDiscrepancies) {
-      fd.append('has_discrepancies', 'true')
-      fd.append('discrepancy_comment', discrepancyComment)
-      fd.append('discrepancy_summary', compareResult?.summary ?? '')
-    }
-
-    const res = await fetch(`${baseUrl}/api/signed-documents`, { method: 'POST', body: fd })
-    const data = await res.json()
-
-    if (data.error) { setError(data.error); setStep('result'); return }
-    onSuccess()
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-
-        {/* Шапка */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Загрузка подписанного документа</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-        </div>
-
-        <div className="px-6 py-5 space-y-5">
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
-
-          {/* ШАГ 1 — ВЫБОР ФАЙЛА И ДОКУМЕНТА ДЛЯ СРАВНЕНИЯ */}
-          {step === 'select' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Подписанный документ (PDF) <span className="text-red-500">*</span>
-                </label>
-                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl px-4 py-4 cursor-pointer hover:border-gray-400 transition-colors">
-                  <span className="text-2xl">📄</span>
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">
-                      {selectedFile ? selectedFile.name : 'Нажмите для выбора файла'}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">PDF, DOCX</p>
-                  </div>
-                  <input type="file" className="hidden" accept=".pdf,.docx"
-                    onChange={handleFileSelect} />
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Сравнить с документом <span className="text-red-500">*</span>
-                </label>
-                {fileOptions.length === 0 ? (
-                  <p className="text-sm text-gray-400">Нет загруженных версий для сравнения</p>
-                ) : (
-                  <select
-                    value={compareFileId}
-                    onChange={e => {
-                      const opt = fileOptions.find(f => f.id === e.target.value)
-                      setCompareFileId(e.target.value)
-                      setCompareFileType(opt?.type ?? 'version')
-                    }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                    {fileOptions.map(f => (
-                      <option key={f.id} value={f.id}>
-                        {f.type === 'version' ? `📄 Версия ${f.version_number}` : '📎 Доп. материал'}: {f.file_name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Дата подписания
-                  <span className="ml-2 text-xs text-gray-400 font-normal">(необязательно)</span>
-                </label>
-                <input type="date" value={signedDate} onChange={e => setSignedDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button onClick={handleCompare} disabled={!selectedFile || !compareFileId}
-                  className="flex-1 bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-                  🤖 Проверить через AI и загрузить
-                </button>
-                <button onClick={onClose}
-                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                  Отмена
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ШАГ 2 — СРАВНЕНИЕ */}
-          {step === 'comparing' && (
-            <div className="text-center py-8 space-y-3">
-              <div className="text-4xl animate-pulse">🤖</div>
-              <p className="text-sm font-medium text-gray-900">AI анализирует документы...</p>
-              <p className="text-xs text-gray-400">Извлекаем текст и сравниваем содержимое. Это может занять 15-30 секунд.</p>
-            </div>
-          )}
-
-          {/* ШАГ 3 — РЕЗУЛЬТАТ */}
-          {step === 'result' && compareResult && (
-            <>
-              {/* Итог */}
-              <div className={`rounded-xl border p-4 ${compareResult.match ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">{compareResult.match ? '✅' : '⚠️'}</span>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {compareResult.match ? 'Документы соответствуют друг другу' : 'Найдены расхождения'}
-                  </p>
-                </div>
-                <p className="text-sm text-gray-600 ml-7">{compareResult.summary}</p>
-              </div>
-
-              {/* Список расхождений */}
-              {compareResult.discrepancies.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700">
-                    Найдено расхождений: {compareResult.discrepancies.length}
-                  </h3>
-                  {compareResult.discrepancies.map((d, i) => (
-                    <div key={i} className={`rounded-lg border p-4 space-y-2 ${severityColor[d.severity] ?? 'bg-gray-50 border-gray-200'}`}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">{d.section}</p>
-                        <span className="text-xs font-medium">{severityLabel[d.severity] ?? d.severity}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white bg-opacity-60 rounded p-2">
-                          <p className="text-xs font-medium text-gray-500 mb-1">Согласованный</p>
-                          <p className="text-xs text-gray-700">{d.agreed_text || '—'}</p>
-                        </div>
-                        <div className="bg-white bg-opacity-60 rounded p-2">
-                          <p className="text-xs font-medium text-gray-500 mb-1">Подписанный</p>
-                          <p className="text-xs text-gray-700">{d.signed_text || '—'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Комментарий при расхождениях */}
-              {!compareResult.match && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Причина загрузки документа с расхождениями <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={discrepancyComment}
-                    onChange={e => setDiscrepancyComment(e.target.value)}
-                    placeholder="Объясните причину расхождений..."
-                    rows={3}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
-                  />
-                </div>
-              )}
-
-              {/* Кнопки */}
-              <div className="flex gap-3 pt-2">
-                {compareResult.match ? (
-                  <button onClick={() => handleUpload(false)}
-                    className="flex-1 bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-green-700">
-                    ✅ Загрузить документ
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={() => handleUpload(true)}
-                      disabled={!discrepancyComment.trim()}
-                      className="flex-1 bg-yellow-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-yellow-700 disabled:opacity-50">
-                      ⚠️ Загрузить с расхождениями
-                    </button>
-                    <button onClick={onClose}
-                      className="flex-1 border border-gray-200 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                      Отменить загрузку
-                    </button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* ШАГ 4 — ЗАГРУЗКА */}
-          {step === 'uploading' && (
-            <div className="text-center py-8 space-y-3">
-              <div className="text-4xl animate-pulse">📤</div>
-              <p className="text-sm font-medium text-gray-900">Загружаем документ...</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-</file>
-
 <file path="app/components/GenerateFromTemplate.tsx">
 'use client'
 
@@ -4258,6 +3193,1071 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
 }
 </file>
 
+<file path="app/components/MyDocuments.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+}
+
+interface ApprovalItem {
+  id: string
+  role: string
+  status: string
+  stage: string
+  session_id: string
+  approval_sessions: {
+    id: string
+    contract_id: string
+    deadline: string
+    initiated_by_name: string
+    contracts: Contract
+  }
+}
+
+interface SessionItem {
+  id: string
+  deadline: string
+  status: string
+  created_at: string
+  contracts: Contract
+}
+
+interface MyDocsData {
+  required_approvals: ApprovalItem[]
+  optional_approvals: ApprovalItem[]
+  my_drafts: Contract[]
+  my_initiated: SessionItem[]
+  my_edo: Contract[]
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  legal: 'Юридический',
+  finance: 'Финансовый',
+  accounting: 'Бухгалтерия',
+  director: 'Директор',
+  custom: 'Доп.',
+}
+
+export default function MyDocuments() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [data, setData] = useState<MyDocsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('approvals')
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}`
+        )
+        const json = await res.json()
+        setData(json)
+      } catch {
+        console.error('Ошибка загрузки моих документов')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+
+    // Realtime подписка
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('my-docs-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => load())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => load())
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id])
+
+  if (authLoading || loading) return null
+
+  if (!user) return null
+
+  const totalActions = (data?.required_approvals.length ?? 0) +
+    (data?.optional_approvals.length ?? 0)
+
+  const hasAnything = totalActions > 0 ||
+    (data?.my_drafts.length ?? 0) > 0 ||
+    (data?.my_initiated.length ?? 0) > 0 ||
+    (data?.my_edo.length ?? 0) > 0
+
+  if (!hasAnything) return null
+
+  const tabs = [
+    {
+      id: 'approvals',
+      label: 'Требуют действия',
+      count: totalActions,
+      show: totalActions > 0
+    },
+    {
+      id: 'initiated',
+      label: 'Я инициатор',
+      count: data?.my_initiated.length ?? 0,
+      show: (data?.my_initiated.length ?? 0) > 0
+    },
+    {
+      id: 'drafts',
+      label: 'Мои черновики',
+      count: data?.my_drafts.length ?? 0,
+      show: (data?.my_drafts.length ?? 0) > 0
+    },
+    {
+      id: 'edo',
+      label: 'На подписи в ЭДО',
+      count: data?.my_edo.length ?? 0,
+      show: (data?.my_edo.length ?? 0) > 0
+    },
+  ].filter(t => t.show)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mb-6">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-gray-900">
+            Мои документы
+            {totalActions > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {totalActions}
+              </span>
+            )}
+          </h2>
+        </div>
+
+        {/* Вкладки */}
+        <div className="flex gap-2 mt-3">
+          {tabs.map(tab => (
+            <button key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}>
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                  ? 'bg-white text-gray-900'
+                  : 'bg-gray-400 text-white'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4">
+
+        {/* Требуют действия */}
+        {activeTab === 'approvals' && (
+          <div className="space-y-2">
+            {data?.required_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Согласовать
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {STAGE_LABELS[item.stage] ?? item.stage}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {data?.optional_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Ознакомиться
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {totalActions === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">
+                Нет документов требующих действий
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Я инициатор */}
+        {activeTab === 'initiated' && (
+          <div className="space-y-2">
+            {data?.my_initiated.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      На согласовании
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.contracts.number} — {item.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Мои черновики */}
+        {activeTab === 'drafts' && (
+          <div className="space-y-2">
+            {data?.my_drafts.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'edo' && (
+          <div className="space-y-2">
+            {data?.my_edo.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/RelatedDocuments.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+interface RelatedContract {
+  id: string
+  number: string
+  title: string
+  type: string
+  status: string
+  created_at: string
+  counterparty: string
+}
+
+interface Props {
+  contractId: string
+  contractNumber: string
+  contractStatus: string
+  parentContractId: string | null
+  parentContractExternal: string | null
+  isChild: boolean
+  currentUserId: number
+  currentUserRole: string
+  currentUserCompanies: string[]
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-600',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  согласован: 'bg-blue-100 text-blue-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-purple-100 text-purple-800',
+  отклонён: 'bg-red-100 text-red-700',
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  согласован: 'Согласован',
+  подписан: 'Подписан',
+  на_исполнении: 'На исполнении',
+  отклонён: 'Отклонён',
+}
+
+const CAN_LINK_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
+
+export default function RelatedDocuments({
+  contractId, contractNumber, contractStatus,
+  parentContractId, parentContractExternal, isChild,
+  currentUserId, currentUserRole, currentUserCompanies,
+}: Props) {
+  const [children, setChildren] = useState<RelatedContract[]>([])
+  const [parent, setParent] = useState<RelatedContract | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Привязка
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [linkSource, setLinkSource] = useState<'system' | 'external'>('system')
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkSearchLoading, setLinkSearchLoading] = useState(false)
+  const [linkSuggestions, setLinkSuggestions] = useState<RelatedContract[]>([])
+  const [selectedParent, setSelectedParent] = useState<RelatedContract | null>(null)
+  const [externalNumber, setExternalNumber] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [linkSuccess, setLinkSuccess] = useState('')
+  const [linkError, setLinkError] = useState('')
+
+  const canLink = CAN_LINK_ROLES.includes(currentUserRole)
+
+  useEffect(() => {
+    loadRelated()
+  }, [contractId])
+
+  const loadRelated = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/related-contracts?contract_id=${contractId}`)
+      const data = await res.json()
+      setChildren(data.children ?? [])
+      setParent(data.parent ?? null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const searchParents = async (q: string) => {
+    if (q.length < 2) { setLinkSuggestions([]); return }
+    setLinkSearchLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${currentUserId}&parent_only=true&search=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setLinkSuggestions((data.contracts ?? []).filter((c: RelatedContract) => c.id !== contractId))
+    } finally {
+      setLinkSearchLoading(false)
+    }
+  }
+
+  const handleLink = async () => {
+    setLinking(true)
+    setLinkError('')
+    setLinkSuccess('')
+    const res = await fetch(`${baseUrl}/api/related-contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contract_id: contractId,
+        parent_contract_id: linkSource === 'system' ? selectedParent?.id : null,
+        parent_contract_external: linkSource === 'external' ? externalNumber : null,
+        is_child: true,
+        user_id: currentUserId,
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setLinkSuccess('Документ успешно привязан!')
+      setShowLinkModal(false)
+      loadRelated()
+    } else {
+      setLinkError(data.error ?? 'Ошибка привязки')
+    }
+    setLinking(false)
+  }
+
+  const handleUnlink = async () => {
+    if (!confirm('Отвязать этот документ от родительского?')) return
+    const res = await fetch(`${baseUrl}/api/related-contracts`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract_id: contractId, user_id: currentUserId }),
+    })
+    const data = await res.json()
+    if (data.success) loadRelated()
+  }
+
+  if (loading) return (
+    <div className="p-6">
+      <p className="text-sm text-gray-400">Загрузка...</p>
+    </div>
+  )
+
+  return (
+    <div className="p-6 space-y-6">
+
+      {linkSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{linkSuccess}</div>}
+
+      {/* Родительский документ */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">📄 Основной документ</h2>
+          {canLink && (
+            <button onClick={() => setShowLinkModal(true)}
+              className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+              {isChild ? '🔄 Перепривязать' : '🔗 Привязать к документу'}
+            </button>
+          )}
+        </div>
+
+        {parent ? (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+            <div>
+              <Link href={`/contracts/${parent.id}`}
+                className="text-sm font-medium text-blue-600 hover:underline">
+                {parent.number}
+              </Link>
+              <p className="text-sm text-gray-700 mt-0.5">{parent.title}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{parent.counterparty}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[parent.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                {statusLabel[parent.status] ?? parent.status}
+              </span>
+              {canLink && (
+                <button onClick={handleUnlink}
+                  className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">
+                  Отвязать
+                </button>
+              )}
+            </div>
+          </div>
+        ) : parentContractExternal ? (
+          <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
+            <p className="text-sm text-gray-700">📎 Дополнительный документ к договору <strong>{parentContractExternal}</strong></p>
+            <p className="text-xs text-gray-500 mt-1">Основной договор создан вне системы ЮрИнтел</p>
+            {canLink && (
+              <button onClick={handleUnlink}
+                className="text-xs text-red-500 mt-2 hover:underline">
+                Отвязать
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <p className="text-sm text-gray-400">Этот документ не привязан к основному</p>
+            {canLink && (
+              <button onClick={() => setShowLinkModal(true)}
+                className="text-xs text-blue-600 mt-2 hover:underline">
+                Привязать →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Дочерние документы */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">
+          🔗 Дочерние документы
+          {children.length > 0 && (
+            <span className="ml-2 bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full">{children.length}</span>
+          )}
+        </h2>
+
+        {children.length === 0 ? (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <p className="text-sm text-gray-400">Дочерних документов пока нет</p>
+            <p className="text-xs text-gray-400 mt-1">Спецификации, доп.соглашения и другие документы, привязанные к этому, появятся здесь</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {children.map(c => (
+              <div key={c.id} className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+                <div>
+                  <Link href={`/contracts/${c.id}`}
+                    className="text-sm font-medium text-blue-600 hover:underline">
+                    {c.number}
+                  </Link>
+                  <p className="text-sm text-gray-700 mt-0.5">{c.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{c.type} · {new Date(c.created_at).toLocaleDateString('ru-RU')}</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {statusLabel[c.status] ?? c.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Модальное окно привязки */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Привязать к основному документу</h3>
+
+            {linkError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{linkError}</div>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setLinkSource('system')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'system' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                🔍 Найти в системе
+              </button>
+              <button onClick={() => setLinkSource('external')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${linkSource === 'external' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                ✏️ Документ вне системы
+              </button>
+            </div>
+
+            {linkSource === 'system' && (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={linkSearch}
+                  onChange={e => { setLinkSearch(e.target.value); searchParents(e.target.value) }}
+                  placeholder="Поиск по номеру, названию или контрагенту..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+                {linkSearchLoading && <p className="text-xs text-gray-400 mt-1">Поиск...</p>}
+                {linkSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {linkSuggestions.map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => { setSelectedParent(c); setLinkSuggestions([]); setLinkSearch(`${c.number} — ${c.title}`) }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <p className="text-sm font-medium text-gray-900">{c.number}</p>
+                        <p className="text-xs text-gray-500">{c.title} · {c.counterparty}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedParent && (
+                  <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <span className="text-green-600 text-sm">✓</span>
+                    <p className="text-sm text-gray-900 font-medium">{selectedParent.number}</p>
+                    <button type="button" onClick={() => { setSelectedParent(null); setLinkSearch('') }}
+                      className="ml-auto text-xs text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {linkSource === 'external' && (
+              <input
+                type="text"
+                value={externalNumber}
+                onChange={e => setExternalNumber(e.target.value)}
+                placeholder="Введите номер основного договора..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={handleLink} disabled={linking || (linkSource === 'system' && !selectedParent) || (linkSource === 'external' && !externalNumber.trim())}
+                className="flex-1 bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                {linking ? 'Привязываем...' : '🔗 Привязать'}
+              </button>
+              <button onClick={() => { setShowLinkModal(false); setLinkError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/SignedDocumentUploadModal.tsx">
+'use client'
+
+import { useState } from 'react'
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+interface FileOption {
+  id: string
+  file_name: string
+  type: 'version' | 'attachment'
+  version_number?: number
+}
+
+interface Discrepancy {
+  section: string
+  type: string
+  agreed_text: string
+  signed_text: string
+  severity: 'высокая' | 'средняя' | 'низкая'
+}
+
+interface CompareResult {
+  match: boolean
+  summary: string
+  discrepancies: Discrepancy[]
+}
+
+interface Props {
+  contractId: string
+  userName: string
+  userBitrixId: string
+  fileOptions: FileOption[]
+  onSuccess: () => void
+  onClose: () => void
+}
+
+const severityColor: Record<string, string> = {
+  высокая: 'bg-red-50 border-red-300 text-red-800',
+  средняя: 'bg-yellow-50 border-yellow-300 text-yellow-800',
+  низкая: 'bg-blue-50 border-blue-200 text-blue-800',
+}
+
+const severityLabel: Record<string, string> = {
+  высокая: '🔴 Высокая',
+  средняя: '🟡 Средняя',
+  низкая: '🔵 Низкая',
+}
+
+export default function SignedDocumentUploadModal({
+  contractId, userName, userBitrixId, fileOptions, onSuccess, onClose
+}: Props) {
+  const [step, setStep] = useState<'select' | 'comparing' | 'result' | 'uploading'>('select')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [compareFileId, setCompareFileId] = useState(fileOptions[0]?.id ?? '')
+  const [compareFileType, setCompareFileType] = useState<'version' | 'attachment'>(fileOptions[0]?.type ?? 'version')
+  const [signedDate, setSignedDate] = useState('')
+  const [compareResult, setCompareResult] = useState<CompareResult | null>(null)
+  const [discrepancyComment, setDiscrepancyComment] = useState('')
+  const [error, setError] = useState('')
+  const [tempFileUrl, setTempFileUrl] = useState('')
+  const [tempFileName, setTempFileName] = useState('')
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSelectedFile(file)
+    setError('')
+  }
+
+  const handleCompare = async () => {
+    if (!selectedFile) { setError('Выберите файл'); return }
+    if (!compareFileId) { setError('Выберите документ для сравнения'); return }
+
+    setStep('comparing')
+    setError('')
+
+    try {
+      // Сначала загружаем файл временно для получения URL
+      const fd = new FormData()
+      fd.append('file', selectedFile)
+      fd.append('contract_id', contractId)
+      fd.append('user_name', userName)
+      fd.append('user_bitrix_id', userBitrixId)
+      fd.append('temp_upload', 'true')
+
+      const uploadRes = await fetch(`${baseUrl}/api/signed-documents`, { method: 'POST', body: fd })
+      const uploadData = await uploadRes.json()
+
+      if (uploadData.error) { setError(uploadData.error); setStep('select'); return }
+
+      setTempFileUrl(uploadData.temp_url)
+      setTempFileName(selectedFile.name)
+
+      // Запускаем AI сравнение
+      const compareRes = await fetch(`${baseUrl}/api/ai-document-compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          signed_file_url: uploadData.temp_url,
+          signed_file_name: selectedFile.name,
+          compare_file_id: compareFileId,
+          compare_file_type: compareFileType,
+        }),
+      })
+
+      const compareData = await compareRes.json()
+      if (compareData.error) { setError(compareData.error); setStep('select'); return }
+
+      setCompareResult(compareData.result)
+      setStep('result')
+    } catch {
+      setError('Ошибка при сравнении документов')
+      setStep('select')
+    }
+  }
+
+  const handleUpload = async (withDiscrepancies: boolean) => {
+    if (withDiscrepancies && !discrepancyComment.trim()) {
+      setError('Укажите причину загрузки документа с расхождениями')
+      return
+    }
+
+    setStep('uploading')
+    setError('')
+
+    const fd = new FormData()
+    fd.append('contract_id', contractId)
+    fd.append('user_name', userName)
+    fd.append('user_bitrix_id', userBitrixId)
+    fd.append('confirm_upload', 'true')
+    fd.append('temp_file_url', tempFileUrl)
+    fd.append('temp_file_name', tempFileName)
+    if (signedDate) fd.append('signed_date', signedDate)
+    if (withDiscrepancies) {
+      fd.append('has_discrepancies', 'true')
+      fd.append('discrepancy_comment', discrepancyComment)
+      fd.append('discrepancy_summary', compareResult?.summary ?? '')
+    }
+
+    const res = await fetch(`${baseUrl}/api/signed-documents`, { method: 'POST', body: fd })
+    const data = await res.json()
+
+    if (data.error) { setError(data.error); setStep('result'); return }
+    onSuccess()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+
+        {/* Шапка */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Загрузка подписанного документа</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
+
+          {/* ШАГ 1 — ВЫБОР ФАЙЛА И ДОКУМЕНТА ДЛЯ СРАВНЕНИЯ */}
+          {step === 'select' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Подписанный документ (PDF) <span className="text-red-500">*</span>
+                </label>
+                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl px-4 py-4 cursor-pointer hover:border-gray-400 transition-colors">
+                  <span className="text-2xl">📄</span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      {selectedFile ? selectedFile.name : 'Нажмите для выбора файла'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">PDF, DOCX</p>
+                  </div>
+                  <input type="file" className="hidden" accept=".pdf,.docx"
+                    onChange={handleFileSelect} />
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Сравнить с документом <span className="text-red-500">*</span>
+                </label>
+                {fileOptions.length === 0 ? (
+                  <p className="text-sm text-gray-400">Нет загруженных версий для сравнения</p>
+                ) : (
+                  <select
+                    value={compareFileId}
+                    onChange={e => {
+                      const opt = fileOptions.find(f => f.id === e.target.value)
+                      setCompareFileId(e.target.value)
+                      setCompareFileType(opt?.type ?? 'version')
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                    {fileOptions.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.type === 'version' ? `📄 Версия ${f.version_number}` : '📎 Доп. материал'}: {f.file_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Дата подписания
+                  <span className="ml-2 text-xs text-gray-400 font-normal">(необязательно)</span>
+                </label>
+                <input type="date" value={signedDate} onChange={e => setSignedDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={handleCompare} disabled={!selectedFile || !compareFileId}
+                  className="flex-1 bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  🤖 Проверить через AI и загрузить
+                </button>
+                <button onClick={onClose}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                  Отмена
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ШАГ 2 — СРАВНЕНИЕ */}
+          {step === 'comparing' && (
+            <div className="text-center py-8 space-y-3">
+              <div className="text-4xl animate-pulse">🤖</div>
+              <p className="text-sm font-medium text-gray-900">AI анализирует документы...</p>
+              <p className="text-xs text-gray-400">Извлекаем текст и сравниваем содержимое. Это может занять 15-30 секунд.</p>
+            </div>
+          )}
+
+          {/* ШАГ 3 — РЕЗУЛЬТАТ */}
+          {step === 'result' && compareResult && (
+            <>
+              {/* Итог */}
+              <div className={`rounded-xl border p-4 ${compareResult.match ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">{compareResult.match ? '✅' : '⚠️'}</span>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {compareResult.match ? 'Документы соответствуют друг другу' : 'Найдены расхождения'}
+                  </p>
+                </div>
+                <p className="text-sm text-gray-600 ml-7">{compareResult.summary}</p>
+              </div>
+
+              {/* Список расхождений */}
+              {compareResult.discrepancies.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    Найдено расхождений: {compareResult.discrepancies.length}
+                  </h3>
+                  {compareResult.discrepancies.map((d, i) => (
+                    <div key={i} className={`rounded-lg border p-4 space-y-2 ${severityColor[d.severity] ?? 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{d.section}</p>
+                        <span className="text-xs font-medium">{severityLabel[d.severity] ?? d.severity}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white bg-opacity-60 rounded p-2">
+                          <p className="text-xs font-medium text-gray-500 mb-1">Согласованный</p>
+                          <p className="text-xs text-gray-700">{d.agreed_text || '—'}</p>
+                        </div>
+                        <div className="bg-white bg-opacity-60 rounded p-2">
+                          <p className="text-xs font-medium text-gray-500 mb-1">Подписанный</p>
+                          <p className="text-xs text-gray-700">{d.signed_text || '—'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Комментарий при расхождениях */}
+              {!compareResult.match && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Причина загрузки документа с расхождениями <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={discrepancyComment}
+                    onChange={e => setDiscrepancyComment(e.target.value)}
+                    placeholder="Объясните причину расхождений..."
+                    rows={3}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  />
+                </div>
+              )}
+
+              {/* Кнопки */}
+              <div className="flex gap-3 pt-2">
+                {compareResult.match ? (
+                  <button onClick={() => handleUpload(false)}
+                    className="flex-1 bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-green-700">
+                    ✅ Загрузить документ
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => handleUpload(true)}
+                      disabled={!discrepancyComment.trim()}
+                      className="flex-1 bg-yellow-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-yellow-700 disabled:opacity-50">
+                      ⚠️ Загрузить с расхождениями
+                    </button>
+                    <button onClick={onClose}
+                      className="flex-1 border border-gray-200 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                      Отменить загрузку
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ШАГ 4 — ЗАГРУЗКА */}
+          {step === 'uploading' && (
+            <div className="text-center py-8 space-y-3">
+              <div className="text-4xl animate-pulse">📤</div>
+              <p className="text-sm font-medium text-gray-900">Загружаем документ...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/PersonalStats.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Stats {
+  total: number
+  on_approval: number
+  edo: number
+  signed: number
+  drafts: number
+  pending_my_action: number
+}
+
+export default function PersonalStats() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const [contractsRes, myDocsRes] = await Promise.all([
+          fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
+          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}`),
+        ])
+
+        const contractsData = await contractsRes.json()
+        const myDocsData = await myDocsRes.json()
+
+        const contracts = contractsData.contracts ?? []
+        const pendingActions = (myDocsData.required_approvals?.length ?? 0) +
+          (myDocsData.optional_approvals?.length ?? 0)
+
+        setStats({
+          total: contracts.length,
+          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
+          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
+          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
+          pending_my_action: pendingActions,
+        })
+      } catch {
+        console.error('Ошибка загрузки статистики')
+      }
+    }
+
+    load()
+  }, [user?.id])
+
+  if (authLoading || !stats) return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
+          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const items = [
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
+    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
+    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
+    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {items.map(stat => (
+        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+          <p className="text-sm text-gray-500">{stat.label}</p>
+          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+</file>
+
 <file path="app/components/Header.tsx">
 'use client'
 
@@ -4320,37 +4320,40 @@ export default function Header() {
   }, [user])
 
   return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Эпотос-ЮрИнтел</h1>
-        <p className="text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+    <div className="flex items-center justify-between mb-4 md:mb-8">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">Эпотос-ЮрИнтел</h1>
+        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
         <Link
           href="/contracts/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
         >
-          + Новый документ
+          <span className="hidden md:inline">+ Новый документ</span>
+          <span className="md:hidden">+ Новый</span>
         </Link>
         <Link
           href="/dashboard"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
-          🖥️ Рабочий стол
+          <span className="hidden md:inline">🖥️ Рабочий стол</span>
+          <span className="md:hidden">🖥️</span>
         </Link>
         <Link
           href="/counterparties"
-          className="text-sm text-gray-600 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
-          🏢 Контрагенты
+          <span className="hidden md:inline">🏢 Контрагенты</span>
+          <span className="md:hidden">🏢</span>
         </Link>
 
         {/* Профиль пользователя */}
-        
         <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-          ❓ Помощь
+          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+          ❓
+          <span className="hidden md:inline"> Помощь</span>
           {helpUnread > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
               {helpUnread}
@@ -4359,26 +4362,26 @@ export default function Header() {
         </Link>
         {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
           <Link href="/admin"
-            className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
             Настройки
           </Link>
         )}
         {!loading && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 md:gap-3">
             {user ? (
               <div className="flex items-center gap-2">
                 {user.avatar ? (
                   <img
                     src={user.avatar}
                     alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
                   />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium">
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
                     {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                 )}
-                <div className="text-right">
+                <div className="hidden md:block text-right">
                   <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
                   <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
                 </div>
@@ -4396,414 +4399,6 @@ export default function Header() {
             )}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-</file>
-
-<file path="app/components/ContractsList.tsx">
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
-
-function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
-  const [hasNew, setHasNew] = useState(false)
-
-  const refresh = () => {
-    if (!lastMessageAt) { setHasNew(false); return }
-    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
-    if (!lastReadStr) { setHasNew(true); return }
-    const lastRead = new Date(lastReadStr).getTime()
-    const lastMsg = new Date(lastMessageAt).getTime()
-    setHasNew(lastMsg > lastRead)
-  }
-
-  useEffect(() => {
-    refresh()
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  }, [contractId, lastMessageAt])
-
-  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
-  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
-  return (
-    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-      💬 new
-    </span>
-  )
-}
-
-interface Contract {
-  id: string
-  number: string
-  title: string
-  counterparty: string
-  status: string
-  amount: number | null
-  end_date: string | null
-  author_bitrix_id: number | null
-  has_files?: boolean
-  file_type?: string | null
-  unread_messages?: number
-  last_message_at?: string | null
-  created_at: string
-  customer_number?: string | null
-}
-
-interface UserRole {
-  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'finance_company' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
-  companies: string[]
-}
-
-const statusLabel: Record<string, string> = {
-  черновик: 'Черновик',
-  на_согласовании: 'На согласовании',
-  согласован: 'Согласован',
-  отклонён: 'Отклонён',
-  загружен_частично: 'Документы загружены частично',
-  подписан: 'Подписанные документы загружены',
-  на_подписи_в_эдо: 'На подписи в ЭДО',
-  на_исполнении: 'На контроле исполнения',
-  архив: 'Архив',
-}
-
-const statusColor: Record<string, string> = {
-  черновик: 'bg-gray-100 text-gray-700',
-  на_согласовании: 'bg-yellow-100 text-yellow-800',
-  согласован: 'bg-blue-100 text-blue-800',
-  отклонён: 'bg-red-100 text-red-700',
-  загружен_частично: 'bg-orange-100 text-orange-800',
-  на_подписи_в_эдо: 'bg-purple-100 text-purple-800',
-  подписан: 'bg-green-100 text-green-800',
-  на_исполнении: 'bg-emerald-100 text-emerald-800',
-  архив: 'bg-gray-200 text-gray-500',
-}
-
-export default function ContractsList() {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [contracts, setContracts] = useState<Contract[]>([])
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [search, setSearch] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('all')
-  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
-  const [counterpartySearch, setCounterpartySearch] = useState('')
-  const [showCounterpartyDropdown, setShowCounterpartyDropdown] = useState(false)
-  const [counterparties, setCounterparties] = useState<string[]>([])
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-  // Realtime подписка на новые договоры
-  useEffect(() => {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-
-    const channel = supabase
-      .channel('contracts-changes')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'contracts',
-      }, () => {
-        if (!user?.id) return
-        const load = async () => {
-          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-          const roleData = await roleRes.json()
-          const params = new URLSearchParams()
-          params.append('bitrix_user_id', user.id)
-          params.append('role', roleData.role)
-          if (roleData.companies.length > 0) {
-            params.append('companies', roleData.companies.join(','))
-          }
-          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-          const contractsData = await contractsRes.json()
-          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
-            const aTime = a.last_message_at ?? a.created_at
-            const bTime = b.last_message_at ?? b.created_at
-            return new Date(bTime).getTime() - new Date(aTime).getTime()
-          })
-          setContracts(sorted)
-          const unique = [...new Set(sorted.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
-          setCounterparties(unique.sort())
-        }
-        load()
-      })
-      .subscribe()
-
-    // Подписка на новые сообщения в чатах
-    const msgChannel = supabase
-      .channel('approval-messages-changes')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'approval_messages',
-      }, () => {
-        if (!user?.id) return
-        const reload = async () => {
-          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-          const roleData = await roleRes.json()
-          const params = new URLSearchParams()
-          params.append('bitrix_user_id', user.id)
-          params.append('role', roleData.role)
-          if (roleData.companies.length > 0) {
-            params.append('companies', roleData.companies.join(','))
-          }
-          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-          const contractsData = await contractsRes.json()
-          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
-            const aTime = a.last_message_at ?? a.created_at
-            const bTime = b.last_message_at ?? b.created_at
-            return new Date(bTime).getTime() - new Date(aTime).getTime()
-          })
-          setContracts(sorted)
-        }
-        reload()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-      supabase.removeChannel(msgChannel)
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        // Получаем роль пользователя
-        const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-        const roleData = await roleRes.json()
-        setUserRole(roleData)
-
-        // Получаем договоры в зависимости от роли
-        const params = new URLSearchParams()
-        params.append('bitrix_user_id', user.id)
-        params.append('role', roleData.role)
-        if (roleData.companies.length > 0) {
-          params.append('companies', roleData.companies.join(','))
-        }
-
-        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
-        const contractsData = await contractsRes.json()
-        const allContracts = (contractsData.contracts ?? []).sort((a: Contract & { last_message_at?: string | null }, b: Contract & { last_message_at?: string | null }) => {
-          const aTime = a.last_message_at ?? a.created_at
-          const bTime = b.last_message_at ?? b.created_at
-          return new Date(bTime).getTime() - new Date(aTime).getTime()
-        })
-        setContracts(allContracts)
-        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
-        setCounterparties(unique.sort())
-      } catch {
-        console.error('Ошибка загрузки')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-  }, [user?.id])
-
-  if (authLoading || loading) return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-6 py-4 text-sm text-gray-400">Загрузка...</div>
-    </div>
-  )
-
-  if (!user) return null
-
-  // Фильтрация
-  const filtered = contracts.filter(c => {
-    if (filter !== 'all' && c.status !== filter) return false
-    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
-    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
-    if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
-        !c.title.toLowerCase().includes(search.toLowerCase()) &&
-        !c.counterparty.toLowerCase().includes(search.toLowerCase()) &&
-        !(c.customer_number ?? '').toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
-
-  const roleLabels: Record<string, string> = {
-    developer: 'Все документы (Разработчик)',
-    admin: 'Все документы (Администратор)',
-    gc_manager: 'Все документы (Менеджер ГК)',
-    finance_gc: 'Все документы (Финансовый контроль ГК)',
-    legal_gc: 'Все документы (Юридический отдел ГК)',
-    director: 'Договоры компании',
-    legal: 'Договоры на юридическом сопровождении',
-    finance: 'Договоры финансового сопровождения',
-    user: 'Мои договоры',
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 60px)'}}>
-      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-700">
-            {roleLabels[userRole?.role ?? 'user']}
-          </h2>
-          <span className="text-xs text-gray-400">{filtered.length} записей</span>
-        </div>
-
-        <div className="flex gap-2 flex-wrap mt-3">
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск: номер, название, контрагент, № заказчика..."
-            className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
-          <select
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-          >
-            <option value="all">Все статусы</option>
-            <option value="черновик">Черновики</option>
-            <option value="на_согласовании">На согласовании</option>
-            <option value="согласован">Согласованные</option>
-            <option value="на_подписи_в_эдо">На подписи в ЭДО</option>
-            <option value="загружен_частично">Документы загружены частично</option>
-            <option value="подписан">Подписанные документы загружены</option>
-            <option value="на_исполнении">На контроле исполнения</option>
-            <option value="архив">Архив</option>
-          </select>
-          <select
-            value={companyFilter}
-            onChange={e => setCompanyFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-          >
-            <option value="all">Все компании</option>
-            <option value="ТХ">ООО Техно</option>
-            <option value="НПП">НПП ЭПОТОС</option>
-            <option value="СПТ">ООО СПТ</option>
-            <option value="ОС">ООО ОС</option>
-            <option value="Э-К">ООО Эпотос-К</option>
-          </select>
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={counterpartySearch}
-              onChange={e => {
-                setCounterpartySearch(e.target.value)
-                setShowCounterpartyDropdown(true)
-                if (!e.target.value) setCounterpartyFilter('all')
-              }}
-              onFocus={() => setShowCounterpartyDropdown(true)}
-              onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
-              placeholder="Фильтр по контрагенту..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-            />
-            {counterpartyFilter !== 'all' && (
-              <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
-                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-700 text-xs">✕</button>
-            )}
-            {showCounterpartyDropdown && counterparties.filter(c =>
-              c.toLowerCase().includes(counterpartySearch.toLowerCase())
-            ).length > 0 && (
-              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                {counterparties
-                  .filter(c => c.toLowerCase().includes(counterpartySearch.toLowerCase()))
-                  .map(c => (
-                    <button key={c} type="button"
-                      onMouseDown={() => {
-                        setCounterpartyFilter(c)
-                        setCounterpartySearch(c)
-                        setShowCounterpartyDropdown(false)
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
-                      {c}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto overflow-x-auto">
-      {filtered.length === 0 ? (
-        <div className="px-6 py-12 text-center">
-          <p className="text-gray-400 text-sm">Документов не найдено</p>
-          {userRole?.role === 'user' && contracts.length === 0 && (
-            <Link href="/contracts/new"
-              className="mt-3 inline-block text-sm text-gray-900 underline">
-              Создать первый документ
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-<table className="w-full min-w-[900px]">
-          <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-              <th className="px-6 py-3 font-medium">Номер</th>
-              <th className="px-6 py-3 font-medium">Название</th>
-              <th className="px-6 py-3 font-medium">Контрагент</th>
-              <th className="px-6 py-3 font-medium">Сумма</th>
-              <th className="px-6 py-3 font-medium">Срок</th>
-              <th className="px-6 py-3 font-medium">Файлы</th>
-              <th className="px-6 py-3 font-medium">Чат</th>
-              <th className="px-6 py-3 font-medium">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(contract => (
-              <tr key={contract.id}
-                className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                    {contract.number}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                    {contract.title}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
-                <td className="px-6 py-4">
-                  {contract.has_files && contract.file_type ? (
-                    <img
-                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
-                      alt={contract.file_type}
-                      className="w-6 h-6"
-                    />
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
-                    const now = new Date().toISOString()
-                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
-                  }}>
-                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
-                  </a>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                    {statusLabel[contract.status] ?? contract.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      )}
       </div>
     </div>
   )
@@ -5215,7 +4810,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     }
   }
 
-  const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+  const LOCKED_STATUSES = ['согласован', 'на_подписи_в_эдо', 'загружен_частично', 'подписан', 'на_исполнении']
   const isLocked = LOCKED_STATUSES.includes(contractStatus)
   const CAN_EDIT_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
   const canEditDetails = !isLocked && (
@@ -5725,7 +5320,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
           {/* Реквизиты */}
           {activeTab === 'details' && (
             <div className="p-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   {/* Индикатор статуса */}
                   <div className="mb-5">
@@ -5970,7 +5565,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         <p className="text-xs text-gray-400 mt-0.5">{new Date(version.created_at).toLocaleString('ru-RU')}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <a href={version.file_url} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                         Скачать
@@ -6277,7 +5872,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Чек-лист */}
                     <div>
                       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Участники</h3>
@@ -6285,10 +5880,10 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         {session.approval_participants.map(p => (
                           <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium text-gray-900 truncate">{p.user_name}</p>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
                                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                  {p.role === 'optional' ? 'ознакамливается' : 'согласует'}
+                                  {p.role === 'optional' ? 'ознакамл.' : 'согласует'}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>
@@ -6947,6 +6542,414 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
           </div>
         </div>
       )}
+    </div>
+  )
+}
+</file>
+
+<file path="app/components/ContractsList.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, lastMessageAt: string | null }) {
+  const [hasNew, setHasNew] = useState(false)
+
+  const refresh = () => {
+    if (!lastMessageAt) { setHasNew(false); return }
+    const lastReadStr = localStorage.getItem(`chat_read_time_${contractId}`)
+    if (!lastReadStr) { setHasNew(true); return }
+    const lastRead = new Date(lastReadStr).getTime()
+    const lastMsg = new Date(lastMessageAt).getTime()
+    setHasNew(lastMsg > lastRead)
+  }
+
+  useEffect(() => {
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [contractId, lastMessageAt])
+
+  if (!lastMessageAt) return <span className="text-gray-300 text-xs">—</span>
+  if (!hasNew) return <span className="text-gray-400 text-sm">💬</span>
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+      💬 new
+    </span>
+  )
+}
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+  end_date: string | null
+  author_bitrix_id: number | null
+  has_files?: boolean
+  file_type?: string | null
+  unread_messages?: number
+  last_message_at?: string | null
+  created_at: string
+  customer_number?: string | null
+}
+
+interface UserRole {
+  role: 'developer' | 'admin' | 'gc_manager' | 'finance_gc' | 'finance_company' | 'legal_gc' | 'director' | 'legal' | 'finance' | 'user'
+  companies: string[]
+}
+
+const statusLabel: Record<string, string> = {
+  черновик: 'Черновик',
+  на_согласовании: 'На согласовании',
+  согласован: 'Согласован',
+  отклонён: 'Отклонён',
+  загружен_частично: 'Документы загружены частично',
+  подписан: 'Подписанные документы загружены',
+  на_подписи_в_эдо: 'На подписи в ЭДО',
+  на_исполнении: 'На контроле исполнения',
+  архив: 'Архив',
+}
+
+const statusColor: Record<string, string> = {
+  черновик: 'bg-gray-100 text-gray-700',
+  на_согласовании: 'bg-yellow-100 text-yellow-800',
+  согласован: 'bg-blue-100 text-blue-800',
+  отклонён: 'bg-red-100 text-red-700',
+  загружен_частично: 'bg-orange-100 text-orange-800',
+  на_подписи_в_эдо: 'bg-purple-100 text-purple-800',
+  подписан: 'bg-green-100 text-green-800',
+  на_исполнении: 'bg-emerald-100 text-emerald-800',
+  архив: 'bg-gray-200 text-gray-500',
+}
+
+export default function ContractsList() {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('all')
+  const [counterpartyFilter, setCounterpartyFilter] = useState('all')
+  const [counterpartySearch, setCounterpartySearch] = useState('')
+  const [showCounterpartyDropdown, setShowCounterpartyDropdown] = useState(false)
+  const [counterparties, setCounterparties] = useState<string[]>([])
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  // Realtime подписка на новые договоры
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('contracts-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'contracts',
+      }, () => {
+        if (!user?.id) return
+        const load = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
+          const unique = [...new Set(sorted.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+          setCounterparties(unique.sort())
+        }
+        load()
+      })
+      .subscribe()
+
+    // Подписка на новые сообщения в чатах
+    const msgChannel = supabase
+      .channel('approval-messages-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'approval_messages',
+      }, () => {
+        if (!user?.id) return
+        const reload = async () => {
+          const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+          const roleData = await roleRes.json()
+          const params = new URLSearchParams()
+          params.append('bitrix_user_id', user.id)
+          params.append('role', roleData.role)
+          if (roleData.companies.length > 0) {
+            params.append('companies', roleData.companies.join(','))
+          }
+          const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+          const contractsData = await contractsRes.json()
+          const sorted = (contractsData.contracts ?? []).sort((a: Contract, b: Contract) => {
+            const aTime = a.last_message_at ?? a.created_at
+            const bTime = b.last_message_at ?? b.created_at
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
+          setContracts(sorted)
+        }
+        reload()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(msgChannel)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        // Получаем роль пользователя
+        const roleRes = await fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+        const roleData = await roleRes.json()
+        setUserRole(roleData)
+
+        // Получаем договоры в зависимости от роли
+        const params = new URLSearchParams()
+        params.append('bitrix_user_id', user.id)
+        params.append('role', roleData.role)
+        if (roleData.companies.length > 0) {
+          params.append('companies', roleData.companies.join(','))
+        }
+
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?${params}`)
+        const contractsData = await contractsRes.json()
+        const allContracts = (contractsData.contracts ?? []).sort((a: Contract & { last_message_at?: string | null }, b: Contract & { last_message_at?: string | null }) => {
+          const aTime = a.last_message_at ?? a.created_at
+          const bTime = b.last_message_at ?? b.created_at
+          return new Date(bTime).getTime() - new Date(aTime).getTime()
+        })
+        setContracts(allContracts)
+        const unique = [...new Set(allContracts.map((c: Contract) => c.counterparty).filter(Boolean))] as string[]
+        setCounterparties(unique.sort())
+      } catch {
+        console.error('Ошибка загрузки')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [user?.id])
+
+  if (authLoading || loading) return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 text-sm text-gray-400">Загрузка...</div>
+    </div>
+  )
+
+  if (!user) return null
+
+  // Фильтрация
+  const filtered = contracts.filter(c => {
+    if (filter !== 'all' && c.status !== filter) return false
+    if (companyFilter !== 'all' && !c.number.startsWith(companyFilter + '-')) return false
+    if (counterpartyFilter !== 'all' && c.counterparty !== counterpartyFilter) return false
+    if (search && !c.number.toLowerCase().includes(search.toLowerCase()) &&
+        !c.title.toLowerCase().includes(search.toLowerCase()) &&
+        !c.counterparty.toLowerCase().includes(search.toLowerCase()) &&
+        !(c.customer_number ?? '').toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  const roleLabels: Record<string, string> = {
+    developer: 'Все документы (Разработчик)',
+    admin: 'Все документы (Администратор)',
+    gc_manager: 'Все документы (Менеджер ГК)',
+    finance_gc: 'Все документы (Финансовый контроль ГК)',
+    legal_gc: 'Все документы (Юридический отдел ГК)',
+    director: 'Договоры компании',
+    legal: 'Договоры на юридическом сопровождении',
+    finance: 'Договоры финансового сопровождения',
+    user: 'Мои договоры',
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full">
+      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-700">
+            {roleLabels[userRole?.role ?? 'user']}
+          </h2>
+          <span className="text-xs text-gray-400">{filtered.length} записей</span>
+        </div>
+
+        <div className="flex gap-2 flex-wrap mt-3">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск: номер, название, контрагент, № заказчика..."
+            className="flex-[0.9] min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все статусы</option>
+            <option value="черновик">Черновики</option>
+            <option value="на_согласовании">На согласовании</option>
+            <option value="согласован">Согласованные</option>
+            <option value="на_подписи_в_эдо">На подписи в ЭДО</option>
+            <option value="загружен_частично">Документы загружены частично</option>
+            <option value="подписан">Подписанные документы загружены</option>
+            <option value="на_исполнении">На контроле исполнения</option>
+            <option value="архив">Архив</option>
+          </select>
+          <select
+            value={companyFilter}
+            onChange={e => setCompanyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+          >
+            <option value="all">Все компании</option>
+            <option value="ТХ">ООО Техно</option>
+            <option value="НПП">НПП ЭПОТОС</option>
+            <option value="СПТ">ООО СПТ</option>
+            <option value="ОС">ООО ОС</option>
+            <option value="Э-К">ООО Эпотос-К</option>
+          </select>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={counterpartySearch}
+              onChange={e => {
+                setCounterpartySearch(e.target.value)
+                setShowCounterpartyDropdown(true)
+                if (!e.target.value) setCounterpartyFilter('all')
+              }}
+              onFocus={() => setShowCounterpartyDropdown(true)}
+              onBlur={() => setTimeout(() => setShowCounterpartyDropdown(false), 200)}
+              placeholder="Фильтр по контрагенту..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+            />
+            {counterpartyFilter !== 'all' && (
+              <button onClick={() => { setCounterpartyFilter('all'); setCounterpartySearch('') }}
+                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-700 text-xs">✕</button>
+            )}
+            {showCounterpartyDropdown && counterparties.filter(c =>
+              c.toLowerCase().includes(counterpartySearch.toLowerCase())
+            ).length > 0 && (
+              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                {counterparties
+                  .filter(c => c.toLowerCase().includes(counterpartySearch.toLowerCase()))
+                  .map(c => (
+                    <button key={c} type="button"
+                      onMouseDown={() => {
+                        setCounterpartyFilter(c)
+                        setCounterpartySearch(c)
+                        setShowCounterpartyDropdown(false)
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                      {c}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
+      {filtered.length === 0 ? (
+        <div className="px-6 py-12 text-center">
+          <p className="text-gray-400 text-sm">Документов не найдено</p>
+          {userRole?.role === 'user' && contracts.length === 0 && (
+            <Link href="/contracts/new"
+              className="mt-3 inline-block text-sm text-gray-900 underline">
+              Создать первый документ
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+<table className="w-full min-w-[320px]">
+          <thead>
+            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+              <th className="px-3 md:px-6 py-3 font-medium">Номер</th>
+              <th className="px-3 md:px-6 py-3 font-medium">Название</th>
+              <th className="hidden md:table-cell px-6 py-3 font-medium">Контрагент</th>
+              <th className="hidden md:table-cell px-6 py-3 font-medium">Сумма</th>
+              <th className="hidden md:table-cell px-6 py-3 font-medium">Срок</th>
+              <th className="hidden md:table-cell px-6 py-3 font-medium">Файлы</th>
+              <th className="hidden md:table-cell px-6 py-3 font-medium">Чат</th>
+              <th className="px-3 md:px-6 py-3 font-medium">Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(contract => (
+              <tr key={contract.id}
+                className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
+                <td className="px-3 md:px-6 py-4 text-xs md:text-sm font-medium text-gray-900">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.number}
+                  </Link>
+                </td>
+                <td className="px-3 md:px-6 py-4 text-xs md:text-sm text-gray-700 max-w-[120px] md:max-w-xs truncate">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                    {contract.title}
+                  </Link>
+                </td>
+                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
+                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">
+                  {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
+                </td>
+                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
+                <td className="hidden md:table-cell px-6 py-4">
+                  {contract.has_files && contract.file_type ? (
+                    <img
+                      src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
+                      alt={contract.file_type}
+                      className="w-6 h-6"
+                    />
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="hidden md:table-cell px-6 py-4">
+                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
+                    const now = new Date().toISOString()
+                    localStorage.setItem(`chat_read_time_${contract.id}`, now)
+                  }}>
+                    <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
+                  </a>
+                </td>
+                <td className="px-3 md:px-6 py-4">
+                  <span className={`text-xs px-1.5 py-0.5 md:px-2 md:py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                    {statusLabel[contract.status] ?? contract.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+      </div>
     </div>
   )
 }

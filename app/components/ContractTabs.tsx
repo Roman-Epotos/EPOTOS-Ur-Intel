@@ -912,7 +912,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
           {/* Реквизиты */}
           {activeTab === 'details' && (
             <div className="p-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   {/* Индикатор статуса */}
                   <div className="mb-5">
@@ -1157,7 +1157,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         <p className="text-xs text-gray-400 mt-0.5">{new Date(version.created_at).toLocaleString('ru-RU')}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <a href={version.file_url} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                         Скачать
@@ -1464,7 +1464,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Чек-лист */}
                     <div>
                       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Участники</h3>
@@ -1472,10 +1472,10 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         {session.approval_participants.map(p => (
                           <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium text-gray-900 truncate">{p.user_name}</p>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
                                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                  {p.role === 'optional' ? 'ознакамливается' : 'согласует'}
+                                  {p.role === 'optional' ? 'ознакамл.' : 'согласует'}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>
