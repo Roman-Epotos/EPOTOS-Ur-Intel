@@ -402,7 +402,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     }
   }
 
-  const LOCKED_STATUSES = ['согласован', 'загружен_частично', 'подписан', 'на_исполнении']
+  const LOCKED_STATUSES = ['согласован', 'на_подписи_в_эдо', 'загружен_частично', 'подписан', 'на_исполнении']
   const isLocked = LOCKED_STATUSES.includes(contractStatus)
   const CAN_EDIT_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
   const canEditDetails = !isLocked && (

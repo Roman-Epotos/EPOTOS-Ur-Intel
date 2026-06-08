@@ -276,6 +276,25 @@ export default function CounterpartyPage() {
                       </div>
                     </div>
                   )}
+                  {/* На подписи в ЭДО */}
+                  {(counterparty.contracts?.filter(c => c.status === 'на_подписи_в_эдо') ?? []).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-purple-700 mb-1.5">
+                        📧 На подписи в ЭДО ({counterparty.contracts?.filter(c => c.status === 'на_подписи_в_эдо').length})
+                      </p>
+                      <div className="space-y-1">
+                        {counterparty.contracts?.filter(c => c.status === 'на_подписи_в_эдо').map(c => (
+                          <div key={c.id}
+                            onClick={() => router.push(`/contracts/${c.id}`)}
+                            className="cursor-pointer hover:bg-purple-50 rounded-lg p-2 transition-colors border border-purple-100">
+                            <p className="text-xs font-medium text-gray-900">{c.number}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.title}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Действующие */}
                   {(counterparty.contracts?.filter(c => ['подписан','на_исполнении'].includes(c.status)) ?? []).length > 0 && (
                     <div>
@@ -295,13 +314,13 @@ export default function CounterpartyPage() {
                     </div>
                   )}
                   {/* Остальные (черновики, согласованы и др.) */}
-                  {(counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)) ?? []).length > 0 && (
+                  {(counterparty.contracts?.filter(c => !['на_согласовании','на_подписи_в_эдо','подписан','на_исполнении'].includes(c.status)) ?? []).length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-gray-500 mb-1.5">
-                        📋 Прочие ({counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)).length})
+                        📋 Прочие ({counterparty.contracts?.filter(c => !['на_согласовании','на_подписи_в_эдо','подписан','на_исполнении'].includes(c.status)).length})
                       </p>
                       <div className="space-y-1">
-                        {counterparty.contracts?.filter(c => !['на_согласовании','подписан','на_исполнении'].includes(c.status)).map(c => (
+                        {counterparty.contracts?.filter(c => !['на_согласовании','на_подписи_в_эдо','подписан','на_исполнении'].includes(c.status)).map(c => (
                           <div key={c.id}
                             onClick={() => router.push(`/contracts/${c.id}`)}
                             className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors border border-gray-100">
