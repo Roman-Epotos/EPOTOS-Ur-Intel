@@ -131,13 +131,13 @@ export default function FinanceDashboardPage() {
       <div className="max-w-7xl mx-auto">
 
         {/* Шапка */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900">← Рабочий стол</Link>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900 flex-shrink-0">← Рабочий стол</Link>
             <span className="text-gray-300">/</span>
-            <h1 className="text-xl font-bold text-gray-900">💰 Финансовый дашборд</h1>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">💰 Финансовый дашборд</h1>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-wrap">
             {companies.length > 1 && (
               <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)}
                 className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">
