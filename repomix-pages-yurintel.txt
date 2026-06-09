@@ -1,47 +1,51 @@
-This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
 
-<file_summary>
-This section contains a summary of this file.
+================================================================
+File Summary
+================================================================
 
-<purpose>
+Purpose:
+--------
 This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
-</purpose>
 
-<file_format>
+File Format:
+------------
 The content is organized as follows:
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Repository files (if enabled)
 5. Multiple file entries, each consisting of:
-  - File path as an attribute
-  - Full contents of the file
-</file_format>
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
 
-<usage_guidelines>
+Usage Guidelines:
+-----------------
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
   between different files in the repository.
 - Be aware that this file may contain sensitive information. Handle it with
   the same level of security as you would the original repository.
-</usage_guidelines>
 
-<notes>
+Notes:
+------
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Only files matching these patterns are included: app/**, utils/**
-- Files matching these patterns are excluded: node_modules/**, .next/**, .env*, *.lock, app/api/**, app/components/**
+- Only files matching these patterns are included: app/**/page.tsx, app/**/layout.tsx
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Files are sorted by Git change count (files with more changes are at the bottom)
-</notes>
 
-</file_summary>
 
-<directory_structure>
+================================================================
+Directory Structure
+================================================================
 app/admin/page.tsx
 app/contracts/[id]/approval-portal/page.tsx
 app/contracts/[id]/approve/page.tsx
@@ -54,23 +58,17 @@ app/dashboard-finance/page.tsx
 app/dashboard-legal/page.tsx
 app/dashboard/page.tsx
 app/editor/page.tsx
-app/favicon.ico
-app/globals.css
 app/help/page.tsx
-app/hooks/useBitrixAuth.ts
 app/layout.tsx
-app/lib/documentTypes.ts
-app/lib/notify.ts
 app/page.tsx
-utils/chatPrint.ts
-utils/supabase/client.ts
-utils/supabase/server.ts
-</directory_structure>
 
-<files>
-This section contains the contents of the repository's files.
+================================================================
+Files
+================================================================
 
-<file path="app/contracts/[id]/approval-portal/page.tsx">
+================
+File: app/contracts/[id]/approval-portal/page.tsx
+================
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -613,9 +611,10 @@ export default function ApprovalPortalPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/contracts/[id]/approve/page.tsx">
+================
+File: app/contracts/[id]/approve/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -999,9 +998,10 @@ export default function ApprovePage() {
     </div>
   )
 }
-</file>
 
-<file path="app/contracts/[id]/upload/page.tsx">
+================
+File: app/contracts/[id]/upload/page.tsx
+================
 'use client'
 
 import { useState } from 'react'
@@ -1162,9 +1162,10 @@ export default function UploadVersionPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/dashboard/page.tsx">
+================
+File: app/dashboard/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -1491,9 +1492,10 @@ export default function DashboardPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/editor/page.tsx">
+================
+File: app/editor/page.tsx
+================
 'use client'
 
 import { Suspense } from 'react'
@@ -1608,313 +1610,10 @@ export default function EditorPage() {
     </Suspense>
   )
 }
-</file>
 
-<file path="app/globals.css">
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Фикс для Яндекс браузера и Safari — только поля ввода */
-input,
-select,
-textarea {
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827 !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #9ca3af !important;
-  -webkit-text-fill-color: #9ca3af !important;
-  opacity: 1;
-}
-
-input:disabled,
-select:disabled {
-  color: #6b7280 !important;
-  -webkit-text-fill-color: #6b7280 !important;
-}
-
-/* Кнопки — сброс webkit */
-button, a {
-  -webkit-text-fill-color: currentColor;
-}
-
-/* Белый текст на тёмном фоне */
-button.text-white,
-a.text-white,
-span.text-white {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-}
-
-/* Серый текст на светлом фоне */
-button.text-gray-700,
-button.text-gray-600,
-span.text-gray-700,
-span.text-gray-600 {
-  color: #374151 !important;
-  -webkit-text-fill-color: #374151 !important;
-}
-
-/* Счётчик на активной вкладке — тёмный текст на белом фоне */
-span.text-gray-900 {
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827 !important;
-}
-</file>
-
-<file path="app/lib/notify.ts">
-export type NotifyType =
-  | 'document_created'
-  | 'sent_for_approval'
-  | 'approval_required'
-  | 'document_approved'
-  | 'document_rejected'
-  | 'documents_uploaded'
-  | 'checklist_generated'
-  | 'checklist_deadline'
-
-interface NotifyOptions {
-  recipients: number[]
-  type: NotifyType
-  document_id: string
-  document_title: string
-  document_number: string
-  extra?: string
-}
-
-function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
-  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-  const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${documentId}`
-  const doc = `${documentNumber} — ${documentTitle} [${link}]`
-  const messages: Record<NotifyType, string> = {
-    document_created:    `📄 Создан новый документ: ${doc}`,
-    sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
-    approval_required:   `⚡ Требуется ваше согласование: ${doc}`,
-    document_approved:   `✅ Документ согласован: ${doc}`,
-    document_rejected:   `❌ Документ отклонён: ${doc}${extra ? `\nПричина: ${extra}` : ''}`,
-    documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
-    checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:  `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
-  }
-  return messages[type] ?? `Уведомление по документу: ${doc}`
-}
-
-// Колокольчик (im.notify.system.add)
-export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
-  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
-  await Promise.all(opts.recipients.map(async (userId) => {
-    try {
-      const res = await fetch(`${webhookUrl}im.notify.system.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ USER_ID: userId, MESSAGE: message }),
-      })
-      const data = await res.json()
-      if (data.error) console.error(`Bitrix notify error for user ${userId}:`, data.error)
-    } catch (err) { console.error(`sendBitrixNotify error for user ${userId}:`, err) }
-  }))
-}
-
-// Личное сообщение (im.message.add)
-export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
-  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
-  await Promise.all(opts.recipients.map(async (userId) => {
-    try {
-      const res = await fetch(`${webhookUrl}im.message.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ DIALOG_ID: userId, USER_ID: userId, MESSAGE: message }),
-      })
-      const data = await res.json()
-      if (data.error) console.error(`Bitrix message error for user ${userId}:`, data.error)
-    } catch (err) { console.error(`sendBitrixMessage error for user ${userId}:`, err) }
-  }))
-}
-
-// Создать групповой чат Битрикс24
-export async function createBitrixChat(opts: {
-  document_number: string
-  document_title: string
-  member_ids: number[]
-}): Promise<number | null> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return null
-  try {
-    const title = `Чат согласования ${opts.document_number} — ${opts.document_title}`
-    const res = await fetch(`${webhookUrl}im.chat.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ TYPE: 'OPEN', TITLE: title, USERS: opts.member_ids }),
-    })
-    const data = await res.json()
-    if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
-    const chatId = data.result
-    await fetch(`${webhookUrl}im.message.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        DIALOG_ID: `chat${chatId}`,
-        MESSAGE: `Это автоматический чат уведомлений по документу ${opts.document_number} — ${opts.document_title}.\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
-      }),
-    })
-    return chatId
-  } catch (err) { console.error('createBitrixChat error:', err); return null }
-}
-
-// Добавить участника в чат Битрикс24
-export async function addUserToBitrixChat(chatId: number, userId: number): Promise<void> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return
-  try {
-    await fetch(`${webhookUrl}im.chat.user.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CHAT_ID: chatId, USERS: [userId] }),
-    })
-  } catch (err) { console.error('addUserToBitrixChat error:', err) }
-}
-
-// Отправить сообщение в групповой чат Битрикс24
-export async function sendBitrixChatMessage(chatId: number, message: string): Promise<void> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return
-  try {
-    const res = await fetch(`${webhookUrl}im.message.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ DIALOG_ID: `chat${chatId}`, MESSAGE: message }),
-    })
-    const data = await res.json()
-    if (data.error) console.error('Bitrix chat message error:', data.error)
-  } catch (err) { console.error('sendBitrixChatMessage error:', err) }
-}
-</file>
-
-<file path="utils/chatPrint.ts">
-export function buildChatHtml(
-  contract: { number: string; title: string },
-  messages: {
-    author_name: string
-    created_at: string
-    message?: string | null
-    file_name?: string | null
-  }[],
-  periodLabel: string
-): string {
-  const rows = messages.length === 0
-    ? '<div class="empty">Нет сообщений за выбранный период</div>'
-    : messages.map(m => {
-        const text = m.message
-          ? '<div class="msg-text">' + m.message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>'
-          : ''
-        const file = m.file_name
-          ? '<div class="msg-file">📎 ' + m.file_name + '</div>'
-          : ''
-        const date = new Date(m.created_at).toLocaleString('ru-RU')
-        return '<div class="msg"><div class="msg-header"><span class="msg-author">' +
-          m.author_name + '</span><span class="msg-date">' + date + '</span></div>' +
-          text + file + '</div>'
-      }).join('')
-
-  const printDate = new Date().toLocaleString('ru-RU')
-
-  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-    '<title>Чат согласования — ' + contract.number + '</title>' +
-    '<style>' +
-    'body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:24px;max-width:800px;margin:0 auto}' +
-    'h2{font-size:16px;margin-bottom:4px}' +
-    '.meta{color:#666;font-size:12px;margin-bottom:6px}' +
-    '.period{color:#333;font-size:12px;font-weight:bold;margin-bottom:20px;border-bottom:2px solid #333;padding-bottom:8px}' +
-    '.msg{border-bottom:1px solid #eee;padding:10px 0}' +
-    '.msg-header{display:flex;gap:12px;margin-bottom:4px}' +
-    '.msg-author{font-weight:bold}' +
-    '.msg-date{color:#888;font-size:11px}' +
-    '.msg-text{color:#333;white-space:pre-wrap}' +
-    '.msg-file{color:#555;font-size:11px;margin-top:4px}' +
-    '.empty{color:#888;font-style:italic;margin-top:20px}' +
-    '@media print{body{padding:0}}' +
-    '</style></head><body>' +
-    '<h2>Чат согласования — ' + contract.number + '</h2>' +
-    '<div class="meta">' + contract.title + '</div>' +
-    '<div class="meta">Распечатано: ' + printDate + '</div>' +
-    '<div class="period">' + periodLabel + ' · Сообщений: ' + messages.length + '</div>' +
-    rows +
-    '</body></html>'
-}
-</file>
-
-<file path="utils/supabase/client.ts">
-import { createBrowserClient } from '@supabase/ssr'
-
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-}
-</file>
-
-<file path="utils/supabase/server.ts">
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
-}
-</file>
-
-<file path="app/contracts/[id]/page.tsx">
+================
+File: app/contracts/[id]/page.tsx
+================
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import ContractTabs from '@/app/components/ContractTabs'
@@ -1959,9 +1658,10 @@ export default async function ContractPage({
     />
   )
 }
-</file>
 
-<file path="app/counterparties/page.tsx">
+================
+File: app/counterparties/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -2215,9 +1915,10 @@ export default function CounterpartiesPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/dashboard-finance/page.tsx">
+================
+File: app/dashboard-finance/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -2520,9 +2221,10 @@ export default function FinanceDashboardPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/dashboard-legal/page.tsx">
+================
+File: app/dashboard-legal/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -2858,9 +2560,10 @@ export default function LegalDashboardPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/layout.tsx">
+================
+File: app/layout.tsx
+================
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -2897,120 +2600,10 @@ export default function RootLayout({
     </html>
   );
 }
-</file>
 
-<file path="app/lib/documentTypes.ts">
-export const DOCUMENT_TYPES = [
-  {
-    group: 'Договоры',
-    types: [
-      { value: 'поставка', label: 'Договор поставки' },
-      { value: 'услуги', label: 'Договор услуг' },
-      { value: 'аренда', label: 'Договор аренды' },
-      { value: 'подряд', label: 'Договор подряда' },
-      { value: 'купля-продажа', label: 'Договор купли-продажи' },
-      { value: 'агентский', label: 'Агентский договор' },
-      { value: 'дилерский', label: 'Дилерский договор' },
-      { value: 'лицензионный', label: 'Лицензионный договор' },
-      { value: 'сервисный', label: 'Сервисный договор' },
-      { value: 'асц', label: 'Договор АСЦ' },
-      { value: 'спецификация', label: 'Спецификация' },
-    ]
-  },
-  {
-    group: 'Соглашения',
-    types: [
-      { value: 'доп-соглашение', label: 'Дополнительное соглашение' },
-      { value: 'nda', label: 'NDA / Соглашение о конфиденциальности' },
-      { value: 'эдо', label: 'Соглашение о переходе на ЭДО' },
-      { value: 'протокол-разногласий', label: 'Протокол разногласий' },
-    ]
-  },
-  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
-  // {
-  //   group: 'Претензионно-исковые',
-  //   types: [
-  //     { value: 'претензия', label: 'Претензия' },
-  //     { value: 'исковое', label: 'Исковое заявление' },
-  //     { value: 'ответ-претензию', label: 'Ответ на претензию' },
-  //   ]
-  // },
-  // ВРЕМЕННО СКРЫТО — будет добавлено в следующих спринтах
-  // {
-  //   group: 'Организационно-распорядительные',
-  //   types: [
-  //     { value: 'положение', label: 'Положение' },
-  //     { value: 'инструкция', label: 'Инструкция' },
-  //     { value: 'служебная-записка', label: 'Служебная записка' },
-  //   ]
-  // },
-  {
-    group: 'Доверенности и согласия',
-    types: [
-      { value: 'доверенность', label: 'Доверенность' },
-      { value: 'персданные', label: 'Согласие на обработку персональных данных' },
-    ]
-  },
-  // {
-  //   group: 'Акты и заключения',
-  //   types: [
-  //     { value: 'акт', label: 'Акт приёма-передачи' },
-  //     { value: 'заключение', label: 'Правовое заключение' },
-  //     { value: 'справка', label: 'Справка' },
-  //   ]
-  // },
-  // {
-  //   group: 'Учредительные',
-  //   types: [
-  //     { value: 'устав', label: 'Устав' },
-  //     { value: 'учредительный', label: 'Учредительный договор' },
-  //   ]
-  // },
-  // {
-  //   group: 'Прочие',
-  //   types: [
-  //     { value: 'письмо', label: 'Письмо' },
-  //     { value: 'счет', label: 'Счёт' },
-  //     { value: 'другое', label: 'Другое' },
-  //   ]
-  // },
-]
-
-// Категории для определения типа анализа AI
-export const CONTRACT_DOCUMENT_TYPES = [
-  'поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа',
-  'агентский', 'дилерский', 'лицензионный', 'сервисный',
-  'доп-соглашение', 'nda', 'эдо', 'протокол-разногласий',
-  'претензия', 'исковое', 'ответ-претензию'
-]
-
-// Регионы
-export const REGIONS = [
-  { value: '', label: 'Не указан' },
-  { value: 'РФ', label: 'Российская Федерация' },
-  { value: 'СНГ', label: 'Страны СНГ' },
-  { value: 'международный', label: 'Международный' },
-]
-
-// Вспомогательная функция для получения label по value
-export function getDocumentTypeLabel(value: string): string {
-  for (const group of DOCUMENT_TYPES) {
-    const found = group.types.find(t => t.value === value)
-    if (found) return found.label
-  }
-  return value
-}
-
-// JSX helper для рендера optgroup
-export function renderDocumentTypeOptions() {
-  return DOCUMENT_TYPES.map(group => ({
-    group: group.group,
-    options: group.types,
-  }))
-}
-</file>
-
-<file path="app/page.tsx">
+================
+File: app/page.tsx
+================
 import Header from '@/app/components/Header'
 import MyDocuments from '@/app/components/MyDocuments'
 import ContractsList from '@/app/components/ContractsList'
@@ -3030,9 +2623,10 @@ export default function HomePage() {
     </div>
   )
 }
-</file>
 
-<file path="app/counterparties/[id]/page.tsx">
+================
+File: app/counterparties/[id]/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -3391,108 +2985,10 @@ export default function CounterpartyPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/hooks/useBitrixAuth.ts">
-'use client'
-
-import { useState, useEffect } from 'react'
-
-export interface BitrixUser {
-  id: string
-  name: string
-  email: string
-  avatar: string | null
-  auth_id: string
-  refresh_id: string
-  domain: string
-  member_id: string
-}
-
-// Объявляем тип для BX24 SDK
-declare global {
-  interface Window {
-    BX24?: {
-      setTitle: (count: number) => void
-      init: (callback: () => void) => void
-    }
-  }
-}
-
-export function useBitrixAuth() {
-  const [user, setUser] = useState<BitrixUser | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const authenticate = async () => {
-      try {
-        // Проверяем параметры в URL (от Битрикс24)
-        const params = new URLSearchParams(window.location.search)
-        const authId = params.get('auth_id')
-        const refreshId = params.get('refresh_id')
-        const domain = params.get('domain')
-        const memberId = params.get('member_id')
-
-        if (authId && domain && memberId) {
-          // Отправляем данные на сервер для верификации
-          const formData = new FormData()
-          formData.append('AUTH_ID', authId)
-          formData.append('REFRESH_ID', refreshId ?? '')
-          formData.append('DOMAIN', domain)
-          formData.append('member_id', memberId)
-
-          const response = await fetch('/api/bitrix/callback', {
-            method: 'POST',
-            body: formData,
-          })
-
-          const data = await response.json()
-
-          if (data.success) {
-            setUser(data.user)
-            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
-
-            
-
-            // Если есть contract_id — редиректим на документ, иначе на главную
-            const contractId = params.get('contract_id')
-            if (contractId) {
-              window.location.replace(`/contracts/${contractId}`)
-            } else {
-              window.history.replaceState({}, '', '/')
-            }
-          }
-        } else {
-          // Проверяем sessionStorage
-          const stored = sessionStorage.getItem('bitrix_user')
-          if (stored) {
-            const storedUser = JSON.parse(stored)
-            setUser(storedUser)
-          }
-        }
-      } catch (err) {
-        console.error('Bitrix auth error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    authenticate()
-  }, [])
-
-  
-
-  const logout = () => {
-    sessionStorage.removeItem('bitrix_user')
-    setUser(null)
-    if (window.BX24?.setTitle) window.BX24.setTitle(0)
-  }
-
-  return { user, loading, logout }
-}
-</file>
-
-<file path="app/contracts/new/page.tsx">
+================
+File: app/contracts/new/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -4150,9 +3646,543 @@ export default function NewContractPage() {
     </div>
   )
 }
-</file>
 
-<file path="app/admin/page.tsx">
+================
+File: app/help/page.tsx
+================
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+const ADMIN_IDS = [30, 1148]
+
+const SUBJECTS = [
+  'Восстановление удалённого документа',
+  'Проблема с доступом',
+  'Технический вопрос',
+  'Вопрос по работе системы',
+  'Другое',
+]
+
+const ADMINS = [
+  { id: 30, name: 'Пирог Роман', title: 'Директор Департамента цифрового развития' },
+  { id: 1148, name: 'Чащин Дмитрий', title: 'Заместитель директора Департамента цифрового развития' },
+]
+
+const FAQ_ITEMS = [
+  { q: 'Как войти в систему?', a: 'Откройте Битрикс24 и найдите пункт «Эпотос-ЮрИнтел» в левом меню. Отдельная авторизация не требуется — система использует ваш аккаунт Битрикс24.' },
+  { q: 'Я не вижу нужный документ — что делать?', a: 'Проверьте фильтры на главной странице — возможно, выбрана другая компания или статус. Снимите все фильтры и попробуйте поиск по номеру или названию документа.' },
+  { q: 'Документ открылся только на чтение, не могу редактировать', a: 'Редактирование доступно только для статусов «Черновик» и «На согласовании». Если документ уже подписан — загрузите новую версию через вкладку «Документы».' },
+  { q: 'Не получаю уведомления от системы', a: 'Уведомления приходят через внутренний мессенджер Битрикс24 (колокольчик). Убедитесь, что уведомления Битрикс24 у вас включены.' },
+  { q: 'Как сгенерировать договор из шаблона?', a: 'Откройте карточку документа → вкладка «Генерация» → выберите шаблон → заполните несколько полей → нажмите «Сгенерировать». Реквизиты компании и контрагента подставляются автоматически.' },
+  { q: 'Как запустить согласование?', a: 'Откройте документ → вкладка «Согласование» → нажмите «Начать согласование» → добавьте участников. Они получат уведомление в Битрикс24.' },
+  { q: 'Как работает AI-анализ документа?', a: 'Откройте документ → вкладка «EpotosGPT». Доступны: Legal Review (проверка рисков), Паспорт документа (краткая выжимка) и анализ дополнительных материалов.' },
+  { q: 'Как создать задачу в Битрикс24 из чек-листа?', a: 'Документ должен быть в статусе «Подписан» или «На исполнении». Откройте вкладку «Чек-лист» → выберите пункт → нажмите «Создать задачу» → назначьте ответственного и срок.' },
+  { q: 'Случайно удалил документ — можно восстановить?', a: 'Да! Обратитесь к администратору через форму ниже, выбрав тему «Восстановление удалённого документа». Администратор восстановит документ из раздела «Удалённые документы».' },
+  { q: 'Система недоступна или работает медленно', a: 'В период разработки платформы Эпотос-Core возможны кратковременные технические работы. Все данные защищены — ежедневный бэкап в 17:00 это гарантирует.' },
+  { q: 'Безопасны ли мои документы в системе?', a: 'Да. Данные хранятся в облачной базе с шифрованием. Ежедневно в 17:00 создаётся резервная копия на Яндекс.Диск. Права доступа разграничены по ролям.' },
+]
+
+interface SupportRequest {
+  id: string
+  user_name: string
+  admin_name: string
+  admin_bitrix_id: number
+  user_bitrix_id: number
+  subject: string
+  message: string
+  status: string
+  created_at: string
+}
+
+interface SupportMessage {
+  id: string
+  request_id: string
+  author_bitrix_id: number
+  author_name: string
+  is_admin: boolean
+  message: string
+  created_at: string
+}
+
+const statusLabel: Record<string, string> = { new: '🔴 Новое', in_progress: '🟡 В работе', resolved: '🟢 Решено' }
+const statusColor: Record<string, string> = { new: 'bg-red-100 text-red-700', in_progress: 'bg-yellow-100 text-yellow-800', resolved: 'bg-green-100 text-green-800' }
+
+function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatusChange, onDelete }: {
+  request: SupportRequest
+  currentUserId: number
+  currentUserName: string
+  isAdmin: boolean
+  onStatusChange: (id: string, status: string) => void
+  onDelete?: (id: string) => void
+}) {
+  const [messages, setMessages] = useState<SupportMessage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [hasNew, setHasNew] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  const loadMessages = async () => {
+    const res = await fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${currentUserId}&request_id=${request.id}`)
+    const data = await res.json()
+    const msgs = data.messages ?? []
+    setMessages(msgs)
+    setLoading(false)
+    setHasNew(false)
+    // Администратор открыл новое обращение — меняем статус на "в работе"
+    if (isAdmin && request.status === 'new') {
+      await fetch(`${baseUrl}/api/support-requests`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId, status: 'in_progress' }),
+      })
+      onStatusChange(request.id, 'in_progress')
+    } else {
+      onStatusChange(request.id, request.status)
+    }
+  }
+
+  useEffect(() => {
+    loadMessages()
+
+    // Realtime подписка
+    const channel = supabaseClient
+      .channel(`support_chat_${request.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_messages',
+        filter: `request_id=eq.${request.id}`,
+      }, (payload) => {
+        const newMsg = payload.new as SupportMessage
+        if (newMsg.author_bitrix_id !== currentUserId) {
+          setHasNew(true)
+          // Сбрасываем last_seen чтобы счётчик обновился
+          localStorage.removeItem(`support_seen_${request.id}`)
+        }
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === newMsg.id)
+          if (exists) return prev
+          return [...prev, newMsg]
+        })
+      })
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [request.id])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Если чат открыт и пришли новые сообщения от другого — отмечаем как прочитанные
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.author_bitrix_id === currentUserId) {
+        // Последнее сообщение моё — отмечаем сразу
+        localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+      }
+    }
+  }, [messages])
+
+  const handleSend = async () => {
+    if (!text.trim()) return
+    setSending(true)
+    await fetch(`${baseUrl}/api/support-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_id: request.id,
+        author_bitrix_id: currentUserId,
+        author_name: currentUserName,
+        message: text.trim(),
+        is_admin: isAdmin,
+        status: 'in_progress',
+      }),
+    })
+    setText('')
+    setSending(false)
+  }
+
+  const handleResolve = async () => {
+    if (!confirm('Отметить обращение как «Решено»?\n\nЧат будет закрыт — дальнейшая переписка невозможна.')) return
+    await fetch(`${baseUrl}/api/support-requests`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId, status: 'resolved' }),
+    })
+    onStatusChange(request.id, 'resolved')
+  }
+
+  const isClosed = request.status === 'resolved'
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Шапка чата */}
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-900">{request.subject}</p>
+            {hasNew && (
+              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium animate-pulse">
+                новое сообщение
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {isAdmin ? `От: ${request.user_name}` : `Администратор: ${request.admin_name}`}
+            {' · '}{new Date(request.created_at).toLocaleString('ru-RU')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[request.status]}`}>
+            {statusLabel[request.status]}
+          </span>
+          {isAdmin && !isClosed && (
+            <button onClick={handleResolve}
+              className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">
+              ✅ Решено
+            </button>
+          )}
+          {isAdmin && onDelete && (
+            <button onClick={async () => {
+              if (!confirm('Удалить обращение безвозвратно?')) return
+              const res = await fetch(`${baseUrl}/api/support-requests`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId }),
+              })
+              const data = await res.json()
+              if (data.success) onDelete(request.id)
+            }}
+              className="text-xs text-red-500 border border-red-200 px-2 py-1.5 rounded-lg hover:bg-red-50">
+              🗑
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Сообщения */}
+      <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
+        {loading ? (
+          <p className="text-sm text-gray-400">Загрузка...</p>
+        ) : messages.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center">Нет сообщений</p>
+        ) : messages.map(m => {
+          const isMine = m.author_bitrix_id === currentUserId
+          return (
+            <div key={m.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-xs rounded-xl px-4 py-2.5 ${isMine ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                {!isMine && <p className="text-xs font-medium mb-1 opacity-70">{m.author_name}</p>}
+                <p className="text-sm">{m.message}</p>
+                <p className={`text-xs mt-1 opacity-60`}>{new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+            </div>
+          )
+        })}
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Поле ввода */}
+      {!isClosed ? (
+        <div className="px-5 py-3 border-t border-gray-100 flex gap-2">
+          <input
+            value={text}
+            onFocus={() => {
+              localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
+              setHasNew(false)
+              onStatusChange(request.id, request.status)
+            }}
+            onChange={e => { setText(e.target.value); setHasNew(false) }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+            placeholder="Напишите сообщение..."
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <button onClick={handleSend} disabled={sending || !text.trim()}
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+            {sending ? '...' : '→'}
+          </button>
+        </div>
+      ) : (
+        <div className="px-5 py-3 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-400">Обращение закрыто</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function HelpPage() {
+  const { user, loading } = useBitrixAuth()
+  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin'>('faq')
+  const [openFaq, setOpenFaq] = useState<number | null>(null)
+
+  // Форма обращения
+  const [selectedAdmin, setSelectedAdmin] = useState(ADMINS[0].id)
+  const [subject, setSubject] = useState(SUBJECTS[0])
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendSuccess, setSendSuccess] = useState('')
+  const [sendError, setSendError] = useState('')
+
+  // Обращения
+  const [myRequests, setMyRequests] = useState<SupportRequest[]>([])
+  const [myRequestsLoading, setMyRequestsLoading] = useState(false)
+  const [adminRequests, setAdminRequests] = useState<SupportRequest[]>([])
+  const [adminRequestsLoading, setAdminRequestsLoading] = useState(false)
+
+  // Счётчики новых
+  const [myUnread, setMyUnread] = useState(0)
+  const [adminUnread, setAdminUnread] = useState(0)
+
+  const isAdmin = user ? ADMIN_IDS.includes(parseInt(user.id)) : false
+
+  useEffect(() => {
+    if (!user) return
+    // Считаем непрочитанные
+    fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`)
+      .then(r => r.json())
+      .then(d => {
+        const reqs = d.requests ?? []
+        setMyUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
+          if (r.status === 'resolved') return false
+          const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
+          if (!lastSeen) return true
+          const msgs = r.support_messages ?? []
+          if (msgs.length === 0) return false
+          const lastMsgAt = msgs[msgs.length - 1].created_at
+          return new Date(lastMsgAt) > new Date(lastSeen)
+        }).length)
+      })
+    if (isAdmin) {
+      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`)
+        .then(r => r.json())
+        .then(d => {
+          const reqs = d.requests ?? []
+          setAdminUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
+            if (r.status === 'resolved') return false
+            const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
+            if (!lastSeen) return true
+            const msgs = r.support_messages ?? []
+            if (msgs.length === 0) return false
+            const lastMsgAt = msgs[msgs.length - 1].created_at
+            return new Date(lastMsgAt) > new Date(lastSeen)
+          }).length)
+        })
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    if (activeTab === 'my_requests') {
+      setMyRequestsLoading(true)
+      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`)
+        .then(r => r.json())
+        .then(d => { setMyRequests(d.requests ?? []); setMyRequestsLoading(false); setMyUnread(0) })
+    }
+    if (activeTab === 'admin' && isAdmin) {
+      setAdminRequestsLoading(true)
+      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`)
+        .then(r => r.json())
+        .then(d => { setAdminRequests(d.requests ?? []); setAdminRequestsLoading(false); setAdminUnread(0) })
+    }
+  }, [activeTab, user])
+
+  const handleSend = async () => {
+    if (!message.trim()) { setSendError('Напишите текст обращения'); return }
+    setSending(true)
+    setSendError('')
+    setSendSuccess('')
+    const res = await fetch(`${baseUrl}/api/support-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_bitrix_id: parseInt(user?.id ?? '0'),
+        user_name: user?.name ?? 'Пользователь',
+        admin_bitrix_id: selectedAdmin,
+        subject,
+        message: message.trim(),
+      }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      setSendSuccess('Обращение отправлено! Перейдите в «Мои обращения» чтобы следить за ответом.')
+      setMessage('')
+    } else {
+      setSendError(data.error ?? 'Ошибка отправки')
+    }
+    setSending(false)
+  }
+
+  const handleStatusChange = (id: string, status: string) => {
+    setAdminRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    setMyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+  }
+
+  const handleDelete = (id: string) => {
+    setAdminRequests(prev => prev.filter(r => r.id !== id))
+  }
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-400 text-sm">Загрузка...</p>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-3xl mx-auto px-4 py-8">
+
+        <div className="flex items-center gap-3 mb-8">
+          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
+          <span className="text-gray-300">/</span>
+          <h1 className="text-xl font-semibold text-gray-900">Помощь и поддержка</h1>
+        </div>
+
+        {/* Вкладки */}
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button onClick={() => setActiveTab('faq')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            ❓ Частые вопросы
+          </button>
+          <button onClick={() => setActiveTab('request')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'request' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            📩 Написать администратору
+          </button>
+          <button onClick={() => setActiveTab('my_requests')}
+            className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'my_requests' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            💬 Мои обращения
+            {myUnread > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                {myUnread}
+              </span>
+            )}
+          </button>
+          {isAdmin && (
+            <button onClick={() => setActiveTab('admin')}
+              className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'admin' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+              🔧 Обращения ко мне
+              {adminUnread > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                  {adminUnread}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* FAQ */}
+        {activeTab === 'faq' && (
+          <div className="space-y-2">
+            {FAQ_ITEMS.map((item, i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full text-left px-5 py-4 flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-gray-900">{item.q}</span>
+                  <span className="text-gray-400 flex-shrink-0">{openFaq === i ? '▲' : '▼'}</span>
+                </button>
+                {openFaq === i && (
+                  <div className="px-5 pb-4 text-sm text-gray-600 border-t border-gray-100 pt-3">{item.a}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Форма обращения */}
+        {activeTab === 'request' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900">Новое обращение</h2>
+            {sendSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{sendSuccess}</div>}
+            {sendError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{sendError}</div>}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Кому</label>
+              <select value={selectedAdmin} onChange={e => setSelectedAdmin(parseInt(e.target.value))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                {ADMINS.map(a => <option key={a.id} value={a.id}>{a.name} — {a.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Тема обращения</label>
+              <select value={subject} onChange={e => setSubject(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Текст обращения</label>
+              <textarea value={message} onChange={e => setMessage(e.target.value)}
+                placeholder="Опишите вашу проблему или вопрос..."
+                rows={4}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
+            </div>
+            <button onClick={handleSend} disabled={sending}
+              className="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+              {sending ? 'Отправка...' : 'Отправить обращение'}
+            </button>
+          </div>
+        )}
+
+        {/* Мои обращения */}
+        {activeTab === 'my_requests' && (
+          <div className="space-y-4">
+            {myRequestsLoading ? (
+              <p className="text-sm text-gray-400">Загрузка...</p>
+            ) : myRequests.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">У вас пока нет обращений</p>
+              </div>
+            ) : myRequests.map(r => (
+              <ChatWindow
+                key={r.id}
+                request={r}
+                currentUserId={parseInt(user?.id ?? '0')}
+                currentUserName={user?.name ?? ''}
+                isAdmin={false}
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Обращения к администратору */}
+        {activeTab === 'admin' && isAdmin && (
+          <div className="space-y-4">
+            {adminRequestsLoading ? (
+              <p className="text-sm text-gray-400">Загрузка...</p>
+            ) : adminRequests.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Новых обращений нет</p>
+              </div>
+            ) : adminRequests.map(r => (
+              <ChatWindow
+                key={r.id}
+                request={r}
+                currentUserId={parseInt(user?.id ?? '0')}
+                currentUserName={user?.name ?? ''}
+                isAdmin={true}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+================
+File: app/admin/page.tsx
+================
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -4182,9 +4212,6 @@ const ADMIN_TABS = [
   { id: 'templates', label: 'Шаблоны документов' },
   { id: 'requisites', label: 'Реквизиты компаний' },
   { id: 'gc_roles', label: 'Роли ГК' },
-  
-  
-  { id: 'knowledge', label: '📚 База знаний ИИ' },
   { id: 'knowledge', label: '📚 База знаний ИИ' },
   { id: 'deleted', label: '🗑 Удалённые документы' },
 ]
@@ -4305,6 +4332,16 @@ export default function AdminPage() {
   const [edoError, setEdoError] = useState('')
   const [edoSuccess, setEdoSuccess] = useState('')
 
+  // База знаний ЭПОТОС-Ассистент
+  const [knowledgeList, setKnowledgeList] = useState<{id: string, title: string, source_file: string, module: string, created_at: string, uploaded_by_name: string}[]>([])
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false)
+  const [knowledgeUploading, setKnowledgeUploading] = useState(false)
+  const [knowledgeError, setKnowledgeError] = useState('')
+  const [knowledgeSuccess, setKnowledgeSuccess] = useState('')
+  const [knowledgeTitle, setKnowledgeTitle] = useState('')
+  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null)
+  const coreUrl = 'https://epotos-core.vercel.app'
+
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
   useEffect(() => {
@@ -4364,6 +4401,12 @@ useEffect(() => {
       setTemplates(data.templates ?? [])
     }
     if (adminTab === 'templates') loadTemplates()
+    if (adminTab === 'knowledge') {
+      setKnowledgeLoading(true)
+      fetch(`${coreUrl}/api/assistant/knowledge?module=юринтел`)
+        .then(r => r.json())
+        .then(d => { setKnowledgeList(d.documents ?? []); setKnowledgeLoading(false) })
+    }
     if (adminTab === 'deleted') {
       setDeletedLoading(true)
       fetch(`${baseUrl}/api/deleted-contracts?bitrix_user_id=${user?.id}`)
@@ -5323,6 +5366,103 @@ useEffect(() => {
         )}
 
         {/* Вкладка — Шаблоны */}
+        {/* Вкладка — База знаний ИИ */}
+        {adminTab === 'knowledge' && (
+          <div className="space-y-4">
+            {knowledgeError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{knowledgeError}</div>}
+            {knowledgeSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{knowledgeSuccess}</div>}
+
+            {/* Список документов */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Документы в базе знаний ЭПОТОС-Ассистента</h2>
+              {knowledgeLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : knowledgeList.length === 0 ? (
+                <p className="text-sm text-gray-400">База знаний пуста. Загрузите первый документ.</p>
+              ) : (
+                <div className="space-y-2">
+                  {knowledgeList.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{doc.title}</p>
+                        <p className="text-xs text-gray-400">{doc.source_file} · {doc.uploaded_by_name} · {new Date(doc.created_at).toLocaleDateString('ru-RU')}</p>
+                      </div>
+                      <button onClick={async () => {
+                        if (!confirm(`Удалить документ "${doc.title}" из базы знаний?`)) return
+                        setKnowledgeError(''); setKnowledgeSuccess('')
+                        const res = await fetch(`${coreUrl}/api/assistant/knowledge?id=${doc.id}`, { method: 'DELETE' })
+                        const data = await res.json()
+                        if (data.success) {
+                          setKnowledgeList(prev => prev.filter(d => d.id !== doc.id))
+                          setKnowledgeSuccess('Документ удалён')
+                        } else { setKnowledgeError(data.error ?? 'Ошибка') }
+                      }} className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">
+                        Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Форма загрузки */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Загрузить документ в базу знаний</h2>
+              <p className="text-xs text-gray-500 mb-4">Поддерживаются форматы DOCX и TXT. Документ будет разбит на фрагменты и проиндексирован для поиска.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Название документа <span className="text-red-500">*</span></label>
+                  <input value={knowledgeTitle} onChange={e => setKnowledgeTitle(e.target.value)}
+                    placeholder="Например: Инструкция пользователя ЮрИнтел"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Файл (DOCX или TXT) <span className="text-red-500">*</span></label>
+                  <div className={`w-full border-2 border-dashed rounded-lg px-4 py-6 text-center cursor-pointer transition-colors ${knowledgeFile ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-gray-400 bg-gray-50'}`}
+                    onClick={() => document.getElementById('knowledge-file-input')?.click()}>
+                    <input id="knowledge-file-input" type="file" accept=".docx,.txt" className="hidden"
+                      onChange={e => setKnowledgeFile(e.target.files?.[0] ?? null)} />
+                    {knowledgeFile ? (
+                      <div>
+                        <p className="text-sm font-medium text-green-700">✅ {knowledgeFile.name}</p>
+                        <p className="text-xs text-green-500 mt-1">{(knowledgeFile.size / 1024).toFixed(1)} КБ</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-2xl mb-2">📄</p>
+                        <p className="text-sm text-gray-600 font-medium">Нажмите для выбора файла</p>
+                        <p className="text-xs text-gray-400 mt-1">DOCX или TXT</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button onClick={async () => {
+                  if (!knowledgeTitle.trim() || !knowledgeFile) { setKnowledgeError('Заполните название и выберите файл'); return }
+                  setKnowledgeUploading(true); setKnowledgeError(''); setKnowledgeSuccess('')
+                  const formData = new FormData()
+                  formData.append('file', knowledgeFile)
+                  formData.append('title', knowledgeTitle)
+                  formData.append('module', 'юринтел')
+                  formData.append('user_id', user?.id ?? '0')
+                  formData.append('user_name', user?.name ?? '')
+                  const res = await fetch(`${coreUrl}/api/assistant/upload`, { method: 'POST', body: formData })
+                  const data = await res.json()
+                  if (data.success) {
+                    setKnowledgeSuccess(`Документ загружен! Создано ${data.chunks_created} фрагментов.`)
+                    setKnowledgeTitle('')
+                    setKnowledgeFile(null)
+                    const r = await fetch(`${coreUrl}/api/assistant/knowledge?module=юринтел`)
+                    const d = await r.json()
+                    setKnowledgeList(d.documents ?? [])
+                  } else { setKnowledgeError(data.error ?? 'Ошибка загрузки') }
+                  setKnowledgeUploading(false)
+                }} disabled={knowledgeUploading}
+                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  {knowledgeUploading ? '⏳ Обработка...' : '+ Загрузить документ'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {adminTab === 'deleted' && (
           <div className="space-y-4">
             {deletedError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{deletedError}</div>}
@@ -5521,538 +5661,11 @@ useEffect(() => {
     </div>
   )
 }
-</file>
 
-<file path="app/help/page.tsx">
-'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
 
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-)
 
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-const ADMIN_IDS = [30, 1148]
 
-const SUBJECTS = [
-  'Восстановление удалённого документа',
-  'Проблема с доступом',
-  'Технический вопрос',
-  'Вопрос по работе системы',
-  'Другое',
-]
-
-const ADMINS = [
-  { id: 30, name: 'Пирог Роман', title: 'Директор Департамента цифрового развития' },
-  { id: 1148, name: 'Чащин Дмитрий', title: 'Заместитель директора Департамента цифрового развития' },
-]
-
-const FAQ_ITEMS = [
-  { q: 'Как войти в систему?', a: 'Откройте Битрикс24 и найдите пункт «Эпотос-ЮрИнтел» в левом меню. Отдельная авторизация не требуется — система использует ваш аккаунт Битрикс24.' },
-  { q: 'Я не вижу нужный документ — что делать?', a: 'Проверьте фильтры на главной странице — возможно, выбрана другая компания или статус. Снимите все фильтры и попробуйте поиск по номеру или названию документа.' },
-  { q: 'Документ открылся только на чтение, не могу редактировать', a: 'Редактирование доступно только для статусов «Черновик» и «На согласовании». Если документ уже подписан — загрузите новую версию через вкладку «Документы».' },
-  { q: 'Не получаю уведомления от системы', a: 'Уведомления приходят через внутренний мессенджер Битрикс24 (колокольчик). Убедитесь, что уведомления Битрикс24 у вас включены.' },
-  { q: 'Как сгенерировать договор из шаблона?', a: 'Откройте карточку документа → вкладка «Генерация» → выберите шаблон → заполните несколько полей → нажмите «Сгенерировать». Реквизиты компании и контрагента подставляются автоматически.' },
-  { q: 'Как запустить согласование?', a: 'Откройте документ → вкладка «Согласование» → нажмите «Начать согласование» → добавьте участников. Они получат уведомление в Битрикс24.' },
-  { q: 'Как работает AI-анализ документа?', a: 'Откройте документ → вкладка «EpotosGPT». Доступны: Legal Review (проверка рисков), Паспорт документа (краткая выжимка) и анализ дополнительных материалов.' },
-  { q: 'Как создать задачу в Битрикс24 из чек-листа?', a: 'Документ должен быть в статусе «Подписан» или «На исполнении». Откройте вкладку «Чек-лист» → выберите пункт → нажмите «Создать задачу» → назначьте ответственного и срок.' },
-  { q: 'Случайно удалил документ — можно восстановить?', a: 'Да! Обратитесь к администратору через форму ниже, выбрав тему «Восстановление удалённого документа». Администратор восстановит документ из раздела «Удалённые документы».' },
-  { q: 'Система недоступна или работает медленно', a: 'В период разработки платформы Эпотос-Core возможны кратковременные технические работы. Все данные защищены — ежедневный бэкап в 17:00 это гарантирует.' },
-  { q: 'Безопасны ли мои документы в системе?', a: 'Да. Данные хранятся в облачной базе с шифрованием. Ежедневно в 17:00 создаётся резервная копия на Яндекс.Диск. Права доступа разграничены по ролям.' },
-]
-
-interface SupportRequest {
-  id: string
-  user_name: string
-  admin_name: string
-  admin_bitrix_id: number
-  user_bitrix_id: number
-  subject: string
-  message: string
-  status: string
-  created_at: string
-}
-
-interface SupportMessage {
-  id: string
-  request_id: string
-  author_bitrix_id: number
-  author_name: string
-  is_admin: boolean
-  message: string
-  created_at: string
-}
-
-const statusLabel: Record<string, string> = { new: '🔴 Новое', in_progress: '🟡 В работе', resolved: '🟢 Решено' }
-const statusColor: Record<string, string> = { new: 'bg-red-100 text-red-700', in_progress: 'bg-yellow-100 text-yellow-800', resolved: 'bg-green-100 text-green-800' }
-
-function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatusChange, onDelete }: {
-  request: SupportRequest
-  currentUserId: number
-  currentUserName: string
-  isAdmin: boolean
-  onStatusChange: (id: string, status: string) => void
-  onDelete?: (id: string) => void
-}) {
-  const [messages, setMessages] = useState<SupportMessage[]>([])
-  const [loading, setLoading] = useState(true)
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-  const [hasNew, setHasNew] = useState(false)
-  const chatEndRef = useRef<HTMLDivElement>(null)
-
-  const loadMessages = async () => {
-    const res = await fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${currentUserId}&request_id=${request.id}`)
-    const data = await res.json()
-    const msgs = data.messages ?? []
-    setMessages(msgs)
-    setLoading(false)
-    setHasNew(false)
-    // Администратор открыл новое обращение — меняем статус на "в работе"
-    if (isAdmin && request.status === 'new') {
-      await fetch(`${baseUrl}/api/support-requests`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId, status: 'in_progress' }),
-      })
-      onStatusChange(request.id, 'in_progress')
-    } else {
-      onStatusChange(request.id, request.status)
-    }
-  }
-
-  useEffect(() => {
-    loadMessages()
-
-    // Realtime подписка
-    const channel = supabaseClient
-      .channel(`support_chat_${request.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'support_messages',
-        filter: `request_id=eq.${request.id}`,
-      }, (payload) => {
-        const newMsg = payload.new as SupportMessage
-        if (newMsg.author_bitrix_id !== currentUserId) {
-          setHasNew(true)
-          // Сбрасываем last_seen чтобы счётчик обновился
-          localStorage.removeItem(`support_seen_${request.id}`)
-        }
-        setMessages(prev => {
-          const exists = prev.some(m => m.id === newMsg.id)
-          if (exists) return prev
-          return [...prev, newMsg]
-        })
-      })
-      .subscribe()
-
-    return () => { supabaseClient.removeChannel(channel) }
-  }, [request.id])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    // Если чат открыт и пришли новые сообщения от другого — отмечаем как прочитанные
-    if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1]
-      if (lastMsg.author_bitrix_id === currentUserId) {
-        // Последнее сообщение моё — отмечаем сразу
-        localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
-      }
-    }
-  }, [messages])
-
-  const handleSend = async () => {
-    if (!text.trim()) return
-    setSending(true)
-    await fetch(`${baseUrl}/api/support-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        request_id: request.id,
-        author_bitrix_id: currentUserId,
-        author_name: currentUserName,
-        message: text.trim(),
-        is_admin: isAdmin,
-        status: 'in_progress',
-      }),
-    })
-    setText('')
-    setSending(false)
-  }
-
-  const handleResolve = async () => {
-    if (!confirm('Отметить обращение как «Решено»?\n\nЧат будет закрыт — дальнейшая переписка невозможна.')) return
-    await fetch(`${baseUrl}/api/support-requests`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId, status: 'resolved' }),
-    })
-    onStatusChange(request.id, 'resolved')
-  }
-
-  const isClosed = request.status === 'resolved'
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Шапка чата */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-gray-900">{request.subject}</p>
-            {hasNew && (
-              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium animate-pulse">
-                новое сообщение
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {isAdmin ? `От: ${request.user_name}` : `Администратор: ${request.admin_name}`}
-            {' · '}{new Date(request.created_at).toLocaleString('ru-RU')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[request.status]}`}>
-            {statusLabel[request.status]}
-          </span>
-          {isAdmin && !isClosed && (
-            <button onClick={handleResolve}
-              className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">
-              ✅ Решено
-            </button>
-          )}
-          {isAdmin && onDelete && (
-            <button onClick={async () => {
-              if (!confirm('Удалить обращение безвозвратно?')) return
-              const res = await fetch(`${baseUrl}/api/support-requests`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request_id: request.id, admin_bitrix_id: currentUserId }),
-              })
-              const data = await res.json()
-              if (data.success) onDelete(request.id)
-            }}
-              className="text-xs text-red-500 border border-red-200 px-2 py-1.5 rounded-lg hover:bg-red-50">
-              🗑
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Сообщения */}
-      <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
-        {loading ? (
-          <p className="text-sm text-gray-400">Загрузка...</p>
-        ) : messages.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center">Нет сообщений</p>
-        ) : messages.map(m => {
-          const isMine = m.author_bitrix_id === currentUserId
-          return (
-            <div key={m.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-xs rounded-xl px-4 py-2.5 ${isMine ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
-                {!isMine && <p className="text-xs font-medium mb-1 opacity-70">{m.author_name}</p>}
-                <p className="text-sm">{m.message}</p>
-                <p className={`text-xs mt-1 opacity-60`}>{new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
-            </div>
-          )
-        })}
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* Поле ввода */}
-      {!isClosed ? (
-        <div className="px-5 py-3 border-t border-gray-100 flex gap-2">
-          <input
-            value={text}
-            onFocus={() => {
-              localStorage.setItem(`support_seen_${request.id}`, new Date().toISOString())
-              setHasNew(false)
-              onStatusChange(request.id, request.status)
-            }}
-            onChange={e => { setText(e.target.value); setHasNew(false) }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder="Напишите сообщение..."
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
-          <button onClick={handleSend} disabled={sending || !text.trim()}
-            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-            {sending ? '...' : '→'}
-          </button>
-        </div>
-      ) : (
-        <div className="px-5 py-3 border-t border-gray-100 text-center">
-          <p className="text-xs text-gray-400">Обращение закрыто</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function HelpPage() {
-  const { user, loading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin'>('faq')
-  const [openFaq, setOpenFaq] = useState<number | null>(null)
-
-  // Форма обращения
-  const [selectedAdmin, setSelectedAdmin] = useState(ADMINS[0].id)
-  const [subject, setSubject] = useState(SUBJECTS[0])
-  const [message, setMessage] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sendSuccess, setSendSuccess] = useState('')
-  const [sendError, setSendError] = useState('')
-
-  // Обращения
-  const [myRequests, setMyRequests] = useState<SupportRequest[]>([])
-  const [myRequestsLoading, setMyRequestsLoading] = useState(false)
-  const [adminRequests, setAdminRequests] = useState<SupportRequest[]>([])
-  const [adminRequestsLoading, setAdminRequestsLoading] = useState(false)
-
-  // Счётчики новых
-  const [myUnread, setMyUnread] = useState(0)
-  const [adminUnread, setAdminUnread] = useState(0)
-
-  const isAdmin = user ? ADMIN_IDS.includes(parseInt(user.id)) : false
-
-  useEffect(() => {
-    if (!user) return
-    // Считаем непрочитанные
-    fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`)
-      .then(r => r.json())
-      .then(d => {
-        const reqs = d.requests ?? []
-        setMyUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
-          if (r.status === 'resolved') return false
-          const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
-          if (!lastSeen) return true
-          const msgs = r.support_messages ?? []
-          if (msgs.length === 0) return false
-          const lastMsgAt = msgs[msgs.length - 1].created_at
-          return new Date(lastMsgAt) > new Date(lastSeen)
-        }).length)
-      })
-    if (isAdmin) {
-      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`)
-        .then(r => r.json())
-        .then(d => {
-          const reqs = d.requests ?? []
-          setAdminUnread(reqs.filter((r: SupportRequest & { support_messages?: { created_at: string }[] }) => {
-            if (r.status === 'resolved') return false
-            const lastSeen = localStorage.getItem(`support_seen_${r.id}`)
-            if (!lastSeen) return true
-            const msgs = r.support_messages ?? []
-            if (msgs.length === 0) return false
-            const lastMsgAt = msgs[msgs.length - 1].created_at
-            return new Date(lastMsgAt) > new Date(lastSeen)
-          }).length)
-        })
-    }
-  }, [user])
-
-  useEffect(() => {
-    if (!user) return
-    if (activeTab === 'my_requests') {
-      setMyRequestsLoading(true)
-      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}&my_requests=true`)
-        .then(r => r.json())
-        .then(d => { setMyRequests(d.requests ?? []); setMyRequestsLoading(false); setMyUnread(0) })
-    }
-    if (activeTab === 'admin' && isAdmin) {
-      setAdminRequestsLoading(true)
-      fetch(`${baseUrl}/api/support-requests?bitrix_user_id=${user.id}`)
-        .then(r => r.json())
-        .then(d => { setAdminRequests(d.requests ?? []); setAdminRequestsLoading(false); setAdminUnread(0) })
-    }
-  }, [activeTab, user])
-
-  const handleSend = async () => {
-    if (!message.trim()) { setSendError('Напишите текст обращения'); return }
-    setSending(true)
-    setSendError('')
-    setSendSuccess('')
-    const res = await fetch(`${baseUrl}/api/support-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_bitrix_id: parseInt(user?.id ?? '0'),
-        user_name: user?.name ?? 'Пользователь',
-        admin_bitrix_id: selectedAdmin,
-        subject,
-        message: message.trim(),
-      }),
-    })
-    const data = await res.json()
-    if (data.success) {
-      setSendSuccess('Обращение отправлено! Перейдите в «Мои обращения» чтобы следить за ответом.')
-      setMessage('')
-    } else {
-      setSendError(data.error ?? 'Ошибка отправки')
-    }
-    setSending(false)
-  }
-
-  const handleStatusChange = (id: string, status: string) => {
-    setAdminRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-    setMyRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-  }
-
-  const handleDelete = (id: string) => {
-    setAdminRequests(prev => prev.filter(r => r.id !== id))
-  }
-
-  if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">Загрузка...</p>
-    </div>
-  )
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-8">
-
-        <div className="flex items-center gap-3 mb-8">
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
-          <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Помощь и поддержка</h1>
-        </div>
-
-        {/* Вкладки */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          <button onClick={() => setActiveTab('faq')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-            ❓ Частые вопросы
-          </button>
-          <button onClick={() => setActiveTab('request')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'request' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-            📩 Написать администратору
-          </button>
-          <button onClick={() => setActiveTab('my_requests')}
-            className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'my_requests' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-            💬 Мои обращения
-            {myUnread > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                {myUnread}
-              </span>
-            )}
-          </button>
-          {isAdmin && (
-            <button onClick={() => setActiveTab('admin')}
-              className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'admin' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-              🔧 Обращения ко мне
-              {adminUnread > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                  {adminUnread}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* FAQ */}
-        {activeTab === 'faq' && (
-          <div className="space-y-2">
-            {FAQ_ITEMS.map((item, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full text-left px-5 py-4 flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-gray-900">{item.q}</span>
-                  <span className="text-gray-400 flex-shrink-0">{openFaq === i ? '▲' : '▼'}</span>
-                </button>
-                {openFaq === i && (
-                  <div className="px-5 pb-4 text-sm text-gray-600 border-t border-gray-100 pt-3">{item.a}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Форма обращения */}
-        {activeTab === 'request' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900">Новое обращение</h2>
-            {sendSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{sendSuccess}</div>}
-            {sendError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{sendError}</div>}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Кому</label>
-              <select value={selectedAdmin} onChange={e => setSelectedAdmin(parseInt(e.target.value))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                {ADMINS.map(a => <option key={a.id} value={a.id}>{a.name} — {a.title}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Тема обращения</label>
-              <select value={subject} onChange={e => setSubject(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
-                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Текст обращения</label>
-              <textarea value={message} onChange={e => setMessage(e.target.value)}
-                placeholder="Опишите вашу проблему или вопрос..."
-                rows={4}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
-            </div>
-            <button onClick={handleSend} disabled={sending}
-              className="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
-              {sending ? 'Отправка...' : 'Отправить обращение'}
-            </button>
-          </div>
-        )}
-
-        {/* Мои обращения */}
-        {activeTab === 'my_requests' && (
-          <div className="space-y-4">
-            {myRequestsLoading ? (
-              <p className="text-sm text-gray-400">Загрузка...</p>
-            ) : myRequests.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                <p className="text-gray-400 text-sm">У вас пока нет обращений</p>
-              </div>
-            ) : myRequests.map(r => (
-              <ChatWindow
-                key={r.id}
-                request={r}
-                currentUserId={parseInt(user?.id ?? '0')}
-                currentUserName={user?.name ?? ''}
-                isAdmin={false}
-                onStatusChange={handleStatusChange}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Обращения к администратору */}
-        {activeTab === 'admin' && isAdmin && (
-          <div className="space-y-4">
-            {adminRequestsLoading ? (
-              <p className="text-sm text-gray-400">Загрузка...</p>
-            ) : adminRequests.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                <p className="text-gray-400 text-sm">Новых обращений нет</p>
-              </div>
-            ) : adminRequests.map(r => (
-              <ChatWindow
-                key={r.id}
-                request={r}
-                currentUserId={parseInt(user?.id ?? '0')}
-                currentUserName={user?.name ?? ''}
-                isAdmin={true}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-</file>
-
-</files>
+================================================================
+End of Codebase
+================================================================

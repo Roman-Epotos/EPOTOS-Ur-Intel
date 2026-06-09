@@ -1,14 +1,10 @@
 ﻿{
-  "include": ["app/api/**"],
   "output": {
-    "filePath": "repomix-api.txt"
+    "filePath": "repomix-api-yurintel.txt",
+    "style": "plain"
   },
-  "ignore": {
-    "customPatterns": [
-      "node_modules/**",
-      ".next/**",
-      ".env*",
-      "*.lock"
-    ]
-  }
+  "include": [
+    "app/api/**/*.ts",
+    "app/lib/**/*.ts"
+  ]
 }

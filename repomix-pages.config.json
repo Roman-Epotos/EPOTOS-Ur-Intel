@@ -1,16 +1,10 @@
 ﻿{
-  "include": ["app/**", "utils/**"],
   "output": {
-    "filePath": "repomix-pages.txt"
+    "filePath": "repomix-pages-yurintel.txt",
+    "style": "plain"
   },
-  "ignore": {
-    "customPatterns": [
-      "node_modules/**",
-      ".next/**",
-      ".env*",
-      "*.lock",
-      "app/api/**",
-      "app/components/**"
-    ]
-  }
+  "include": [
+    "app/**/page.tsx",
+    "app/**/layout.tsx"
+  ]
 }
