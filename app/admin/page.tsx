@@ -27,8 +27,7 @@ const ADMIN_TABS = [
   { id: 'templates', label: 'Шаблоны документов' },
   { id: 'requisites', label: 'Реквизиты компаний' },
   { id: 'gc_roles', label: 'Роли ГК' },
-  
-  
+  { id: 'knowledge', label: '📚 База знаний ИИ' },
   { id: 'deleted', label: '🗑 Удалённые документы' },
 ]
 
@@ -148,6 +147,16 @@ export default function AdminPage() {
   const [edoError, setEdoError] = useState('')
   const [edoSuccess, setEdoSuccess] = useState('')
 
+  // База знаний ЭПОТОС-Ассистент
+  const [knowledgeList, setKnowledgeList] = useState<{id: string, title: string, source_file: string, module: string, created_at: string, uploaded_by_name: string}[]>([])
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false)
+  const [knowledgeUploading, setKnowledgeUploading] = useState(false)
+  const [knowledgeError, setKnowledgeError] = useState('')
+  const [knowledgeSuccess, setKnowledgeSuccess] = useState('')
+  const [knowledgeTitle, setKnowledgeTitle] = useState('')
+  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null)
+  const coreUrl = 'https://epotos-core.vercel.app'
+
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
   useEffect(() => {
@@ -207,6 +216,12 @@ useEffect(() => {
       setTemplates(data.templates ?? [])
     }
     if (adminTab === 'templates') loadTemplates()
+    if (adminTab === 'knowledge') {
+      setKnowledgeLoading(true)
+      fetch(`${coreUrl}/api/assistant/knowledge?module=юринтел`)
+        .then(r => r.json())
+        .then(d => { setKnowledgeList(d.documents ?? []); setKnowledgeLoading(false) })
+    }
     if (adminTab === 'deleted') {
       setDeletedLoading(true)
       fetch(`${baseUrl}/api/deleted-contracts?bitrix_user_id=${user?.id}`)
@@ -1166,6 +1181,89 @@ useEffect(() => {
         )}
 
         {/* Вкладка — Шаблоны */}
+        {/* Вкладка — База знаний ИИ */}
+        {adminTab === 'knowledge' && (
+          <div className="space-y-4">
+            {knowledgeError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{knowledgeError}</div>}
+            {knowledgeSuccess && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">{knowledgeSuccess}</div>}
+
+            {/* Список документов */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Документы в базе знаний ЭПОТОС-Ассистента</h2>
+              {knowledgeLoading ? <p className="text-sm text-gray-400">Загрузка...</p> : knowledgeList.length === 0 ? (
+                <p className="text-sm text-gray-400">База знаний пуста. Загрузите первый документ.</p>
+              ) : (
+                <div className="space-y-2">
+                  {knowledgeList.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{doc.title}</p>
+                        <p className="text-xs text-gray-400">{doc.source_file} · {doc.uploaded_by_name} · {new Date(doc.created_at).toLocaleDateString('ru-RU')}</p>
+                      </div>
+                      <button onClick={async () => {
+                        if (!confirm(`Удалить документ "${doc.title}" из базы знаний?`)) return
+                        setKnowledgeError(''); setKnowledgeSuccess('')
+                        const res = await fetch(`${coreUrl}/api/assistant/knowledge?id=${doc.id}`, { method: 'DELETE' })
+                        const data = await res.json()
+                        if (data.success) {
+                          setKnowledgeList(prev => prev.filter(d => d.id !== doc.id))
+                          setKnowledgeSuccess('Документ удалён')
+                        } else { setKnowledgeError(data.error ?? 'Ошибка') }
+                      }} className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded">
+                        Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Форма загрузки */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-sm font-medium text-gray-700 mb-4">Загрузить документ в базу знаний</h2>
+              <p className="text-xs text-gray-500 mb-4">Поддерживаются форматы DOCX и TXT. Документ будет разбит на фрагменты и проиндексирован для поиска.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Название документа <span className="text-red-500">*</span></label>
+                  <input value={knowledgeTitle} onChange={e => setKnowledgeTitle(e.target.value)}
+                    placeholder="Например: Инструкция пользователя ЮрИнтел"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Файл (DOCX или TXT) <span className="text-red-500">*</span></label>
+                  <input type="file" accept=".docx,.txt"
+                    onChange={e => setKnowledgeFile(e.target.files?.[0] ?? null)}
+                    className="w-full text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2" />
+                </div>
+                <button onClick={async () => {
+                  if (!knowledgeTitle.trim() || !knowledgeFile) { setKnowledgeError('Заполните название и выберите файл'); return }
+                  setKnowledgeUploading(true); setKnowledgeError(''); setKnowledgeSuccess('')
+                  const formData = new FormData()
+                  formData.append('file', knowledgeFile)
+                  formData.append('title', knowledgeTitle)
+                  formData.append('module', 'юринтел')
+                  formData.append('user_id', user?.id ?? '0')
+                  formData.append('user_name', user?.name ?? '')
+                  const res = await fetch(`${coreUrl}/api/assistant/upload`, { method: 'POST', body: formData })
+                  const data = await res.json()
+                  if (data.success) {
+                    setKnowledgeSuccess(`Документ загружен! Создано ${data.chunks_created} фрагментов.`)
+                    setKnowledgeTitle('')
+                    setKnowledgeFile(null)
+                    const r = await fetch(`${coreUrl}/api/assistant/knowledge?module=юринтел`)
+                    const d = await r.json()
+                    setKnowledgeList(d.documents ?? [])
+                  } else { setKnowledgeError(data.error ?? 'Ошибка загрузки') }
+                  setKnowledgeUploading(false)
+                }} disabled={knowledgeUploading}
+                  className="bg-gray-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                  {knowledgeUploading ? '⏳ Обработка...' : '+ Загрузить документ'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {adminTab === 'deleted' && (
           <div className="space-y-4">
             {deletedError && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{deletedError}</div>}
