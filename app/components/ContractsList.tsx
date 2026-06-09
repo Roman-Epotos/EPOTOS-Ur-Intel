@@ -340,36 +340,36 @@ export default function ContractsList() {
 <table className="w-full">
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-              <th className="px-3 md:px-6 py-3 font-medium">Номер</th>
-              <th className="px-3 md:px-6 py-3 font-medium">Название</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Контрагент</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Сумма</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Срок</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Файлы</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Чат</th>
-              <th className="px-3 md:px-6 py-3 font-medium">Статус</th>
+              <th className="px-2 py-2 font-medium text-xs">Номер</th>
+              <th className="px-2 py-2 font-medium text-xs">Название</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Контрагент</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Сумма</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Срок</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Файлы</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Чат</th>
+              <th className="px-2 py-2 font-medium text-xs">Статус</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(contract => (
               <tr key={contract.id}
                 className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
-                <td className="px-3 md:px-6 py-4 text-xs md:text-sm font-medium text-gray-900">
+                <td className="px-2 py-2 text-xs font-medium text-gray-900">
                   <Link href={`/contracts/${contract.id}`} className="hover:underline">
                     {contract.number}
                   </Link>
                 </td>
-                <td className="px-3 md:px-6 py-4 text-xs md:text-sm text-gray-700 max-w-[120px] md:max-w-xs truncate">
+                <td className="px-2 py-2 text-xs text-gray-700 max-w-[140px] truncate">
                   <Link href={`/contracts/${contract.id}`} className="hover:underline">
                     {contract.title}
                   </Link>
                 </td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">
+                <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 max-w-[120px] truncate">{contract.counterparty}</td>
+                <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 whitespace-nowrap">
                   {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
                 </td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
-                <td className="hidden md:table-cell px-6 py-4">
+                <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{contract.end_date ?? '—'}</td>
+                <td className="hidden md:table-cell px-2 py-2">
                   {contract.has_files && contract.file_type ? (
                     <img
                       src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
@@ -380,7 +380,7 @@ export default function ContractsList() {
                     <span className="text-gray-300 text-xs">—</span>
                   )}
                 </td>
-                <td className="hidden md:table-cell px-6 py-4">
+                <td className="hidden md:table-cell px-2 py-2">
                   <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
                     const now = new Date().toISOString()
                     localStorage.setItem(`chat_read_time_${contract.id}`, now)
@@ -388,8 +388,8 @@ export default function ContractsList() {
                     <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
                   </a>
                 </td>
-                <td className="px-3 md:px-6 py-4">
-                  <span className={`text-xs px-1.5 py-0.5 md:px-2 md:py-1 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                <td className="px-2 py-2">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
                     {statusLabel[contract.status] ?? contract.status}
                   </span>
                 </td>
