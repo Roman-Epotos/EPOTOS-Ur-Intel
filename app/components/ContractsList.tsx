@@ -340,9 +340,9 @@ export default function ContractsList() {
 <table className="w-full">
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-              <th className="pl-6 pr-2 py-2 font-medium text-xs">Номер</th>
-              <th className="px-2 py-2 font-medium text-xs">Название</th>
-              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Контрагент</th>
+              <th className="pl-6 pr-2 py-2 font-medium text-xs w-[130px]">Номер</th>
+              <th className="px-2 py-2 font-medium text-xs w-[220px]">Название</th>
+              <th className="hidden md:table-cell px-2 py-2 font-medium text-xs w-[180px]">Контрагент</th>
               <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Сумма</th>
               <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Срок</th>
               <th className="hidden md:table-cell px-2 py-2 font-medium text-xs">Файлы</th>
@@ -354,17 +354,17 @@ export default function ContractsList() {
             {filtered.map(contract => (
               <tr key={contract.id}
                 className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
-                <td className="pl-6 pr-2 py-2 text-xs font-medium text-gray-900">
+                <td className="pl-6 pr-2 py-2 text-xs font-medium text-gray-900 w-[130px]">
                   <Link href={`/contracts/${contract.id}`} className="hover:underline">
                     {contract.number}
                   </Link>
                 </td>
-                <td className="px-2 py-2 text-xs text-gray-700 max-w-[140px] truncate">
+                <td className="px-2 py-2 text-xs text-gray-700 w-[220px] truncate">
                   <Link href={`/contracts/${contract.id}`} className="hover:underline">
                     {contract.title}
                   </Link>
                 </td>
-                <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 max-w-[120px] truncate">{contract.counterparty}</td>
+                <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 w-[180px] truncate">{contract.counterparty}</td>
                 <td className="hidden md:table-cell px-2 py-2 text-xs text-gray-600 whitespace-nowrap">
                   {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
                 </td>
