@@ -1231,9 +1231,23 @@ useEffect(() => {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-1">Файл (DOCX или TXT) <span className="text-red-500">*</span></label>
-                  <input type="file" accept=".docx,.txt"
-                    onChange={e => setKnowledgeFile(e.target.files?.[0] ?? null)}
-                    className="w-full text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2" />
+                  <div className={`w-full border-2 border-dashed rounded-lg px-4 py-6 text-center cursor-pointer transition-colors ${knowledgeFile ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-gray-400 bg-gray-50'}`}
+                    onClick={() => document.getElementById('knowledge-file-input')?.click()}>
+                    <input id="knowledge-file-input" type="file" accept=".docx,.txt" className="hidden"
+                      onChange={e => setKnowledgeFile(e.target.files?.[0] ?? null)} />
+                    {knowledgeFile ? (
+                      <div>
+                        <p className="text-sm font-medium text-green-700">✅ {knowledgeFile.name}</p>
+                        <p className="text-xs text-green-500 mt-1">{(knowledgeFile.size / 1024).toFixed(1)} КБ</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-2xl mb-2">📄</p>
+                        <p className="text-sm text-gray-600 font-medium">Нажмите для выбора файла</p>
+                        <p className="text-xs text-gray-400 mt-1">DOCX или TXT</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <button onClick={async () => {
                   if (!knowledgeTitle.trim() || !knowledgeFile) { setKnowledgeError('Заполните название и выберите файл'); return }
