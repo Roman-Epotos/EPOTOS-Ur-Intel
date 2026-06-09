@@ -324,7 +324,7 @@ export default function ContractsList() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto">
       {filtered.length === 0 ? (
         <div className="px-6 py-12 text-center">
           <p className="text-gray-400 text-sm">Документов не найдено</p>
@@ -337,7 +337,7 @@ export default function ContractsList() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-<table className="w-full min-w-[320px]">
+<table className="w-full">
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
               <th className="px-3 md:px-6 py-3 font-medium">Номер</th>
