@@ -270,7 +270,47 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
 
 export default function HelpPage() {
   const { user, loading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin'>('faq')
+  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant'>('faq')
+
+  // ЭПОТОС-Ассистент
+  const coreUrl = 'https://epotos-core.vercel.app'
+  const [assistantMessages, setAssistantMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: {title: string, similarity: number}[]}[]>([])
+  const [assistantInput, setAssistantInput] = useState('')
+  const [assistantLoading, setAssistantLoading] = useState(false)
+  const assistantEndRef = useRef<HTMLDivElement>(null)
+
+  const handleAssistantSend = async () => {
+    if (!assistantInput.trim() || assistantLoading) return
+    const userMessage = assistantInput.trim()
+    setAssistantInput('')
+    setAssistantMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setAssistantLoading(true)
+    try {
+      const history = assistantMessages.slice(-6).map(m => ({
+        role: m.role,
+        content: m.content,
+      }))
+      const res = await fetch(`${coreUrl}/api/assistant/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage, module: 'юринтел', history }),
+      })
+      const data = await res.json()
+      setAssistantMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.answer ?? 'Не удалось получить ответ',
+        sources: data.sources,
+      }])
+    } catch {
+      setAssistantMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Ошибка соединения с ассистентом. Попробуйте позже.',
+      }])
+    } finally {
+      setAssistantLoading(false)
+      setTimeout(() => assistantEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    }
+  }
   const [openFaq, setOpenFaq] = useState<number | null>(null)
 
   // Форма обращения
@@ -401,6 +441,10 @@ export default function HelpPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             ❓ Частые вопросы
           </button>
+          <button onClick={() => setActiveTab('assistant')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assistant' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            🤖 ЭПОТОС-Ассистент
+          </button>
           <button onClick={() => setActiveTab('request')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'request' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             📩 Написать администратору
@@ -442,6 +486,68 @@ export default function HelpPage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ЭПОТОС-Ассистент */}
+        {activeTab === 'assistant' && (
+          <div className="bg-white rounded-xl border border-gray-200 flex flex-col" style={{height: 'calc(100vh - 220px)'}}>
+            <div className="px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-sm font-semibold text-gray-900">🤖 ЭПОТОС-Ассистент</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Задайте вопрос по работе с системой ЮрИнтел</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {assistantMessages.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-4xl mb-3">🤖</p>
+                  <p className="text-sm font-medium text-gray-700 mb-1">ЭПОТОС-Ассистент</p>
+                  <p className="text-xs text-gray-400">Задайте вопрос по работе с системой</p>
+                  <div className="mt-4 space-y-2">
+                    {['Как создать новый документ?', 'Как запустить согласование?', 'Как сгенерировать договор из шаблона?'].map(q => (
+                      <button key={q} onClick={() => { setAssistantInput(q) }}
+                        className="block w-full text-left text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-2 transition-colors">
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {assistantMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-xl px-4 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-xs text-gray-400 mb-1">Источники:</p>
+                        {msg.sources.map((s, j) => (
+                          <p key={j} className="text-xs text-gray-500">📄 {s.title} ({s.similarity}%)</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {assistantLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-xl px-4 py-3">
+                    <p className="text-sm text-gray-500">⏳ Думаю...</p>
+                  </div>
+                </div>
+              )}
+              <div ref={assistantEndRef} />
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <div className="flex gap-2">
+                <input value={assistantInput} onChange={e => setAssistantInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAssistantSend()}
+                  placeholder="Задайте вопрос..."
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button onClick={handleAssistantSend} disabled={assistantLoading || !assistantInput.trim()}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  ➤
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
