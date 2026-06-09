@@ -215,11 +215,11 @@ export async function DELETE(
       if (contractData) {
         await sendBitrixNotify({
           recipients: [participant.bitrix_user_id],
-          type: 'document_rejected',
+          type: 'document_approved',
           document_id: contract_id,
           document_title: contractData.title ?? '',
           document_number: contractData.number ?? '',
-          extra: `Вы исключены из согласования администратором (${admin_name})`,
+          extra: `ℹ️ Вы исключены из списка согласующих по документу ${contractData.number}. Инициатор: ${admin_name}`,
         })
       }
     }

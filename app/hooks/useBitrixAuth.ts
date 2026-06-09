@@ -90,12 +90,14 @@ export function useBitrixAuth() {
               if (verifyData.valid) {
                 setUser(storedUser)
               } else {
-                // Токен недействителен — очищаем
+                // Токен недействителен — очищаем но показываем страницу
                 sessionStorage.removeItem('bitrix_user')
+                // Пробуем переполучить токен через Б24
+                window.location.reload()
               }
             } else {
-              // Нет auth_id — старая сессия без верификации, очищаем
-              sessionStorage.removeItem('bitrix_user')
+              // Нет auth_id — разрешаем доступ но без верификации (мобильный Б24)
+              setUser(storedUser)
             }
           }
         }
