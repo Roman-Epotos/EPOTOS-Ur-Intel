@@ -324,7 +324,7 @@ export default function ContractsList() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
       {filtered.length === 0 ? (
         <div className="px-6 py-12 text-center">
           <p className="text-gray-400 text-sm">Документов не найдено</p>
@@ -389,7 +389,7 @@ export default function ContractsList() {
                   </a>
                 </td>
                 <td className="px-3 md:px-6 py-4">
-                  <span className={`text-xs px-1.5 py-0.5 md:px-2 md:py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                  <span className={`text-xs px-1.5 py-0.5 md:px-2 md:py-1 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
                     {statusLabel[contract.status] ?? contract.status}
                   </span>
                 </td>
