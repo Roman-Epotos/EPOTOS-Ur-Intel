@@ -54,7 +54,11 @@ export function useBitrixAuth() {
 
           if (data.success) {
             setUser(data.user)
-            sessionStorage.setItem('bitrix_user', JSON.stringify(data.user))
+            sessionStorage.setItem('bitrix_user', JSON.stringify({
+              ...data.user,
+              auth_id: authId,
+              member_id: memberId,
+            }))
 
             
 
@@ -71,7 +75,28 @@ export function useBitrixAuth() {
           const stored = sessionStorage.getItem('bitrix_user')
           if (stored) {
             const storedUser = JSON.parse(stored)
-            setUser(storedUser)
+            // Проверяем auth_id на сервере
+            if (storedUser.auth_id && storedUser.member_id) {
+              const verifyRes = await fetch('/api/bitrix/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  auth_id: storedUser.auth_id,
+                  member_id: storedUser.member_id,
+                  user_id: storedUser.id,
+                }),
+              })
+              const verifyData = await verifyRes.json()
+              if (verifyData.valid) {
+                setUser(storedUser)
+              } else {
+                // Токен недействителен — очищаем
+                sessionStorage.removeItem('bitrix_user')
+              }
+            } else {
+              // Нет auth_id — старая сессия без верификации, очищаем
+              sessionStorage.removeItem('bitrix_user')
+            }
           }
         }
       } catch (err) {
