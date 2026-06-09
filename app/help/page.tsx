@@ -437,13 +437,13 @@ export default function HelpPage() {
 
         {/* Вкладки */}
         <div className="flex gap-2 mb-6 flex-wrap">
-          <button onClick={() => setActiveTab('faq')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-            ❓ Частые вопросы
-          </button>
           <button onClick={() => setActiveTab('assistant')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assistant' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             🤖 ЭПОТОС-Ассистент
+          </button>
+          <button onClick={() => setActiveTab('faq')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            ❓ Частые вопросы
           </button>
           <button onClick={() => setActiveTab('request')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'request' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
