@@ -297,7 +297,7 @@ export default function ApprovePage() {
 
             <div className="space-y-2">
               {customRows.map((row, index) => (
-                <div key={index} className="flex gap-2 items-center w-full min-w-0">
+                <div key={index} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center w-full">
                   {customOptions.length > 0 ? (
                     <select value={row.user_name}
                       onChange={e => updateCustomRow(index, 'user_name', e.target.value)}
@@ -317,7 +317,7 @@ export default function ApprovePage() {
                   )}
                   <select value={row.role}
                     onChange={e => updateCustomRow(index, 'role', e.target.value)}
-                    className="flex-shrink-0 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none bg-white">
                     <option value="required">Обязательный</option>
                     <option value="optional">Для информирования</option>
                   </select>
