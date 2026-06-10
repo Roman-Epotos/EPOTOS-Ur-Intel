@@ -89,6 +89,7 @@ export default function CounterpartiesPage() {
       if (data.success) {
         setShowForeignModal(false)
         setForeignForm({ full_name: '', short_name: '', country: '', registration_number: '', director_name: '', phone: '', email: '' })
+        setFilterType('foreign')
         await loadCounterparties()
       } else {
         setForeignError(data.error ?? 'Ошибка сохранения')
