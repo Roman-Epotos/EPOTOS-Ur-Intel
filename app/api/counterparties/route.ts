@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('counterparties')
-      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number')
       .order('full_name', { ascending: true })
 
     if (search) {
@@ -84,6 +84,19 @@ export async function POST(request: NextRequest) {
         .single()
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
       return NextResponse.json({ success: true, counterparty: data })
+    }
+
+    // Защита от дублей иностранных контрагентов
+    if (fields.is_foreign && fields.full_name) {
+      const { data: existing } = await supabase
+        .from('counterparties')
+        .select('id, full_name')
+        .eq('is_foreign', true)
+        .ilike('full_name', fields.full_name.trim())
+        .maybeSingle()
+      if (existing) {
+        return NextResponse.json({ error: 'Иностранный контрагент с таким названием уже существует в реестре.' }, { status: 400 })
+      }
     }
 
     const { data, error } = await supabase
