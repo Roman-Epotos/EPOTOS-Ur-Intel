@@ -33,6 +33,16 @@ export default function NewContractPage() {
     region: '',
     customer_number: '',
   })
+  const [counterpartyType, setCounterpartyType] = useState<'russian' | 'foreign'>('russian')
+  const [foreignSearch, setForeignSearch] = useState('')
+  const [foreignSuggestions, setForeignSuggestions] = useState<{id: string, full_name: string, short_name: string | null, country: string | null, registration_number: string | null}[]>([])
+  const [showForeignSuggestions, setShowForeignSuggestions] = useState(false)
+  const [foreignNotFound, setForeignNotFound] = useState(false)
+  const [foreignSearchLoading, setForeignSearchLoading] = useState(false)
+  const [showAddForeignModal, setShowAddForeignModal] = useState(false)
+  const [addForeignForm, setAddForeignForm] = useState({ full_name: '', country: '', registration_number: '' })
+  const [addForeignLoading, setAddForeignLoading] = useState(false)
+  const [addForeignError, setAddForeignError] = useState('')
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null)
   const [counterpartySearch, setCounterpartySearch] = useState('')
   const [counterpartySuggestions, setCounterpartySuggestions] = useState<{id: string, short_name: string | null, full_name: string, inn: string}[]>([])
@@ -178,6 +188,66 @@ export default function NewContractPage() {
     setCounterpartyId(c.id)
     setCounterpartySearch(c.short_name ?? c.full_name)
     setShowCounterpartySuggestions(false)
+  }
+
+  const searchForeignCounterparties = async (q: string) => {
+    if (q.length < 2) { setForeignSuggestions([]); setShowForeignSuggestions(false); return }
+    setForeignSearchLoading(true)
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/counterparties?search=${encodeURIComponent(q)}&foreign_only=true`)
+      const data = await res.json()
+      const list = data.counterparties ?? []
+      setForeignSuggestions(list)
+      setShowForeignSuggestions(true)
+      setForeignNotFound(list.length === 0)
+    } finally {
+      setForeignSearchLoading(false)
+    }
+  }
+
+  const selectForeignCounterparty = (c: {id: string, full_name: string, short_name: string | null, country: string | null}) => {
+    setForm(p => ({ ...p, counterparty: c.short_name ?? c.full_name }))
+    setCounterpartyId(c.id)
+    setForeignSearch(c.short_name ?? c.full_name)
+    setShowForeignSuggestions(false)
+    setForeignNotFound(false)
+  }
+
+  const saveNewForeignCounterparty = async () => {
+    if (!addForeignForm.full_name.trim()) { setAddForeignError('Введите название организации'); return }
+    setAddForeignLoading(true)
+    setAddForeignError('')
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const res = await fetch(`${baseUrl}/api/counterparties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: addForeignForm.full_name.trim(),
+          short_name: addForeignForm.full_name.trim(),
+          inn: `FOREIGN-${Date.now()}`,
+          kpp: null,
+          is_foreign: true,
+          country: addForeignForm.country.trim() || null,
+          registration_number: addForeignForm.registration_number.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.success || data.counterparty) {
+        const cp = data.counterparty
+        setForm(p => ({ ...p, counterparty: cp.short_name ?? cp.full_name }))
+        setCounterpartyId(cp.id)
+        setForeignSearch(cp.short_name ?? cp.full_name)
+        setShowAddForeignModal(false)
+        setAddForeignForm({ full_name: '', country: '', registration_number: '' })
+        setForeignNotFound(false)
+        setShowForeignSuggestions(false)
+      } else {
+        setAddForeignError(data.error ?? 'Ошибка сохранения')
+      }
+    } catch { setAddForeignError('Ошибка соединения') }
+    finally { setAddForeignLoading(false) }
   }
 
   const CONTRACT_TYPES = ['поставка', 'услуги', 'аренда', 'подряд', 'купля-продажа', 'агентский', 'лицензионный', 'доп-соглашение', 'nda', 'протокол-разногласий', 'спецификация']
@@ -492,105 +562,192 @@ export default function NewContractPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Контрагент <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={counterpartySearch}
-                  onChange={e => {
-                    setCounterpartySearch(e.target.value)
-                    setCounterpartyId(null)
-                    setForm(p => ({ ...p, counterparty: '' }))
-                    searchCounterparties(e.target.value)
-                  }}
-                  onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}
-                  placeholder="Начните вводить название или ИНН..."
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
-                {counterpartyId && (
-                  <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
-                )}
-                {counterpartySearchLoading && (
-                  <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
-                )}
-                {showCounterpartySuggestions && counterpartySuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                    {counterpartySuggestions.map(c => (
-                      <button key={c.id} type="button"
-                        onMouseDown={() => selectCounterparty(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                        <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
-                        <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {counterpartyNotFound && counterpartySearch.length >= 2 && (
-                  <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
-                    <p className="text-sm text-orange-700 mb-2">⚠️ Контрагент не найден в реестре</p>
-                    <p className="text-xs text-gray-500 mb-2">Сначала добавьте контрагента в базу, затем выберите его в этом поле.</p>
-                    <button type="button"
-                      onMouseDown={() => { setShowAddCpModal(true); setShowCounterpartySuggestions(false); setCounterpartyNotFound(false) }}
-                      className="w-full bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700">
-                      + Добавить контрагента в реестр
-                    </button>
-                  </div>
-                )}
 
-                {/* Модалка добавления контрагента */}
-                {showAddCpModal && (
-                  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-                      <h3 className="text-base font-semibold text-gray-900 mb-4">Добавить контрагента</h3>
+              {/* Переключатель тип контрагента */}
+              <div className="flex gap-2 mb-3">
+                <button type="button"
+                  onClick={() => { setCounterpartyType('russian'); setForm(p => ({...p, counterparty: ''})); setCounterpartyId(null); setCounterpartySearch(''); setForeignSearch(''); setForeignSuggestions([]); setForeignNotFound(false) }}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${counterpartyType === 'russian' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                  🇷🇺 Российский
+                </button>
+                <button type="button"
+                  onClick={() => { setCounterpartyType('foreign'); setForm(p => ({...p, counterparty: ''})); setCounterpartyId(null); setCounterpartySearch(''); setForeignSearch(''); setForeignSuggestions([]); setForeignNotFound(false) }}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${counterpartyType === 'foreign' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                  🌍 Иностранный
+                </button>
+              </div>
 
-                      {!addCpResult ? (
-                        <>
-                          <p className="text-sm text-gray-500 mb-3">Введите ИНН организации — данные будут загружены из DaData.</p>
-                          <div className="flex gap-2 mb-3">
-                            <input
-                              value={addCpInn}
-                              onChange={e => setAddCpInn(e.target.value)}
-                              onKeyDown={e => e.key === 'Enter' && searchCounterpartyByInn()}
-                              placeholder="ИНН (10 или 12 цифр)"
-                              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                            />
-                            <button type="button" onClick={searchCounterpartyByInn} disabled={addCpLoading}
-                              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
-                              {addCpLoading ? '...' : 'Найти'}
-                            </button>
-                          </div>
-                          {addCpError && <p className="text-sm text-red-600">{addCpError}</p>}
-                        </>
-                      ) : (
-                        <>
-                          <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-1">
-                            <p className="text-sm font-medium text-gray-900">{addCpResult.short_name ?? addCpResult.full_name}</p>
-                            <p className="text-xs text-gray-500">ИНН: {addCpResult.inn}{addCpResult.kpp ? ` / КПП: ${addCpResult.kpp}` : ''}</p>
-                            <p className="text-xs text-gray-500">Адрес: {addCpResult.legal_address ?? '—'}</p>
-                            <p className="text-xs text-gray-500">Руководитель: {addCpResult.director_name ?? '—'}</p>
-                          </div>
-                          {addCpError && <p className="text-sm text-red-600 mb-2">{addCpError}</p>}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={saveNewCounterparty} disabled={addCpSaving}
-                              className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
-                              {addCpSaving ? 'Сохранение...' : 'Добавить в реестр'}
-                            </button>
-                            <button type="button" onClick={() => setAddCpResult(null)}
-                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                              Назад
-                            </button>
-                          </div>
-                        </>
-                      )}
-
-                      <button type="button" onClick={() => { setShowAddCpModal(false); setAddCpInn(''); setAddCpResult(null); setAddCpError('') }}
-                        className="w-full mt-3 text-sm text-gray-400 hover:text-gray-600">
-                        Отмена
+              {counterpartyType === 'foreign' ? (
+                <div className="relative">
+                  <input type="text" value={foreignSearch}
+                    onChange={e => { setForeignSearch(e.target.value); setCounterpartyId(null); setForm(p => ({ ...p, counterparty: '' })); searchForeignCounterparties(e.target.value) }}
+                    onBlur={() => setTimeout(() => setShowForeignSuggestions(false), 200)}
+                    placeholder="Начните вводить название..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  {counterpartyId && <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>}
+                  {foreignSearchLoading && <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>}
+                  {showForeignSuggestions && foreignSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                      {foreignSuggestions.map(c => (
+                        <button key={c.id} type="button"
+                          onMouseDown={() => selectForeignCounterparty(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                          <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
+                          {c.country && <p className="text-xs text-gray-400">🌍 {c.country}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {foreignNotFound && foreignSearch.length >= 2 && (
+                    <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
+                      <p className="text-sm text-orange-700 mb-2">⚠️ Контрагент не найден</p>
+                      <button type="button"
+                        onMouseDown={() => { setShowAddForeignModal(true); setShowForeignSuggestions(false); setForeignNotFound(false) }}
+                        className="w-full bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700">
+                        + Добавить иностранного контрагента
                       </button>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                  {showAddForeignModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+                      <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                        <h3 className="text-base font-semibold text-gray-900 mb-4">🌍 Добавить иностранного контрагента</h3>
+                        {addForeignError && <p className="text-sm text-red-600 mb-3">{addForeignError}</p>}
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Название <span className="text-red-500">*</span></label>
+                            <input value={addForeignForm.full_name}
+                              onChange={e => setAddForeignForm(p => ({...p, full_name: e.target.value}))}
+                              placeholder="Acme Corporation"
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Страна</label>
+                            <input value={addForeignForm.country}
+                              onChange={e => setAddForeignForm(p => ({...p, country: e.target.value}))}
+                              placeholder="США, Германия, Китай..."
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Регистрационный номер</label>
+                            <input value={addForeignForm.registration_number}
+                              onChange={e => setAddForeignForm(p => ({...p, registration_number: e.target.value}))}
+                              placeholder="Номер регистрации в стране"
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                          </div>
+                        </div>
+                        <div className="flex gap-3 mt-5">
+                          <button type="button" onClick={saveNewForeignCounterparty} disabled={addForeignLoading}
+                            className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                            {addForeignLoading ? 'Сохранение...' : 'Добавить'}
+                          </button>
+                          <button type="button" onClick={() => { setShowAddForeignModal(false); setAddForeignError('') }}
+                            className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={counterpartySearch}
+                    onChange={e => {
+                      setCounterpartySearch(e.target.value)
+                      setCounterpartyId(null)
+                      setForm(p => ({ ...p, counterparty: '' }))
+                      searchCounterparties(e.target.value)
+                    }}
+                    onBlur={() => setTimeout(() => setShowCounterpartySuggestions(false), 200)}
+                    placeholder="Начните вводить название или ИНН..."
+                    required
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  {counterpartyId && (
+                    <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
+                  )}
+                  {counterpartySearchLoading && (
+                    <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
+                  )}
+                  {showCounterpartySuggestions && counterpartySuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                      {counterpartySuggestions.map(c => (
+                        <button key={c.id} type="button"
+                          onMouseDown={() => selectCounterparty(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                          <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
+                          <p className="text-xs text-gray-400">ИНН: {c.inn}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {counterpartyNotFound && counterpartySearch.length >= 2 && (
+                    <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
+                      <p className="text-sm text-orange-700 mb-2">⚠️ Контрагент не найден в реестре</p>
+                      <p className="text-xs text-gray-500 mb-2">Сначала добавьте контрагента в базу, затем выберите его в этом поле.</p>
+                      <button type="button"
+                        onMouseDown={() => { setShowAddCpModal(true); setShowCounterpartySuggestions(false); setCounterpartyNotFound(false) }}
+                        className="w-full bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700">
+                        + Добавить контрагента в реестр
+                      </button>
+                    </div>
+                  )}
+                  {showAddCpModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+                      <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                        <h3 className="text-base font-semibold text-gray-900 mb-4">Добавить контрагента</h3>
+                        {!addCpResult ? (
+                          <>
+                            <p className="text-sm text-gray-500 mb-3">Введите ИНН организации — данные будут загружены из DaData.</p>
+                            <div className="flex gap-2 mb-3">
+                              <input
+                                value={addCpInn}
+                                onChange={e => setAddCpInn(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && searchCounterpartyByInn()}
+                                placeholder="ИНН (10 или 12 цифр)"
+                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                              />
+                              <button type="button" onClick={searchCounterpartyByInn} disabled={addCpLoading}
+                                className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
+                                {addCpLoading ? '...' : 'Найти'}
+                              </button>
+                            </div>
+                            {addCpError && <p className="text-sm text-red-600">{addCpError}</p>}
+                          </>
+                        ) : (
+                          <>
+                            <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-1">
+                              <p className="text-sm font-medium text-gray-900">{addCpResult.short_name ?? addCpResult.full_name}</p>
+                              <p className="text-xs text-gray-500">ИНН: {addCpResult.inn}{addCpResult.kpp ? ` / КПП: ${addCpResult.kpp}` : ''}</p>
+                              <p className="text-xs text-gray-500">Адрес: {addCpResult.legal_address ?? '—'}</p>
+                              <p className="text-xs text-gray-500">Руководитель: {addCpResult.director_name ?? '—'}</p>
+                            </div>
+                            {addCpError && <p className="text-sm text-red-600 mb-2">{addCpError}</p>}
+                            <div className="flex gap-2">
+                              <button type="button" onClick={saveNewCounterparty} disabled={addCpSaving}
+                                className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50">
+                                {addCpSaving ? 'Сохранение...' : 'Добавить в реестр'}
+                              </button>
+                              <button type="button" onClick={() => setAddCpResult(null)}
+                                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                                Назад
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        <button type="button" onClick={() => { setShowAddCpModal(false); setAddCpInn(''); setAddCpResult(null); setAddCpError('') }}
+                          className="w-full mt-3 text-sm text-gray-400 hover:text-gray-600">
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
