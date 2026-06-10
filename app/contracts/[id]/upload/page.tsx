@@ -26,7 +26,7 @@ export default function UploadVersionPage() {
     ]
 
     if (!allowed.includes(selected.type)) {
-      setError('Допустимые форматы: PDF, DOC, DOCX')
+      setError('Допустимые форматы: PDF, DOCX, XLSX')
       return
     }
 
