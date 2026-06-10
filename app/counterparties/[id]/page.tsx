@@ -60,7 +60,60 @@ export default function CounterpartyPage() {
   const [form, setForm] = useState<Partial<Counterparty>>({})
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadCounterparty() }, [id])
+  // Файлы контрагента
+  const [cpDocs, setCpDocs] = useState<{id: string, category: string, file_name: string, file_url: string, uploaded_by_name: string, created_at: string}[]>([])
+  const [cpDocsLoading, setCpDocsLoading] = useState(false)
+  const [uploadingCategory, setUploadingCategory] = useState<string | null>(null)
+  const [cpDocError, setCpDocError] = useState('')
+
+  const CP_CATEGORIES = [
+    { key: 'charter', label: '📜 Устав' },
+    { key: 'poa', label: '📋 Доверенность' },
+    { key: 'order', label: '📝 Решение/Приказ' },
+    { key: 'other', label: '📎 Прочее' },
+  ]
+
+  const loadCpDocs = async () => {
+    setCpDocsLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/${id}/documents`)
+      const data = await res.json()
+      setCpDocs(data.documents ?? [])
+    } finally {
+      setCpDocsLoading(false)
+    }
+  }
+
+  const uploadCpDoc = async (file: File, category: string) => {
+    setUploadingCategory(category)
+    setCpDocError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('category', category)
+      const res = await fetch(`${baseUrl}/api/counterparties/${id}/documents`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadCpDocs()
+      } else {
+        setCpDocError(data.error ?? 'Ошибка загрузки')
+      }
+    } finally {
+      setUploadingCategory(null)
+    }
+  }
+
+  const deleteCpDoc = async (docId: string) => {
+    if (!confirm('Удалить файл?')) return
+    const res = await fetch(`${baseUrl}/api/counterparties/${id}/documents?doc_id=${docId}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.success) setCpDocs(prev => prev.filter(d => d.id !== docId))
+  }
+
+  useEffect(() => { loadCounterparty(); loadCpDocs() }, [id])
 
   const loadCounterparty = async () => {
     setLoading(true)
@@ -332,6 +385,49 @@ export default function CounterpartyPage() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Файлы контрагента */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">📁 Документы контрагента</h2>
+              {cpDocError && <p className="text-xs text-red-600 mb-2">{cpDocError}</p>}
+              {cpDocsLoading ? (
+                <p className="text-xs text-gray-400">Загрузка...</p>
+              ) : (
+                <div className="space-y-3">
+                  {CP_CATEGORIES.map(cat => {
+                    const catDocs = cpDocs.filter(d => d.category === cat.key)
+                    return (
+                      <div key={cat.key}>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs font-medium text-gray-600">{cat.label}</p>
+                          <label className="cursor-pointer text-xs text-blue-600 hover:text-blue-800">
+                            {uploadingCategory === cat.key ? '⏳' : '+ Загрузить'}
+                            <input type="file" className="hidden" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg"
+                              onChange={e => { const f = e.target.files?.[0]; if (f) uploadCpDoc(f, cat.key); e.target.value = '' }} />
+                          </label>
+                        </div>
+                        {catDocs.length === 0 ? (
+                          <p className="text-xs text-gray-300 italic">Не загружено</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {catDocs.map(doc => (
+                              <div key={doc.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1">
+                                <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline truncate max-w-[140px]">
+                                  📄 {doc.file_name}
+                                </a>
+                                <button onClick={() => deleteCpDoc(doc.id)}
+                                  className="text-gray-300 hover:text-red-500 ml-1 flex-shrink-0">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
