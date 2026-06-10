@@ -15,6 +15,9 @@ interface Counterparty {
   phone: string | null
   email: string | null
   created_at: string
+  is_foreign?: boolean
+  country?: string | null
+  registration_number?: string | null
 }
 
 const statusColors: Record<string, string> = {
@@ -44,6 +47,56 @@ export default function CounterpartiesPage() {
   const [checkResult, setCheckResult] = useState<Record<string, string> | null>(null)
   const [checkError, setCheckError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [filterType, setFilterType] = useState<'all' | 'russian' | 'foreign'>('all')
+
+  // Модалка иностранного контрагента
+  const [showForeignModal, setShowForeignModal] = useState(false)
+  const [foreignForm, setForeignForm] = useState({
+    full_name: '', short_name: '', country: '',
+    registration_number: '', director_name: '', phone: '', email: '',
+  })
+  const [foreignSaving, setForeignSaving] = useState(false)
+  const [foreignError, setForeignError] = useState('')
+
+  const saveForeignCounterparty = async () => {
+    if (!foreignForm.full_name.trim() || !foreignForm.country.trim()) {
+      setForeignError('Заполните название и страну')
+      return
+    }
+    setForeignSaving(true)
+    setForeignError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: foreignForm.full_name.trim(),
+          short_name: foreignForm.short_name.trim() || null,
+          inn: `FOREIGN-${Date.now()}`,
+          kpp: null,
+          ogrn: null,
+          legal_address: null,
+          status: 'активный',
+          director_name: foreignForm.director_name.trim() || null,
+          phone: foreignForm.phone.trim() || null,
+          email: foreignForm.email.trim() || null,
+          is_foreign: true,
+          country: foreignForm.country.trim(),
+          registration_number: foreignForm.registration_number.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowForeignModal(false)
+        setForeignForm({ full_name: '', short_name: '', country: '', registration_number: '', director_name: '', phone: '', email: '' })
+        await loadCounterparties()
+      } else {
+        setForeignError(data.error ?? 'Ошибка сохранения')
+      }
+    } finally {
+      setForeignSaving(false)
+    }
+  }
 
   useEffect(() => {
     loadCounterparties()
@@ -127,10 +180,16 @@ export default function CounterpartiesPage() {
             </div>
             <p className="text-sm text-gray-500 mt-0.5">Управление и проверка контрагентов</p>
           </div>
-          <button onClick={() => setShowAddModal(true)}
-            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
-            + Добавить контрагента
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowAddModal(true)}
+              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors">
+              🇷🇺 Российский
+            </button>
+            <button onClick={() => setShowForeignModal(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              🌍 Иностранный
+            </button>
+          </div>
         </div>
 
         {/* Поиск */}
@@ -144,11 +203,25 @@ export default function CounterpartiesPage() {
           />
         </div>
 
+        {/* Фильтр тип */}
+        <div className="flex gap-2 mb-4 flex-shrink-0">
+          {(['all','russian','foreign'] as const).map(f => (
+            <button key={f} onClick={() => setFilterType(f)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${filterType === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {f === 'all' ? 'Все контрагенты' : f === 'russian' ? '🇷🇺 Российские' : '🌍 Иностранные'}
+            </button>
+          ))}
+        </div>
+
         {/* Список */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-y-auto flex-1">
           {loading ? (
             <div className="text-center py-12 text-gray-400">Загрузка...</div>
-          ) : counterparties.length === 0 ? (
+          ) : counterparties.filter(c =>
+              filterType === 'all' ? true :
+              filterType === 'russian' ? !c.is_foreign :
+              !!c.is_foreign
+            ).length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">Контрагентов не найдено</p>
               <p className="text-gray-300 text-xs mt-1">Добавьте первого контрагента по ИНН</p>
@@ -165,15 +238,25 @@ export default function CounterpartiesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {counterparties.map(c => (
+                {counterparties.filter(c =>
+                  filterType === 'all' ? true :
+                  filterType === 'russian' ? !c.is_foreign :
+                  !!c.is_foreign
+                ).map(c => (
                   <tr key={c.id}
                     onClick={() => router.push(`/counterparties/${c.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
-                      {c.short_name && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{c.full_name}</p>}
+                      <div className="flex items-center gap-1.5">
+                        {c.is_foreign && <span className="text-base">🌍</span>}
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
+                          {c.short_name && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{c.full_name}</p>}
+                          {c.is_foreign && c.country && <p className="text-xs text-blue-500 mt-0.5">{c.country}</p>}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{c.inn}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{c.is_foreign ? (c.registration_number ?? '—') : c.inn}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{c.director_name ?? '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -192,6 +275,70 @@ export default function CounterpartiesPage() {
           )}
         </div>
       </div>
+
+      {/* Модал добавления иностранного контрагента */}
+      {showForeignModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-base font-semibold text-gray-900 mb-4">🌍 Добавить иностранного контрагента</h3>
+            {foreignError && <p className="text-sm text-red-600 mb-3">{foreignError}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Полное название <span className="text-red-500">*</span></label>
+                <input value={foreignForm.full_name} onChange={e => setForeignForm(p => ({...p, full_name: e.target.value}))}
+                  placeholder="ACME Corporation Ltd."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Краткое название</label>
+                <input value={foreignForm.short_name} onChange={e => setForeignForm(p => ({...p, short_name: e.target.value}))}
+                  placeholder="ACME Corp"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Страна <span className="text-red-500">*</span></label>
+                <input value={foreignForm.country} onChange={e => setForeignForm(p => ({...p, country: e.target.value}))}
+                  placeholder="США, Германия, Китай..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Регистрационный номер</label>
+                <input value={foreignForm.registration_number} onChange={e => setForeignForm(p => ({...p, registration_number: e.target.value}))}
+                  placeholder="EIN, VAT, Company No..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Руководитель</label>
+                <input value={foreignForm.director_name} onChange={e => setForeignForm(p => ({...p, director_name: e.target.value}))}
+                  placeholder="John Smith"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Телефон</label>
+                <input value={foreignForm.phone} onChange={e => setForeignForm(p => ({...p, phone: e.target.value}))}
+                  placeholder="+1 234 567 8900"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Email</label>
+                <input value={foreignForm.email} onChange={e => setForeignForm(p => ({...p, email: e.target.value}))}
+                  placeholder="contact@acme.com"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={saveForeignCounterparty} disabled={foreignSaving}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                {foreignSaving ? 'Сохранение...' : 'Добавить'}
+              </button>
+              <button onClick={() => { setShowForeignModal(false); setForeignError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Модал добавления по ИНН */}
       {showAddModal && (
