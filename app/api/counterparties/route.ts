@@ -49,10 +49,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ counterparty: data ?? null })
     }
 
+    const foreignOnly = request.nextUrl.searchParams.get('foreign_only')
+    const russianOnly = request.nextUrl.searchParams.get('russian_only')
+
     let query = supabase
       .from('counterparties')
       .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number')
       .order('full_name', { ascending: true })
+
+    if (foreignOnly === 'true') {
+      query = query.eq('is_foreign', true)
+    } else if (russianOnly === 'true') {
+      query = query.eq('is_foreign', false)
+    }
 
     if (search) {
       query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)

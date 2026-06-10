@@ -172,7 +172,7 @@ export default function NewContractPage() {
     setCounterpartySearchLoading(true)
     setCounterpartyNotFound(false)
     try {
-      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}&limit=10`)
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}&limit=10&russian_only=true`)
       const data = await res.json()
       const list = data.counterparties ?? []
       setCounterpartySuggestions(list)
