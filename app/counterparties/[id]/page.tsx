@@ -60,6 +60,32 @@ export default function CounterpartyPage() {
   const [form, setForm] = useState<Partial<Counterparty>>({})
   const [saving, setSaving] = useState(false)
 
+  // Проверка надёжности
+  const [checkResult, setCheckResult] = useState<Record<string, unknown> | null>(null)
+  const [checkLoading, setCheckLoading] = useState(false)
+  const [checkError, setCheckError] = useState('')
+
+  const runCheck = async () => {
+    if (!counterparty || counterparty.inn?.startsWith('FOREIGN')) return
+    setCheckLoading(true)
+    setCheckError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inn: counterparty.inn,
+          counterparty_id: counterparty.id,
+          name: counterparty.short_name ?? counterparty.full_name,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) setCheckError(data.error)
+      else setCheckResult(data)
+    } catch { setCheckError('Ошибка соединения') }
+    finally { setCheckLoading(false) }
+  }
+
   // Файлы контрагента
   const [cpDocs, setCpDocs] = useState<{id: string, category: string, file_name: string, file_url: string, uploaded_by_name: string, created_at: string}[]>([])
   const [cpDocsLoading, setCpDocsLoading] = useState(false)
@@ -302,6 +328,90 @@ export default function CounterpartyPage() {
 
           {/* Боковая панель */}
           <div className="space-y-4">
+
+            {/* Проверка надёжности */}
+            {!counterparty.inn?.startsWith('FOREIGN') && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-gray-900">🔍 Проверка надёжности</h2>
+                  <button onClick={runCheck} disabled={checkLoading}
+                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                    {checkLoading ? '⏳ Проверка...' : checkResult ? '🔄 Обновить' : 'Проверить'}
+                  </button>
+                </div>
+
+                {checkError && <p className="text-xs text-red-600 mb-2">{checkError}</p>}
+
+                {checkResult && (
+                  <div className="space-y-3">
+                    {/* Общий индикатор */}
+                    <div className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                      checkResult.risk_level === 'low' ? 'bg-green-50 text-green-700 border border-green-200' :
+                      checkResult.risk_level === 'medium' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                      'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {checkResult.risk_level === 'low' ? '🟢 Надёжный' :
+                       checkResult.risk_level === 'medium' ? '🟡 Требует внимания' : '🔴 Высокий риск'}
+                    </div>
+
+                    {/* Резюме */}
+                    <p className="text-xs text-gray-600">{checkResult.summary as string}</p>
+
+                    {/* Детали по источникам */}
+                    {(() => {
+                      const d = checkResult.dadata as Record<string, unknown> | null
+                      const f = checkResult.fssp as Record<string, unknown> | null
+                      const b = checkResult.bankrupt as Record<string, unknown> | null
+                      const r = checkResult.rnp as Record<string, unknown> | null
+                      const statusLabel: Record<string, string> = { ACTIVE: 'Действующая', LIQUIDATING: 'Ликвидируется', LIQUIDATED: 'Ликвидирована', BANKRUPT: 'Банкрот', REORGANIZING: 'Реорганизация' }
+                      return (
+                        <div className="space-y-2">
+                          {d && (
+                            <div className="border border-gray-100 rounded-lg p-2">
+                              <p className="text-xs font-medium text-gray-700 mb-1">📋 Реквизиты (ЕГРЮЛ)</p>
+                              <p className="text-xs text-gray-500">Статус: <span className={`font-medium ${d.status === 'ACTIVE' ? 'text-green-600' : 'text-red-600'}`}>
+                                {statusLabel[d.status as string] ?? (d.status as string) ?? 'Неизвестно'}
+                              </span></p>
+                              {d.director ? <p className="text-xs text-gray-500">Руководитель: {String(d.director)}</p> : null}
+                              {d.registration_date ? <p className="text-xs text-gray-500">Регистрация: {new Date(String(d.registration_date)).toLocaleDateString('ru-RU')}</p> : null}
+                            </div>
+                          )}
+                          {f && (
+                            <div className={`border rounded-lg p-2 ${f.found ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}`}>
+                              <p className="text-xs font-medium text-gray-700 mb-1">⚖️ Исполнительные производства</p>
+                              <p className="text-xs text-gray-500">{f.found ? `⚠️ Найдено: ${f.count as number}` : '✅ Не найдено'}</p>
+                            </div>
+                          )}
+                          {b && (
+                            <div className={`border rounded-lg p-2 ${b.found ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
+                              <p className="text-xs font-medium text-gray-700 mb-1">🏦 Банкротство (ЕФРСБ)</p>
+                              <p className="text-xs text-gray-500">{b.found ? `🔴 Найдено дел: ${b.count as number}` : '✅ Не найдено'}</p>
+                            </div>
+                          )}
+                          {r && (
+                            <div className={`border rounded-lg p-2 ${r.found ? 'border-red-200 bg-red-50' : 'border-gray-100'}`}>
+                              <p className="text-xs font-medium text-gray-700 mb-1">🚫 Реестр недобросовестных (РНП)</p>
+                              <p className="text-xs text-gray-500">{r.found ? `🔴 Включён: ${r.count as number} записей` : '✅ Не включён'}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Дата проверки */}
+                    <p className="text-xs text-gray-400">
+                      {checkResult.from_cache ? '📦 Из кэша · ' : '🔄 Свежая проверка · '}
+                      {checkResult.checked_at ? new Date(checkResult.checked_at as string).toLocaleString('ru-RU') : ''}
+                    </p>
+                  </div>
+                )}
+
+                {!checkResult && !checkLoading && (
+                  <p className="text-xs text-gray-400">Нажмите «Проверить» для анализа надёжности контрагента по открытым реестрам</p>
+                )}
+              </div>
+            )}
+
             {/* Договоры */}
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">
