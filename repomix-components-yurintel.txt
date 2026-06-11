@@ -5688,7 +5688,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   ) : (
                                     <div className="flex gap-1">
                                       {docs.map(doc => (
-                                        <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                        <a key={doc.id} href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
                                           className="text-xs text-blue-600 hover:underline px-1.5 py-0.5 bg-blue-50 rounded">
                                           👁 Открыть
                                         </a>
