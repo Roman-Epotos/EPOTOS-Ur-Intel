@@ -25,6 +25,7 @@ import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import dynamic from 'next/dynamic'
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { proxyUrl } from '@/app/utils/proxyUrl'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseClient = createClient(
@@ -1342,12 +1343,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
                                     {msg.message && <p>{msg.message}</p>}
                                     {msg.file_url && msg.file_type?.startsWith('image/') && (
-                                      <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
+                                      <img src={proxyUrl(msg.file_url)} alt={msg.file_name ?? 'изображение'}
                                         className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
-                                        onClick={() => window.open(msg.file_url ?? '', '_blank')} />
+                                        onClick={() => window.open(proxyUrl(msg.file_url), '_blank')} />
                                     )}
                                     {msg.file_url && !msg.file_type?.startsWith('image/') && (
-                                      <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                                      <a href={proxyUrl(msg.file_url)} target="_blank" rel="noopener noreferrer"
                                         className="flex items-center gap-1 mt-1 underline text-xs">
                                         📎 {msg.file_name}
                                       </a>
@@ -1475,7 +1476,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <a href={version.file_url} target="_blank" rel="noopener noreferrer"
+                      <a href={proxyUrl(version.file_url)} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                         Скачать
                       </a>
@@ -1618,7 +1619,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               )}
                             </>
                           )}
-                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                          <a href={proxyUrl(att.file_url)} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
                           </a>
@@ -1665,7 +1666,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                          <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
                           </a>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { DOCUMENT_TYPES, REGIONS } from '@/app/lib/documentTypes'
+import { proxyUrl } from '@/app/utils/proxyUrl'
 
 const STAGES = [
   { id: 'legal', label: 'Юридический отдел' },
@@ -1377,7 +1378,7 @@ useEffect(() => {
                         {t.description && <p className="text-xs text-gray-400 mt-0.5">{t.description}</p>}
                       </div>
                       <div className="flex gap-2">
-                        <a href={t.file_url} target="_blank" rel="noopener noreferrer"
+                        <a href={proxyUrl(t.file_url)} target="_blank" rel="noopener noreferrer"
                           className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                           Скачать
                         </a>

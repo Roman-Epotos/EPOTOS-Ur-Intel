@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { proxyUrl } from '@/app/utils/proxyUrl'
 
 interface Counterparty {
   id: string
@@ -525,7 +526,7 @@ export default function CounterpartyPage() {
                           <div className="space-y-1">
                             {catDocs.map(doc => (
                               <div key={doc.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1">
-                                <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
                                   className="text-xs text-blue-600 hover:underline truncate max-w-[140px]">
                                   📄 {doc.file_name}
                                 </a>
