@@ -4286,6 +4286,7 @@ File: app/counterparties/[id]/page.tsx
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { proxyUrl } from '@/app/utils/proxyUrl'
 
 interface Counterparty {
   id: string
@@ -4809,7 +4810,7 @@ export default function CounterpartyPage() {
                           <div className="space-y-1">
                             {catDocs.map(doc => (
                               <div key={doc.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1">
-                                <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
                                   className="text-xs text-blue-600 hover:underline truncate max-w-[140px]">
                                   📄 {doc.file_name}
                                 </a>
@@ -4856,6 +4857,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { DOCUMENT_TYPES, REGIONS } from '@/app/lib/documentTypes'
+import { proxyUrl } from '@/app/utils/proxyUrl'
 
 const STAGES = [
   { id: 'legal', label: 'Юридический отдел' },
@@ -6229,7 +6231,7 @@ useEffect(() => {
                         {t.description && <p className="text-xs text-gray-400 mt-0.5">{t.description}</p>}
                       </div>
                       <div className="flex gap-2">
-                        <a href={t.file_url} target="_blank" rel="noopener noreferrer"
+                        <a href={proxyUrl(t.file_url)} target="_blank" rel="noopener noreferrer"
                           className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                           Скачать
                         </a>
