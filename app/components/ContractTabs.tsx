@@ -1132,16 +1132,10 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   ) : (
                                     <div className="flex gap-1">
                                       {docs.map(doc => (
-                                        <div key={doc.id} className="flex gap-1">
-                                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                                            className="text-xs text-blue-600 hover:underline px-1.5 py-0.5 bg-blue-50 rounded">
-                                            👁
-                                          </a>
-                                          <a href={doc.file_url} download={doc.file_name}
-                                            className="text-xs text-gray-600 hover:underline px-1.5 py-0.5 bg-gray-100 rounded">
-                                            ⬇️
-                                          </a>
-                                        </div>
+                                        <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                          className="text-xs text-blue-600 hover:underline px-1.5 py-0.5 bg-blue-50 rounded">
+                                          👁 Открыть
+                                        </a>
                                       ))}
                                     </div>
                                   )}
