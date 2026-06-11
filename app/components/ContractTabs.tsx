@@ -76,6 +76,7 @@ interface Contract {
   parent_contract_external?: string | null
   is_child?: boolean | null
   customer_number?: string | null
+  counterparty_id?: string | null
 }
 
 interface Participant {
@@ -200,6 +201,62 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     Object.entries(SPECIAL_SIGNERS).some(([id, prefixes]) =>
       parseInt(id) === userId && prefixes.includes(contract.company_prefix ?? '')
     )
+  // Документы контрагента
+  const [cpDocs, setCpDocs] = useState<{id: string, category: string, file_name: string, file_url: string, file_type: string}[]>([])
+  const [cpDocsLoading, setCpDocsLoading] = useState(false)
+  const [showCpDocsUpload, setShowCpDocsUpload] = useState(false)
+  const [cpUploadCategory, setCpUploadCategory] = useState('charter')
+  const [cpUploadFile, setCpUploadFile] = useState<File | null>(null)
+  const [cpUploading, setCpUploading] = useState(false)
+
+  const cpCategoryLabels: Record<string, string> = {
+    charter: '📋 Устав',
+    poa: '📜 Доверенность',
+    order: '📄 Решение/Приказ',
+    other: '📎 Прочее',
+  }
+
+  const loadCpDocs = async () => {
+    if (!contract.counterparty_id) return
+    setCpDocsLoading(true)
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/${contract.counterparty_id}/documents`)
+      const data = await res.json()
+      setCpDocs(data.documents ?? [])
+    } catch { /* тихо */ }
+    finally { setCpDocsLoading(false) }
+  }
+
+  const uploadCpDoc = async () => {
+    if (!cpUploadFile || !contract.counterparty_id) return
+    setCpUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', cpUploadFile)
+      formData.append('category', cpUploadCategory)
+      formData.append('uploaded_by_id', user?.id ?? '0')
+      formData.append('uploaded_by_name', user?.name ?? '')
+      const res = await fetch(`${baseUrl}/api/counterparties/${contract.counterparty_id}/documents`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.success) {
+        await loadCpDocs()
+        setShowCpDocsUpload(false)
+        setCpUploadFile(null)
+        setCpUploadCategory('charter')
+      }
+    } catch { /* тихо */ }
+    finally { setCpUploading(false) }
+  }
+
+  useEffect(() => {
+    if (contract.counterparty_id && activeTab === 'details') {
+      loadCpDocs()
+    }
+  }, [contract.counterparty_id, activeTab])
+
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -1023,6 +1080,78 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       <span className="text-sm text-gray-500 w-36 flex-shrink-0">Тип</span>
                       <span className="text-sm text-gray-900">{contract.type ?? '—'}</span>
                     </div>
+
+                    {/* Документы контрагента */}
+                    {contract.counterparty_id && (
+                      <div className="pt-3 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Документы контрагента</span>
+                          <div className="flex items-center gap-2">
+                            <a href={`/counterparties/${contract.counterparty_id}`}
+                              className="text-xs text-gray-400 hover:text-gray-600">→ Карточка</a>
+                            <button onClick={() => setShowCpDocsUpload(p => !p)}
+                              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-lg">
+                              {showCpDocsUpload ? '✕ Закрыть' : '+ Загрузить'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {cpDocsLoading && <p className="text-xs text-gray-400">Загрузка...</p>}
+
+                        {/* Форма загрузки */}
+                        {showCpDocsUpload && (
+                          <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+                            <select value={cpUploadCategory}
+                              onChange={e => setCpUploadCategory(e.target.value)}
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none bg-white">
+                              <option value="charter">📋 Устав</option>
+                              <option value="poa">📜 Доверенность</option>
+                              <option value="order">📄 Решение/Приказ</option>
+                              <option value="other">📎 Прочее</option>
+                            </select>
+                            <input type="file" accept=".pdf,.docx,.xlsx,.jpg,.png"
+                              onChange={e => setCpUploadFile(e.target.files?.[0] ?? null)}
+                              className="w-full text-xs text-gray-600 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300" />
+                            <button onClick={uploadCpDoc} disabled={!cpUploadFile || cpUploading}
+                              className="w-full bg-gray-900 text-white text-xs py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                              {cpUploading ? 'Загрузка...' : 'Загрузить'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Список документов */}
+                        {!cpDocsLoading && (
+                          <div className="space-y-1">
+                            {Object.keys(cpCategoryLabels).map(cat => {
+                              const docs = cpDocs.filter(d => d.category === cat)
+                              return (
+                                <div key={cat} className="flex items-center justify-between py-1">
+                                  <span className="text-xs text-gray-500">{cpCategoryLabels[cat]}</span>
+                                  {docs.length === 0 ? (
+                                    <span className="text-xs text-gray-300">не загружен</span>
+                                  ) : (
+                                    <div className="flex gap-1">
+                                      {docs.map(doc => (
+                                        <div key={doc.id} className="flex gap-1">
+                                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                            className="text-xs text-blue-600 hover:underline px-1.5 py-0.5 bg-blue-50 rounded">
+                                            👁
+                                          </a>
+                                          <a href={doc.file_url} download={doc.file_name}
+                                            className="text-xs text-gray-600 hover:underline px-1.5 py-0.5 bg-gray-100 rounded">
+                                            ⬇️
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Сумма */}
                     <div className="flex gap-4 items-start">
                       <span className="text-sm text-gray-500 w-36 flex-shrink-0">Сумма</span>
