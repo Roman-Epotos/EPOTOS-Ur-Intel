@@ -270,7 +270,7 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
 
 export default function HelpPage() {
   const { user, loading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant'>('faq')
+  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant'>('assistant')
 
   // ЭПОТОС-Ассистент
   const coreUrl = 'https://epotos-core.vercel.app'
