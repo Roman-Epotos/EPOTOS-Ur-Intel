@@ -549,7 +549,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   }, [contract.id])
 
   useEffect(() => {
-    if (activeTab === 'chat') {
+    if (activeTab === 'details' || activeTab === 'chat') {
       const now = new Date().toISOString()
       setLastReadTime(now)
       if (typeof window !== 'undefined') {

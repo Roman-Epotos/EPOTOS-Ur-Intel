@@ -381,7 +381,7 @@ export default function ContractsList() {
                   )}
                 </td>
                 <td className="hidden md:table-cell px-6 py-4">
-                  <a href={`/contracts/${contract.id}?tab=chat`} onClick={() => {
+                  <a href={`/contracts/${contract.id}?tab=details`} onClick={() => {
                     const now = new Date().toISOString()
                     localStorage.setItem(`chat_read_time_${contract.id}`, now)
                   }}>

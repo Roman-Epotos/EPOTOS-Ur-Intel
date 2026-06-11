@@ -5661,25 +5661,219 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                     </div>
                   </div>
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">История действий</h2>
-                    <button onClick={() => window.location.reload()}
-                      className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">
-                      🔄 Обновить
-                    </button>
-                  </div>
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
-                    {logs.length === 0 ? (
-                      <p className="text-sm text-gray-400">История пуста</p>
-                    ) : logs.map(log => (
-                      <div key={log.id} className="border-l-2 border-gray-200 pl-3">
-                        <p className="text-xs font-medium text-gray-900">{log.action}</p>
-                        {log.details && <p className="text-xs text-gray-500 mt-0.5">{log.details}</p>}
-                        <p className="text-xs text-gray-400 mt-1">{log.user_name} · {new Date(log.created_at).toLocaleString('ru-RU')}</p>
+                <div className="flex flex-col h-full">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Чат согласования</h2>
+                  {!hasActiveSession ? (
+                    <div className="flex-1 flex items-center justify-center">
+                      <p className="text-sm text-gray-400 text-center">Чат доступен после запуска согласования</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col h-full">
+                      {/* Печать чата */}
+                      <div className="flex flex-wrap items-end gap-2 mb-3 print:hidden bg-gray-50 rounded-xl p-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">С даты</label>
+                          <input type="date" id="chat-date-from"
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">По дату</label>
+                          <input type="date" id="chat-date-to"
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                        </div>
+                        <button
+                          onClick={() => {
+                            const from = (document.getElementById('chat-date-from') as HTMLInputElement)?.value
+                            const to = (document.getElementById('chat-date-to') as HTMLInputElement)?.value
+                            const printWindow = window.open('', '_blank')
+                            if (!printWindow) return
+                            let messages = session.approval_messages
+                            if (from) messages = messages.filter(m => new Date(m.created_at) >= new Date(from))
+                            if (to) {
+                              const toDate = new Date(to)
+                              toDate.setHours(23, 59, 59, 999)
+                              messages = messages.filter(m => new Date(m.created_at) <= toDate)
+                            }
+                            const periodLabel = from || to
+                              ? 'За период: ' + (from ? new Date(from).toLocaleDateString('ru-RU') : '—') + ' — ' + (to ? new Date(to).toLocaleDateString('ru-RU') : '—')
+                              : 'Все сообщения'
+                            const html = buildChatHtml(contract, messages, periodLabel)
+                            printWindow.document.write(html)
+                            printWindow.document.close()
+                            printWindow.focus()
+                            printWindow.print()
+                          }}
+                          className="text-xs border border-gray-200 bg-white px-2 py-1.5 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
+                          🖨️ За период
+                        </button>
+                        <button
+                          onClick={() => {
+                            const printWindow = window.open('', '_blank')
+                            if (!printWindow) return
+                            const messages = session.approval_messages
+                            const html = buildChatHtml(contract, messages, 'Все сообщения')
+                            printWindow.document.write(html)
+                            printWindow.document.close()
+                            printWindow.focus()
+                            printWindow.print()
+                          }}
+                          className="text-xs bg-gray-900 text-white px-2 py-1.5 rounded-lg hover:bg-gray-700 flex items-center gap-1">
+                          🖨️ Весь чат
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                      <div className="space-y-3 max-h-80 overflow-y-auto mb-3 pr-1">
+                        {session.approval_messages.length === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">Сообщений пока нет</p>
+                        ) : session.approval_messages.map(msg => (
+                          <div key={msg.id} className={`flex gap-3 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'flex-row-reverse' : ''}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${msg.is_ai ? 'bg-purple-100 text-purple-700' : 'bg-gray-200 text-gray-700'}`}>
+                              {msg.is_ai ? 'AI' : msg.author_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className={`flex-1 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'items-end' : ''}`}>
+                              <div className="flex items-baseline gap-2 mb-1">
+                                <span className="text-xs font-medium text-gray-900">{msg.author_name}</span>
+                                <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleString('ru-RU')}</span>
+                              </div>
+                              {editingMessageId === msg.id ? (
+                                <div className="space-y-2">
+                                  <textarea value={editingMessageText}
+                                    onChange={e => setEditingMessageText(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleEditMessage(msg.id)}
+                                    rows={3}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white resize-none"
+                                    autoFocus />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => handleEditMessage(msg.id)}
+                                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
+                                      Сохранить
+                                    </button>
+                                    <button onClick={() => setEditingMessageId(null)}
+                                      className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-600">
+                                      Отмена
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="relative group/msg inline-block max-w-sm">
+                                  {msg.reply_to_id && (
+                                    <div className={`text-xs rounded-t-xl px-3 py-1.5 border-l-2 border-blue-400 mb-0.5 ${
+                                      msg.bitrix_user_id === parseInt(user?.id ?? '0')
+                                        ? 'bg-blue-600 text-blue-100'
+                                        : 'bg-gray-200 text-gray-600'
+                                    }`}>
+                                      <span className="font-bold text-blue-300">{msg.reply_to_author}</span>
+                                      <p className="truncate opacity-80">{msg.reply_to_text}</p>
+                                    </div>
+                                  )}
+                                  <div className={`text-sm rounded-xl px-3 py-2 inline-block w-full ${
+                                    msg.reply_to_id ? 'rounded-tl-none' : ''
+                                  } ${
+                                    msg.bitrix_user_id === parseInt(user?.id ?? '0')
+                                      ? 'bg-blue-500 text-white'
+                                      : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
+                                  }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
+                                    {msg.message && <p>{msg.message}</p>}
+                                    {msg.file_url && msg.file_type?.startsWith('image/') && (
+                                      <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
+                                        className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
+                                        onClick={() => window.open(msg.file_url ?? '', '_blank')} />
+                                    )}
+                                    {msg.file_url && !msg.file_type?.startsWith('image/') && (
+                                      <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-1 mt-1 underline text-xs">
+                                        📎 {msg.file_name}
+                                      </a>
+                                    )}
+                                  </div>
+                                  <div className="absolute -top-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
+                                    {!msg.is_ai && (
+                                      <button
+                                        onClick={() => setReplyTo({ id: msg.id, author_name: msg.author_name, message: msg.message })}
+                                        title="Ответить"
+                                        className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                        style={{fontSize:'10px'}}>
+                                        ↩
+                                      </button>
+                                    )}
+                                    {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
+                                      <button
+                                        onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
+                                        title="Редактировать"
+                                        className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                        style={{fontSize:'10px'}}>
+                                        ✏️
+                                      </button>
+                                    )}
+                                    {canDeleteMessage(msg) && (
+                                      <button
+                                        onClick={() => handleDeleteMessage(msg.id)}
+                                        title="Удалить"
+                                        className="bg-red-500 bg-opacity-70 hover:bg-opacity-90 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
+                                        style={{fontSize:'10px'}}>
+                                        🗑
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={chatEndRef} />
+                      </div>
+                      <div className="relative">
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-14 left-0 z-50">
+                            <EmojiPicker
+                              onEmojiClick={(emojiData) => {
+                                setMessage(prev => prev + emojiData.emoji)
+                                setShowEmojiPicker(false)
+                              }}
+                              width={300}
+                              height={350}
+                            />
+                          </div>
+                        )}
+                        {replyTo && (
+                          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-blue-700">{replyTo.author_name}</p>
+                              <p className="text-xs text-blue-500 truncate">{replyTo.message.slice(0, 80)}</p>
+                            </div>
+                            <button onClick={() => setReplyTo(null)}
+                              className="text-blue-400 hover:text-blue-700 ml-2 text-sm font-bold flex-shrink-0">✕</button>
+                          </div>
+                        )}
+                        <div className="flex gap-2 border-t border-gray-100 pt-3">
+                          <button onClick={() => setShowEmojiPicker(p => !p)}
+                            className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors">
+                            😊
+                          </button>
+                          <button onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingFile}
+                            className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50">
+                            {uploadingFile ? '⏳' : '📎'}
+                          </button>
+                          <input ref={fileInputRef} type="file"
+                            accept="image/*,.pdf,.docx,.xlsx"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0]
+                              if (file) handleFileUpload(file)
+                              e.target.value = ''
+                            }} />
+                          <input value={message} onChange={e => setMessage(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                            placeholder="Написать сообщение..."
+                            className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+                          <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
+                            className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
+                            {sendingMessage ? '...' : '➤'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -6345,220 +6539,26 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
             />
           )}
 
-          {activeTab === 'chat' && (
+          {activeTab === 'history' && (
             <div className="p-6">
-              {!hasActiveSession ? (
-                <div className="text-center py-12">
-                  <p className="text-sm text-gray-400">Чат доступен после запуска согласования</p>
-                </div>
-              ) : (
-                <div>
-                  {/* Печать чата */}
-                  <div className="flex flex-wrap items-end gap-3 mb-4 print:hidden bg-gray-50 rounded-xl p-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">С даты</label>
-                      <input type="date" id="chat-date-from"
-                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">По дату</label>
-                      <input type="date" id="chat-date-to"
-                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300" />
-                    </div>
-                    <button
-                      onClick={() => {
-                        const from = (document.getElementById('chat-date-from') as HTMLInputElement)?.value
-                        const to = (document.getElementById('chat-date-to') as HTMLInputElement)?.value
-                        const printWindow = window.open('', '_blank')
-                        if (!printWindow) return
-                        let messages = session.approval_messages
-                        if (from) messages = messages.filter(m => new Date(m.created_at) >= new Date(from))
-                        if (to) {
-                          const toDate = new Date(to)
-                          toDate.setHours(23, 59, 59, 999)
-                          messages = messages.filter(m => new Date(m.created_at) <= toDate)
-                        }
-                        const periodLabel = from || to
-                          ? 'За период: ' + (from ? new Date(from).toLocaleDateString('ru-RU') : '—') + ' — ' + (to ? new Date(to).toLocaleDateString('ru-RU') : '—')
-                          : 'Все сообщения'
-                        const html = buildChatHtml(contract, messages, periodLabel)
-                        printWindow.document.write(html)
-                        printWindow.document.close()
-                        printWindow.focus()
-                        printWindow.print()
-                      }}
-                      className="text-xs border border-gray-200 bg-white px-3 py-1.5 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
-                      🖨️ Печать за период
-                    </button>
-                    <button
-                      onClick={() => {
-                        const printWindow = window.open('', '_blank')
-                        if (!printWindow) return
-                        const messages = session.approval_messages
-                        const html = buildChatHtml(contract, messages, 'Все сообщения')
-                        printWindow.document.write(html)
-                        printWindow.document.close()
-                        printWindow.focus()
-                        printWindow.print()
-                      }}
-                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 flex items-center gap-1">
-                      🖨️ Печать всего чата
-                    </button>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">История действий</h2>
+                <button onClick={() => window.location.reload()}
+                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">
+                  🔄 Обновить
+                </button>
+              </div>
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                {logs.length === 0 ? (
+                  <p className="text-sm text-gray-400">История пуста</p>
+                ) : logs.map(log => (
+                  <div key={log.id} className="border-l-2 border-gray-200 pl-3">
+                    <p className="text-xs font-medium text-gray-900">{log.action}</p>
+                    {log.details && <p className="text-xs text-gray-500 mt-0.5">{log.details}</p>}
+                    <p className="text-xs text-gray-400 mt-1">{log.user_name} · {new Date(log.created_at).toLocaleString('ru-RU')}</p>
                   </div>
-                  <div className="space-y-3 max-h-96 overflow-y-auto mb-4 pr-1">
-                    {session.approval_messages.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-4">Сообщений пока нет</p>
-                    ) : session.approval_messages.map(msg => (
-                      <div key={msg.id} className={`flex gap-3 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'flex-row-reverse' : ''}`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${msg.is_ai ? 'bg-purple-100 text-purple-700' : 'bg-gray-200 text-gray-700'}`}>
-                          {msg.is_ai ? 'AI' : msg.author_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className={`flex-1 ${msg.bitrix_user_id === parseInt(user?.id ?? '0') ? 'items-end' : ''}`}>
-                          <div className="flex items-baseline gap-2 mb-1">
-                            <span className="text-xs font-medium text-gray-900">{msg.author_name}</span>
-                            <span className="text-xs text-gray-400">{new Date(msg.created_at).toLocaleString('ru-RU')}</span>
-                          </div>
-                          {editingMessageId === msg.id ? (
-                            <div className="space-y-2">
-                              <textarea value={editingMessageText}
-                                onChange={e => setEditingMessageText(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleEditMessage(msg.id)}
-                                rows={3}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white resize-none"
-                                autoFocus />
-                              <div className="flex gap-2">
-                                <button onClick={() => handleEditMessage(msg.id)}
-                                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">
-                                  Сохранить
-                                </button>
-                                <button onClick={() => setEditingMessageId(null)}
-                                  className="text-xs border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-gray-600">
-                                  Отмена
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="relative group/msg inline-block max-w-sm">
-                              {/* Цитата */}
-                              {msg.reply_to_id && (
-                                <div className={`text-xs rounded-t-xl px-3 py-1.5 border-l-2 border-blue-400 mb-0.5 ${
-                                  msg.bitrix_user_id === parseInt(user?.id ?? '0')
-                                    ? 'bg-blue-600 text-blue-100'
-                                    : 'bg-gray-200 text-gray-600'
-                                }`}>
-                                  <span className="font-bold text-blue-300">{msg.reply_to_author}</span>
-                                  <p className="truncate opacity-80">{msg.reply_to_text}</p>
-                                </div>
-                              )}
-                              <div className={`text-sm rounded-xl px-3 py-2 inline-block w-full ${
-                                msg.reply_to_id ? 'rounded-tl-none' : ''
-                              } ${
-                                msg.bitrix_user_id === parseInt(user?.id ?? '0')
-                                  ? 'bg-blue-500 text-white'
-                                  : msg.is_ai ? 'bg-purple-50 text-purple-900' : 'bg-gray-100 text-gray-900'
-                              }`} style={msg.bitrix_user_id === parseInt(user?.id ?? '0') ? {backgroundColor: '#2563eb', color: '#ffffff', WebkitTextFillColor: '#ffffff'} : {}}>
-                                {msg.message && <p>{msg.message}</p>}
-                                {msg.file_url && msg.file_type?.startsWith('image/') && (
-                                  <img src={msg.file_url} alt={msg.file_name ?? 'изображение'}
-                                    className="max-w-xs max-h-48 rounded-lg mt-1 cursor-pointer"
-                                    onClick={() => window.open(msg.file_url ?? '', '_blank')} />
-                                )}
-                                {msg.file_url && !msg.file_type?.startsWith('image/') && (
-                                  <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center gap-1 mt-1 underline text-xs">
-                                    📎 {msg.file_name}
-                                  </a>
-                                )}
-                              </div>
-                              <div className="absolute -top-1 right-1 hidden group-hover/msg:flex gap-0.5 z-10">
-                                {!msg.is_ai && (
-                                  <button
-                                    onClick={() => setReplyTo({ id: msg.id, author_name: msg.author_name, message: msg.message })}
-                                    title="Ответить"
-                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
-                                    style={{fontSize:'10px'}}>
-                                    ↩
-                                  </button>
-                                )}
-                                {msg.bitrix_user_id === parseInt(user?.id ?? '0') && !msg.is_ai && (
-                                  <button
-                                    onClick={() => { setEditingMessageId(msg.id); setEditingMessageText(msg.message) }}
-                                    title="Редактировать"
-                                    className="bg-black bg-opacity-25 hover:bg-opacity-40 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
-                                    style={{fontSize:'10px'}}>
-                                    ✏️
-                                  </button>
-                                )}
-                                {canDeleteMessage(msg) && (
-                                  <button
-                                    onClick={() => handleDeleteMessage(msg.id)}
-                                    title="Удалить"
-                                    className="bg-red-500 bg-opacity-70 hover:bg-opacity-90 text-white rounded w-5 h-5 flex items-center justify-center transition-all"
-                                    style={{fontSize:'10px'}}>
-                                    🗑
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="relative">
-                    {showEmojiPicker && (
-                      <div className="absolute bottom-14 left-0 z-50">
-                        <EmojiPicker
-                          onEmojiClick={(emojiData) => {
-                            setMessage(prev => prev + emojiData.emoji)
-                            setShowEmojiPicker(false)
-                          }}
-                          width={300}
-                          height={350}
-                        />
-                      </div>
-                    )}
-                    {replyTo && (
-                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-blue-700">{replyTo.author_name}</p>
-                          <p className="text-xs text-blue-500 truncate">{replyTo.message.slice(0, 80)}</p>
-                        </div>
-                        <button onClick={() => setReplyTo(null)}
-                          className="text-blue-400 hover:text-blue-700 ml-2 text-sm font-bold flex-shrink-0">✕</button>
-                      </div>
-                    )}
-                    <div className="flex gap-2 border-t border-gray-100 pt-4">
-                      <button onClick={() => setShowEmojiPicker(p => !p)}
-                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors">
-                        😊
-                      </button>
-                      <button onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingFile}
-                        className="text-xl px-2 py-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50">
-                        {uploadingFile ? '⏳' : '📎'}
-                      </button>
-                      <input ref={fileInputRef} type="file"
-                        accept="image/*,.pdf,.docx,.xlsx"
-                        className="hidden"
-                        onChange={e => {
-                          const file = e.target.files?.[0]
-                          if (file) handleFileUpload(file)
-                          e.target.value = ''
-                        }} />
-                      <input value={message} onChange={e => setMessage(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                        placeholder="Написать сообщение..."
-                        className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
-                      <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
-                        className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
-                        {sendingMessage ? '...' : '➤'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
           )}
 
