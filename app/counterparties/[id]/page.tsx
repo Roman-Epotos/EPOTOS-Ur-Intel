@@ -373,7 +373,7 @@ export default function CounterpartyPage() {
                                 {statusLabel[d.status as string] ?? (d.status as string) ?? 'Неизвестно'}
                               </span></p>
                               {d.director ? <p className="text-xs text-gray-500">Руководитель: {String(d.director)}</p> : null}
-                              {d.registration_date ? <p className="text-xs text-gray-500">Регистрация: {new Date(String(d.registration_date)).toLocaleDateString('ru-RU')}</p> : null}
+                              {d.registration_date ? <p className="text-xs text-gray-500">Регистрация: {(() => { try { return new Date(Number(d.registration_date)).toLocaleDateString('ru-RU') } catch { return '—' } })()}</p> : null}
                             </div>
                           )}
                           {f && (
