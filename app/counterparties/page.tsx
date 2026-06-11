@@ -18,6 +18,7 @@ interface Counterparty {
   is_foreign?: boolean
   country?: string | null
   registration_number?: string | null
+  check_risk?: 'low' | 'medium' | 'high' | null
 }
 
 const statusColors: Record<string, string> = {
@@ -100,10 +101,25 @@ export default function CounterpartiesPage() {
   }
 
   useEffect(() => {
-    loadCounterparties()
+    loadCounterparties().then(list => loadRisks(list ?? []))
   }, [])
 
-  const loadCounterparties = async (q?: string) => {
+  const loadRisks = async (list: Counterparty[]) => {
+    const inns = list.filter(c => c.inn && !c.inn.startsWith('FOREIGN')).map(c => c.inn)
+    if (inns.length === 0) return
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/check-cache?inns=${inns.join(',')}`)
+      const data = await res.json()
+      if (data.risks) {
+        setCounterparties(prev => prev.map(c => ({
+          ...c,
+          check_risk: data.risks[c.inn] ?? null,
+        })))
+      }
+    } catch { /* тихо игнорируем */ }
+  }
+
+  const loadCounterparties = async (q?: string): Promise<Counterparty[]> => {
     setLoading(true)
     try {
       const url = q
@@ -111,7 +127,9 @@ export default function CounterpartiesPage() {
         : `${baseUrl}/api/counterparties`
       const res = await fetch(url)
       const data = await res.json()
-      setCounterparties(data.counterparties ?? [])
+      const list: Counterparty[] = data.counterparties ?? []
+      setCounterparties(list)
+      return list
     } finally {
       setLoading(false)
     }
@@ -265,9 +283,14 @@ export default function CounterpartiesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${riskColors[c.risk_level] ?? 'bg-gray-100 text-gray-500'}`}>
-                        {c.risk_level}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${riskColors[c.risk_level] ?? 'bg-gray-100 text-gray-500'}`}>
+                          {c.risk_level}
+                        </span>
+                        {c.check_risk === 'low' && <span title="Надёжный">🟢</span>}
+                        {c.check_risk === 'medium' && <span title="Требует внимания">🟡</span>}
+                        {c.check_risk === 'high' && <span title="Высокий риск">🔴</span>}
+                      </div>
                     </td>
                   </tr>
                 ))}

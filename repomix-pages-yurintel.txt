@@ -3599,11 +3599,31 @@ export default function NewContractPage() {
     }
   }
 
+  const [counterpartyRisk, setCounterpartyRisk] = useState<'low' | 'medium' | 'high' | null>(null)
+  const [counterpartyRiskLoading, setCounterpartyRiskLoading] = useState(false)
+
+  const fetchRisk = async (inn: string, cpId: string, name: string) => {
+    if (inn.startsWith('FOREIGN')) return
+    setCounterpartyRiskLoading(true)
+    setCounterpartyRisk(null)
+    try {
+      const res = await fetch('https://epotos-ur-intel.vercel.app/api/counterparties/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inn, counterparty_id: cpId, name }),
+      })
+      const data = await res.json()
+      if (data.risk_level) setCounterpartyRisk(data.risk_level)
+    } catch { /* тихо игнорируем */ }
+    finally { setCounterpartyRiskLoading(false) }
+  }
+
   const selectCounterparty = (c: {id: string, short_name: string | null, full_name: string, inn: string}) => {
     setForm(p => ({ ...p, counterparty: c.short_name ?? c.full_name }))
     setCounterpartyId(c.id)
     setCounterpartySearch(c.short_name ?? c.full_name)
     setShowCounterpartySuggestions(false)
+    fetchRisk(c.inn, c.id, c.short_name ?? c.full_name)
   }
 
   const searchForeignCounterparties = async (q: string) => {
@@ -3628,6 +3648,7 @@ export default function NewContractPage() {
     setForeignSearch(c.short_name ?? c.full_name)
     setShowForeignSuggestions(false)
     setForeignNotFound(false)
+    setCounterpartyRisk(null)
   }
 
   const saveNewForeignCounterparty = async () => {
@@ -4084,7 +4105,13 @@ export default function NewContractPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
                   {counterpartyId && (
-                    <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>
+                    <span className="absolute right-3 top-2.5 flex items-center gap-1">
+                      <span className="text-green-500 text-xs">✓</span>
+                      {counterpartyRiskLoading && <span className="text-gray-400 text-xs">🔍</span>}
+                      {!counterpartyRiskLoading && counterpartyRisk === 'low' && <span className="text-xs text-green-600 font-medium">🟢</span>}
+                      {!counterpartyRiskLoading && counterpartyRisk === 'medium' && <span className="text-xs text-yellow-600 font-medium">🟡</span>}
+                      {!counterpartyRiskLoading && counterpartyRisk === 'high' && <span className="text-xs text-red-600 font-medium">🔴</span>}
+                    </span>
                   )}
                   {counterpartySearchLoading && (
                     <span className="absolute right-3 top-2.5 text-gray-400 text-xs">...</span>
