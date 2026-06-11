@@ -74,7 +74,9 @@ app/api/contracts/[contractId]/delegate/route.ts
 app/api/contracts/[contractId]/route.ts
 app/api/contracts/route.ts
 app/api/counterparties/[id]/documents/route.ts
+app/api/counterparties/check-cache/route.ts
 app/api/counterparties/check-inn/route.ts
+app/api/counterparties/check/route.ts
 app/api/counterparties/route.ts
 app/api/cron-checklist-deadline/route.ts
 app/api/dashboard-finance/route.ts
@@ -3392,6 +3394,451 @@ export async function DELETE(request: NextRequest) {
 }
 
 ================
+File: app/api/signed-documents/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const ADMIN_IDS = [30, 1148]
+const GC_MANAGER_IDS = [1, 246, 504]
+// Владимиров Вячеслав (Э-К), Виноградова Анна (СПТ, ОС, НПП)
+const SPECIAL_SIGNERS: Record<number, string[]> = {
+  782: ['Э-К'],
+  152: ['СПТ', 'ОС', 'НПП'],
+}
+
+function canUploadSigned(
+  userId: number,
+  authorId: number | null,
+  initiatorId: number | null,
+  companyPrefix: string
+): boolean {
+  if (ADMIN_IDS.includes(userId)) return true
+  if (GC_MANAGER_IDS.includes(userId)) return true
+  if (authorId === userId) return true
+  if (initiatorId === userId) return true
+  for (const [id, prefixes] of Object.entries(SPECIAL_SIGNERS)) {
+    if (parseInt(id) === userId && prefixes.includes(companyPrefix)) return true
+  }
+  return false
+}
+
+// Получить список подписанных документов
+export async function GET(request: NextRequest) {
+  const contract_id = request.nextUrl.searchParams.get('contract_id')
+  if (!contract_id) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('signed_documents')
+    .select('*')
+    .eq('contract_id', contract_id)
+    .order('created_at')
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ documents: data ?? [] })
+}
+
+// Загрузить подписанный документ
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+    const contract_id = formData.get('contract_id') as string
+    const user_name = formData.get('user_name') as string
+    const user_bitrix_id = formData.get('user_bitrix_id') as string
+    const confirm_all = formData.get('confirm_all') === 'true'
+
+    if (!contract_id || !user_bitrix_id) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    const userId = parseInt(user_bitrix_id)
+    const status_only = formData.get('status_only') === 'true'
+    const temp_upload = formData.get('temp_upload') === 'true'
+    const confirm_upload = formData.get('confirm_upload') === 'true'
+    const temp_file_url = formData.get('temp_file_url') as string
+    const temp_file_name = formData.get('temp_file_name') as string
+    const has_discrepancies = formData.get('has_discrepancies') === 'true'
+    const discrepancy_comment = formData.get('discrepancy_comment') as string
+    const discrepancy_summary = formData.get('discrepancy_summary') as string
+
+    // Временная загрузка — просто сохраняем файл и возвращаем URL
+    if (temp_upload && file) {
+      const fileExt = file.name.split('.').pop()
+      const tempPath = `temp/${contract_id}/${Date.now()}.${fileExt}`
+      const fileBuffer = await file.arrayBuffer()
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(tempPath, fileBuffer, { contentType: file.type, upsert: true })
+      if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(tempPath)
+      return NextResponse.json({ success: true, temp_url: urlData.publicUrl })
+    }
+
+    // Подтверждение загрузки — сохраняем уже загруженный файл как подписанный
+    if (confirm_upload && temp_file_url) {
+      // Перемещаем из temp в постоянное хранилище
+      const fileExt = temp_file_name.split('.').pop()
+      const finalPath = `signed/${contract_id}/${Date.now()}.${fileExt}`
+      const tempPath = temp_file_url.split('/contracts/')[1]
+
+      // Копируем файл
+      const { error: copyError } = await supabase.storage
+        .from('contracts')
+        .copy(tempPath, finalPath)
+
+      if (copyError) {
+        // Если copy не работает — скачиваем и перезаливаем
+        const fileRes = await fetch(temp_file_url)
+        const fileBuffer = await fileRes.arrayBuffer()
+        await supabase.storage.from('contracts').upload(finalPath, fileBuffer, { upsert: true })
+      }
+
+      // Удаляем временный файл
+      await supabase.storage.from('contracts').remove([tempPath])
+
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(finalPath)
+      const finalUrl = urlData.publicUrl
+
+      // Сохраняем в БД
+      await supabase.from('signed_documents').insert({
+        contract_id,
+        file_url: finalUrl,
+        file_name: temp_file_name,
+        uploaded_by_name: user_name,
+        uploaded_by_bitrix_id: userId,
+        signed_date: formData.get('signed_date') || null,
+        has_discrepancies,
+        discrepancy_comment: has_discrepancies ? discrepancy_comment : null,
+      })
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: has_discrepancies ? 'Загружен подписанный документ с расхождениями' : 'Загружен подписанный документ',
+        details: has_discrepancies
+          ? `Расхождения: ${discrepancy_summary}. Причина загрузки: ${discrepancy_comment}`
+          : `Файл: ${temp_file_name}`,
+        user_name: user_name ?? 'Пользователь',
+      })
+
+      // Обновляем статус договора
+      const { data: currentDocs } = await supabase
+        .from('signed_documents')
+        .select('id')
+        .eq('contract_id', contract_id)
+
+      const docsCount = (currentDocs?.length ?? 0)
+      const newStatus = docsCount >= 2 ? 'подписан' : 'загружен_частично'
+      await supabase.from('contracts').update({ status: newStatus }).eq('id', contract_id)
+
+      return NextResponse.json({ success: true })
+    }
+
+    // Если только обновление статуса — файл не нужен
+    if (!status_only && !file) {
+      return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
+    }
+
+    // Получаем контракт
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .select('id, status, author_bitrix_id, number')
+      .eq('id', contract_id)
+      .single()
+
+    if (contractError || !contract) {
+      return NextResponse.json({ error: `Документ не найден: ${contractError?.message ?? 'нет данных'}` }, { status: 404 })
+    }
+
+    // Извлекаем префикс компании из номера документа (ТХ-ДОГ-2026/... → ТХ)
+    const companyPrefix = contract.number?.split('-')[0] ?? ''
+
+    // Получаем инициатора согласования
+    const { data: session } = await supabase
+      .from('approval_sessions')
+      .select('initiated_by_bitrix_id')
+      .eq('contract_id', contract_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    const initiatorId = session?.initiated_by_bitrix_id ?? null
+
+    // Проверяем права
+    if (!canUploadSigned(userId, contract.author_bitrix_id, initiatorId, companyPrefix)) {
+      return NextResponse.json({ error: 'Нет прав для загрузки подписанного документа' }, { status: 403 })
+    }
+
+    // Если только обновление статуса без загрузки файла — делаем это сразу
+    if (status_only && confirm_all) {
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'подписан',
+          signed_at: new Date().toISOString(),
+          signed_by_name: user_name,
+          signed_by_bitrix_id: userId,
+        })
+        .eq('id', contract_id)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Все подписанные документы загружены',
+        details: 'Статус изменён на "Подписанные документы загружены"',
+        user_name: user_name || 'Система',
+      })
+
+      // Уведомляем автора и gc_manager
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        // Получаем участников последней сессии согласования
+        const { data: lastSession } = await supabase
+          .from('approval_sessions')
+          .select('id')
+          .eq('contract_id', contract_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        let participantIds: number[] = []
+        if (lastSession) {
+          const { data: participantsData } = await supabase
+            .from('approval_participants')
+            .select('bitrix_user_id')
+            .eq('session_id', lastSession.id)
+            .not('bitrix_user_id', 'is', null)
+          participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        }
+
+        const gcManagerIds = [1, 246, 504]
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+          ...participantIds,
+        ])]
+        await sendBitrixNotify({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+        
+      }
+
+      return NextResponse.json({ success: true, status: 'подписан' })
+    }
+
+    // Транслитерация имени файла
+    const safeFileName = file.name
+      .replace(/№/g, 'N')
+      .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
+      const map: Record<string, string> = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+        'э':'e','ю':'yu','я':'ya',' ':'_',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
+        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
+        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
+        'Э':'E','Ю':'Yu','Я':'Ya'
+      }
+      return map[char] ?? '_'
+    })
+
+    const filePath = `signed/${contract_id}/${Date.now()}_${safeFileName}`
+    const arrayBuffer = await file.arrayBuffer()
+
+    // Загружаем файл в Storage
+    const { error: uploadError } = await supabase.storage
+      .from('contracts')
+      .upload(filePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('contracts')
+      .getPublicUrl(filePath)
+
+    // Сохраняем запись в БД
+    const { error: dbError } = await supabase
+      .from('signed_documents')
+      .insert({
+        contract_id,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        uploaded_by_name: user_name,
+        uploaded_by_bitrix_id: userId,
+      })
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    // Если только обновление статуса без загрузки файла
+    if (status_only && confirm_all) {
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'подписан',
+          signed_at: new Date().toISOString(),
+          signed_by_name: user_name,
+          signed_by_bitrix_id: userId,
+        })
+        .eq('id', contract_id)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Все подписанные документы загружены',
+        details: 'Статус изменён на "Подписанные документы загружены"',
+        user_name: user_name || 'Система',
+      })
+
+      // Уведомляем автора и gc_manager
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number, author_bitrix_id')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        const gcManagerIds = [1, 246, 504]
+        const recipients = [...new Set([
+          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
+          ...gcManagerIds,
+        ])]
+        await sendBitrixNotify({
+          recipients,
+          type: 'documents_uploaded',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
+        
+      }
+
+      return NextResponse.json({ success: true, status: 'подписан' })
+    }
+
+    // Определяем новый статус
+    let newStatus = 'загружен_частично'
+    let logAction = 'Загружен подписанный экземпляр'
+
+    if (confirm_all) {
+      newStatus = 'подписан'
+      logAction = 'Все подписанные документы загружены'
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'подписан',
+          signed_at: new Date().toISOString(),
+          signed_by_name: user_name,
+          signed_by_bitrix_id: userId,
+        })
+        .eq('id', contract_id)
+    } else {
+      await supabase
+        .from('contracts')
+        .update({ status: 'загружен_частично' })
+        .eq('id', contract_id)
+    }
+
+    // Записываем в лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: logAction,
+      details: `Файл: ${file.name}`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true, status: newStatus })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// Удалить подписанный документ
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, file_url, contract_id, user_name, user_bitrix_id } = body
+
+    if (!id || !user_bitrix_id) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    const userId = parseInt(user_bitrix_id)
+
+    // Только admin и gc_manager могут удалять
+    if (!ADMIN_IDS.includes(userId) && !GC_MANAGER_IDS.includes(userId)) {
+      return NextResponse.json({ error: 'Нет прав для удаления' }, { status: 403 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_url) {
+      const filePath = file_url.split('/contracts/')[1]
+      if (filePath) {
+        await supabase.storage.from('contracts').remove([filePath])
+      }
+    }
+
+    // Удаляем запись из БД
+    await supabase.from('signed_documents').delete().eq('id', id)
+
+    // Проверяем остались ли ещё файлы
+    const { count } = await supabase
+      .from('signed_documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('contract_id', contract_id)
+
+    // Если файлов не осталось — возвращаем статус согласован
+    if (count === 0) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Удалён подписанный экземпляр',
+      details: '',
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/support-requests/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -5578,6 +6025,238 @@ export async function DELETE(
 }
 
 ================
+File: app/api/counterparties/check-cache/route.ts
+================
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, { headers: { ...CORS, 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } })
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const inns = request.nextUrl.searchParams.get('inns')
+    if (!inns) return NextResponse.json({ risks: {} }, { headers: CORS })
+
+    const innList = inns.split(',').filter(Boolean).slice(0, 100)
+
+    const { data } = await supabase
+      .from('counterparty_checks')
+      .select('inn, risk_level, expires_at')
+      .in('inn', innList)
+      .gt('expires_at', new Date().toISOString())
+      .order('checked_at', { ascending: false })
+
+    // Берём последний актуальный результат по каждому ИНН
+    const risks: Record<string, string> = {}
+    for (const row of data ?? []) {
+      if (!risks[row.inn]) risks[row.inn] = row.risk_level
+    }
+
+    return NextResponse.json({ risks }, { headers: CORS })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
+  }
+}
+
+================
+File: app/api/counterparties/check/route.ts
+================
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const DADATA_API_KEY = process.env.DADATA_API_KEY!
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, { headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } })
+}
+
+// Проверка через DaData
+async function checkDadata(inn: string) {
+  try {
+    const res = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${DADATA_API_KEY}` },
+      body: JSON.stringify({ query: inn, count: 1 }),
+    })
+    const data = await res.json()
+    const company = data.suggestions?.[0]?.data
+    if (!company) return { found: false }
+    return {
+      found: true,
+      name: company.name?.short_with_opf ?? company.name?.full_with_opf,
+      status: company.state?.status, // ACTIVE, LIQUIDATING, LIQUIDATED, BANKRUPT, REORGANIZING
+      status_date: company.state?.actuality_date,
+      director: company.management?.name,
+      director_post: company.management?.post,
+      address: company.address?.value,
+      registration_date: company.state?.registration_date,
+      capital: company.finance?.ustavcap,
+    }
+  } catch { return { found: false, error: 'Ошибка DaData' } }
+}
+
+// Проверка через ФССП
+async function checkFSSP(inn: string, name: string) {
+  try {
+    const res = await fetch(`https://api-ip.fssprus.ru/api/v1.0/search?type=ip&query=${encodeURIComponent(name)}&region=0`, {
+      headers: { 'Accept': 'application/json' },
+    })
+    if (!res.ok) return { found: false, count: 0 }
+    const data = await res.json()
+    const items = data.response?.result ?? []
+    const total = data.response?.total ?? items.length
+    return {
+      found: total > 0,
+      count: total,
+      items: items.slice(0, 3).map((i: Record<string, string>) => ({
+        subject: i.name,
+        amount: i.amount,
+        details: i.details,
+      })),
+    }
+  } catch { return { found: false, count: 0, error: 'Ошибка ФССП' } }
+}
+
+// Проверка банкротства через ЕФРСБ
+async function checkBankrupt(inn: string) {
+  try {
+    const res = await fetch(`https://bankrot.fedresurs.ru/api/v1/companies?inn=${inn}`, {
+      headers: { 'Accept': 'application/json' },
+    })
+    if (!res.ok) return { found: false }
+    const data = await res.json()
+    const items = data.data ?? []
+    return {
+      found: items.length > 0,
+      count: items.length,
+      items: items.slice(0, 2).map((i: Record<string, string>) => ({
+        status: i.publisherStatus,
+        case: i.caseNumber,
+        date: i.publishDate,
+      })),
+    }
+  } catch { return { found: false, error: 'Ошибка ЕФРСБ' } }
+}
+
+// Проверка реестра недобросовестных поставщиков (РНП ФАС)
+async function checkRNP(inn: string) {
+  try {
+    const res = await fetch(`https://rnp.fas.gov.ru/api/v1/violations?inn=${inn}`, {
+      headers: { 'Accept': 'application/json' },
+    })
+    if (!res.ok) return { found: false }
+    const data = await res.json()
+    const items = data.data ?? []
+    return {
+      found: items.length > 0,
+      count: items.length,
+      items: items.slice(0, 2).map((i: Record<string, string>) => ({
+        name: i.supplierName,
+        reason: i.reason,
+        date: i.inclusionDate,
+        expires: i.exclusionDate,
+      })),
+    }
+  } catch { return { found: false, error: 'Ошибка РНП' } }
+}
+
+// Определяем уровень риска
+function calcRiskLevel(dadata: Record<string, unknown>, fssp: Record<string, unknown>, bankrupt: Record<string, unknown>, rnp: Record<string, unknown>): 'low' | 'medium' | 'high' {
+  if (rnp.found || bankrupt.found) return 'high'
+  const badStatus = ['LIQUIDATING', 'LIQUIDATED', 'BANKRUPT', 'REORGANIZING']
+  if (dadata.status && badStatus.includes(dadata.status as string)) return 'high'
+  if (fssp.found && (fssp.count as number) > 3) return 'high'
+  if (fssp.found || dadata.status === 'REORGANIZING') return 'medium'
+  return 'low'
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { inn, counterparty_id, name } = await request.json()
+    if (!inn) return NextResponse.json({ error: 'ИНН обязателен' }, { status: 400, headers: CORS })
+
+    // Проверяем кэш
+    const { data: cached } = await supabase
+      .from('counterparty_checks')
+      .select('*')
+      .eq('inn', inn)
+      .gt('expires_at', new Date().toISOString())
+      .order('checked_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (cached) {
+      return NextResponse.json({ ...cached, from_cache: true }, { headers: CORS })
+    }
+
+    // Запускаем все проверки параллельно
+    const [dadata, fssp, bankrupt, rnp] = await Promise.all([
+      checkDadata(inn),
+      checkFSSP(inn, name ?? inn),
+      checkBankrupt(inn),
+      checkRNP(inn),
+    ])
+
+    const risk_level = calcRiskLevel(
+      dadata as Record<string, unknown>,
+      fssp as Record<string, unknown>,
+      bankrupt as Record<string, unknown>,
+      rnp as Record<string, unknown>
+    )
+
+    // Формируем краткое резюме
+    const issues: string[] = []
+    if (rnp.found) issues.push(`включён в РНП ФАС (${rnp.count} записей)`)
+    if (bankrupt.found) issues.push(`банкротство (${bankrupt.count} дел)`)
+    if (fssp.found) issues.push(`исполнительные производства (${fssp.count})`)
+    const badStatus: Record<string, string> = { LIQUIDATING: 'в процессе ликвидации', LIQUIDATED: 'ликвидирован', BANKRUPT: 'банкрот', REORGANIZING: 'в реорганизации' }
+    if (dadata.status && badStatus[dadata.status as string]) issues.push(badStatus[dadata.status as string])
+
+    const summary = issues.length > 0
+      ? `Выявлены риски: ${issues.join(', ')}.`
+      : 'Серьёзных рисков не выявлено.'
+
+    // Сохраняем в кэш
+    const { data: saved } = await supabase
+      .from('counterparty_checks')
+      .insert({
+        counterparty_id: counterparty_id ?? null,
+        inn,
+        risk_level,
+        dadata,
+        fssp,
+        bankrupt,
+        rnp,
+        summary,
+      })
+      .select()
+      .single()
+
+    return NextResponse.json({ ...(saved ?? {}), from_cache: false }, { headers: CORS })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
+  }
+}
+
+================
 File: app/api/dashboard-legal/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -6016,451 +6695,6 @@ export async function GET(request: NextRequest) {
         'Access-Control-Allow-Origin': '*',
       },
     })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
-File: app/api/signed-documents/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify, sendBitrixMessage } from '@/app/lib/notify'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const ADMIN_IDS = [30, 1148]
-const GC_MANAGER_IDS = [1, 246, 504]
-// Владимиров Вячеслав (Э-К), Виноградова Анна (СПТ, ОС, НПП)
-const SPECIAL_SIGNERS: Record<number, string[]> = {
-  782: ['Э-К'],
-  152: ['СПТ', 'ОС', 'НПП'],
-}
-
-function canUploadSigned(
-  userId: number,
-  authorId: number | null,
-  initiatorId: number | null,
-  companyPrefix: string
-): boolean {
-  if (ADMIN_IDS.includes(userId)) return true
-  if (GC_MANAGER_IDS.includes(userId)) return true
-  if (authorId === userId) return true
-  if (initiatorId === userId) return true
-  for (const [id, prefixes] of Object.entries(SPECIAL_SIGNERS)) {
-    if (parseInt(id) === userId && prefixes.includes(companyPrefix)) return true
-  }
-  return false
-}
-
-// Получить список подписанных документов
-export async function GET(request: NextRequest) {
-  const contract_id = request.nextUrl.searchParams.get('contract_id')
-  if (!contract_id) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from('signed_documents')
-    .select('*')
-    .eq('contract_id', contract_id)
-    .order('created_at')
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ documents: data ?? [] })
-}
-
-// Загрузить подписанный документ
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const contract_id = formData.get('contract_id') as string
-    const user_name = formData.get('user_name') as string
-    const user_bitrix_id = formData.get('user_bitrix_id') as string
-    const confirm_all = formData.get('confirm_all') === 'true'
-
-    if (!contract_id || !user_bitrix_id) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    const userId = parseInt(user_bitrix_id)
-    const status_only = formData.get('status_only') === 'true'
-    const temp_upload = formData.get('temp_upload') === 'true'
-    const confirm_upload = formData.get('confirm_upload') === 'true'
-    const temp_file_url = formData.get('temp_file_url') as string
-    const temp_file_name = formData.get('temp_file_name') as string
-    const has_discrepancies = formData.get('has_discrepancies') === 'true'
-    const discrepancy_comment = formData.get('discrepancy_comment') as string
-    const discrepancy_summary = formData.get('discrepancy_summary') as string
-
-    // Временная загрузка — просто сохраняем файл и возвращаем URL
-    if (temp_upload && file) {
-      const fileExt = file.name.split('.').pop()
-      const tempPath = `temp/${contract_id}/${Date.now()}.${fileExt}`
-      const fileBuffer = await file.arrayBuffer()
-      const { error: uploadError } = await supabase.storage
-        .from('contracts')
-        .upload(tempPath, fileBuffer, { contentType: file.type, upsert: true })
-      if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
-      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(tempPath)
-      return NextResponse.json({ success: true, temp_url: urlData.publicUrl })
-    }
-
-    // Подтверждение загрузки — сохраняем уже загруженный файл как подписанный
-    if (confirm_upload && temp_file_url) {
-      // Перемещаем из temp в постоянное хранилище
-      const fileExt = temp_file_name.split('.').pop()
-      const finalPath = `signed/${contract_id}/${Date.now()}.${fileExt}`
-      const tempPath = temp_file_url.split('/contracts/')[1]
-
-      // Копируем файл
-      const { error: copyError } = await supabase.storage
-        .from('contracts')
-        .copy(tempPath, finalPath)
-
-      if (copyError) {
-        // Если copy не работает — скачиваем и перезаливаем
-        const fileRes = await fetch(temp_file_url)
-        const fileBuffer = await fileRes.arrayBuffer()
-        await supabase.storage.from('contracts').upload(finalPath, fileBuffer, { upsert: true })
-      }
-
-      // Удаляем временный файл
-      await supabase.storage.from('contracts').remove([tempPath])
-
-      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(finalPath)
-      const finalUrl = urlData.publicUrl
-
-      // Сохраняем в БД
-      await supabase.from('signed_documents').insert({
-        contract_id,
-        file_url: finalUrl,
-        file_name: temp_file_name,
-        uploaded_by_name: user_name,
-        uploaded_by_bitrix_id: userId,
-        signed_date: formData.get('signed_date') || null,
-        has_discrepancies,
-        discrepancy_comment: has_discrepancies ? discrepancy_comment : null,
-      })
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: has_discrepancies ? 'Загружен подписанный документ с расхождениями' : 'Загружен подписанный документ',
-        details: has_discrepancies
-          ? `Расхождения: ${discrepancy_summary}. Причина загрузки: ${discrepancy_comment}`
-          : `Файл: ${temp_file_name}`,
-        user_name: user_name ?? 'Пользователь',
-      })
-
-      // Обновляем статус договора
-      const { data: currentDocs } = await supabase
-        .from('signed_documents')
-        .select('id')
-        .eq('contract_id', contract_id)
-
-      const docsCount = (currentDocs?.length ?? 0)
-      const newStatus = docsCount >= 2 ? 'подписан' : 'загружен_частично'
-      await supabase.from('contracts').update({ status: newStatus }).eq('id', contract_id)
-
-      return NextResponse.json({ success: true })
-    }
-
-    // Если только обновление статуса — файл не нужен
-    if (!status_only && !file) {
-      return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
-    }
-
-    // Получаем контракт
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .select('id, status, author_bitrix_id, number')
-      .eq('id', contract_id)
-      .single()
-
-    if (contractError || !contract) {
-      return NextResponse.json({ error: `Документ не найден: ${contractError?.message ?? 'нет данных'}` }, { status: 404 })
-    }
-
-    // Извлекаем префикс компании из номера документа (ТХ-ДОГ-2026/... → ТХ)
-    const companyPrefix = contract.number?.split('-')[0] ?? ''
-
-    // Получаем инициатора согласования
-    const { data: session } = await supabase
-      .from('approval_sessions')
-      .select('initiated_by_bitrix_id')
-      .eq('contract_id', contract_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    const initiatorId = session?.initiated_by_bitrix_id ?? null
-
-    // Проверяем права
-    if (!canUploadSigned(userId, contract.author_bitrix_id, initiatorId, companyPrefix)) {
-      return NextResponse.json({ error: 'Нет прав для загрузки подписанного документа' }, { status: 403 })
-    }
-
-    // Если только обновление статуса без загрузки файла — делаем это сразу
-    if (status_only && confirm_all) {
-      await supabase
-        .from('contracts')
-        .update({
-          status: 'подписан',
-          signed_at: new Date().toISOString(),
-          signed_by_name: user_name,
-          signed_by_bitrix_id: userId,
-        })
-        .eq('id', contract_id)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Все подписанные документы загружены',
-        details: 'Статус изменён на "Подписанные документы загружены"',
-        user_name: user_name || 'Система',
-      })
-
-      // Уведомляем автора и gc_manager
-      const { data: contractData } = await supabase
-        .from('contracts')
-        .select('title, number, author_bitrix_id')
-        .eq('id', contract_id)
-        .single()
-
-      if (contractData) {
-        // Получаем участников последней сессии согласования
-        const { data: lastSession } = await supabase
-          .from('approval_sessions')
-          .select('id')
-          .eq('contract_id', contract_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
-
-        let participantIds: number[] = []
-        if (lastSession) {
-          const { data: participantsData } = await supabase
-            .from('approval_participants')
-            .select('bitrix_user_id')
-            .eq('session_id', lastSession.id)
-            .not('bitrix_user_id', 'is', null)
-          participantIds = participantsData?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
-        }
-
-        const gcManagerIds = [1, 246, 504]
-        const recipients = [...new Set([
-          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
-          ...gcManagerIds,
-          ...participantIds,
-        ])]
-        await sendBitrixNotify({
-          recipients,
-          type: 'documents_uploaded',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
-        
-      }
-
-      return NextResponse.json({ success: true, status: 'подписан' })
-    }
-
-    // Транслитерация имени файла
-    const safeFileName = file.name
-      .replace(/№/g, 'N')
-      .replace(/[а-яёА-ЯЁ\s]/g, (char) => {
-      const map: Record<string, string> = {
-        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-        'й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-        'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-        'э':'e','ю':'yu','я':'ya',' ':'_',
-        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I',
-        'Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T',
-        'У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'',
-        'Э':'E','Ю':'Yu','Я':'Ya'
-      }
-      return map[char] ?? '_'
-    })
-
-    const filePath = `signed/${contract_id}/${Date.now()}_${safeFileName}`
-    const arrayBuffer = await file.arrayBuffer()
-
-    // Загружаем файл в Storage
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
-
-    // Сохраняем запись в БД
-    const { error: dbError } = await supabase
-      .from('signed_documents')
-      .insert({
-        contract_id,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        uploaded_by_name: user_name,
-        uploaded_by_bitrix_id: userId,
-      })
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    // Если только обновление статуса без загрузки файла
-    if (status_only && confirm_all) {
-      await supabase
-        .from('contracts')
-        .update({
-          status: 'подписан',
-          signed_at: new Date().toISOString(),
-          signed_by_name: user_name,
-          signed_by_bitrix_id: userId,
-        })
-        .eq('id', contract_id)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Все подписанные документы загружены',
-        details: 'Статус изменён на "Подписанные документы загружены"',
-        user_name: user_name || 'Система',
-      })
-
-      // Уведомляем автора и gc_manager
-      const { data: contractData } = await supabase
-        .from('contracts')
-        .select('title, number, author_bitrix_id')
-        .eq('id', contract_id)
-        .single()
-
-      if (contractData) {
-        const gcManagerIds = [1, 246, 504]
-        const recipients = [...new Set([
-          ...(contractData.author_bitrix_id ? [contractData.author_bitrix_id] : []),
-          ...gcManagerIds,
-        ])]
-        await sendBitrixNotify({
-          recipients,
-          type: 'documents_uploaded',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
-        
-      }
-
-      return NextResponse.json({ success: true, status: 'подписан' })
-    }
-
-    // Определяем новый статус
-    let newStatus = 'загружен_частично'
-    let logAction = 'Загружен подписанный экземпляр'
-
-    if (confirm_all) {
-      newStatus = 'подписан'
-      logAction = 'Все подписанные документы загружены'
-
-      await supabase
-        .from('contracts')
-        .update({
-          status: 'подписан',
-          signed_at: new Date().toISOString(),
-          signed_by_name: user_name,
-          signed_by_bitrix_id: userId,
-        })
-        .eq('id', contract_id)
-    } else {
-      await supabase
-        .from('contracts')
-        .update({ status: 'загружен_частично' })
-        .eq('id', contract_id)
-    }
-
-    // Записываем в лог
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: logAction,
-      details: `Файл: ${file.name}`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true, status: newStatus })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-// Удалить подписанный документ
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, file_url, contract_id, user_name, user_bitrix_id } = body
-
-    if (!id || !user_bitrix_id) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    const userId = parseInt(user_bitrix_id)
-
-    // Только admin и gc_manager могут удалять
-    if (!ADMIN_IDS.includes(userId) && !GC_MANAGER_IDS.includes(userId)) {
-      return NextResponse.json({ error: 'Нет прав для удаления' }, { status: 403 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_url) {
-      const filePath = file_url.split('/contracts/')[1]
-      if (filePath) {
-        await supabase.storage.from('contracts').remove([filePath])
-      }
-    }
-
-    // Удаляем запись из БД
-    await supabase.from('signed_documents').delete().eq('id', id)
-
-    // Проверяем остались ли ещё файлы
-    const { count } = await supabase
-      .from('signed_documents')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contract_id)
-
-    // Если файлов не осталось — возвращаем статус согласован
-    if (count === 0) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', contract_id)
-    }
-
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: 'Удалён подписанный экземпляр',
-      details: '',
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -6929,6 +7163,201 @@ export async function GET(request: NextRequest) {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/api/ai-document-compare/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!
+
+// Извлекаем текст из файла по URL
+async function extractText(fileUrl: string, fileName: string): Promise<string> {
+  const response = await fetch(fileUrl)
+  const buffer = await response.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (fileName.toLowerCase().endsWith('.pdf')) {
+    // Возвращаем base64 для прямой передачи в Gemini
+    return `__PDF_BASE64__${Buffer.from(bytes).toString('base64')}`
+  }
+
+  if (fileName.toLowerCase().endsWith('.docx')) {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(bytes)
+    const xml = await zip.file('word/document.xml')?.async('text') ?? ''
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+  return ''
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, signed_file_url, signed_file_name, compare_file_id, compare_file_type } = body
+
+    // Получаем URL файла для сравнения
+    let compareFileUrl = ''
+    let compareFileName = ''
+
+    if (compare_file_type === 'version') {
+      const { data } = await supabase.from('versions').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    } else if (compare_file_type === 'attachment') {
+      const { data } = await supabase.from('document_attachments').select('file_url, file_name').eq('id', compare_file_id).single()
+      compareFileUrl = data?.file_url ?? ''
+      compareFileName = data?.file_name ?? ''
+    }
+
+    if (!compareFileUrl) {
+      return NextResponse.json({ error: 'Файл для сравнения не найден' }, { status: 404 })
+    }
+
+    // Извлекаем текст из обоих документов параллельно
+    const [signedText, compareText] = await Promise.all([
+      extractText(signed_file_url, signed_file_name),
+      extractText(compareFileUrl, compareFileName),
+    ])
+
+    if (!signedText || !compareText) {
+      return NextResponse.json({
+        error: `Не удалось извлечь текст. Подписанный: ${signedText.length} симв., Согласованный: ${compareText.length} симв.`
+      }, { status: 400 })
+    }
+
+    // Формируем контент для AI
+    const isPdfBase64 = signedText.startsWith('__PDF_BASE64__')
+    const pdfBase64 = isPdfBase64 ? signedText.replace('__PDF_BASE64__', '') : null
+
+    const userContent = isPdfBase64
+      ? [
+          {
+            type: 'text',
+            text: `Сравни два документа по содержанию. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n\n${compareText.slice(0, 15000)}\n\nПОДПИСАННЫЙ ДОКУМЕНТ — смотри прикреплённый PDF файл. Верни ТОЛЬКО JSON без markdown блоков.`
+          },
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: pdfBase64
+            }
+          }
+        ]
+      : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
+
+    // AI сравнение — используем Claude через OpenRouter (лучше следует JSON формату)
+    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-sonnet-4-5',
+        messages: [
+          {
+            role: 'system',
+            content: `Ты юридический эксперт-юрист с опытом проверки договоров.
+
+Твоя задача: определить есть ли ЮРИДИЧЕСКИ ЗНАЧИМЫЕ расхождения между согласованным договором (DOCX) и подписанным договором (PDF).
+
+ЮРИДИЧЕСКИ ЗНАЧИМОЕ РАСХОЖДЕНИЕ — это когда изменяется смысл условия:
+- изменена сумма, процент, срок, количество дней
+- изменено право или обязанность стороны (было "обязан" стало "вправе")
+- добавлен или удалён целый пункт с условием
+- изменено наименование стороны или предмет договора
+
+НЕ ЯВЛЯЕТСЯ РАСХОЖДЕНИЕМ:
+- разные пробелы, переносы строк, форматирование
+- пустые строки для подписей "___________"
+- незаполненные поля реквизитов (факс, банк контрагента)
+- колонтитулы, нумерация страниц
+- текст из соседнего пункта попавший из-за разрыва страницы PDF
+- одно и то же предложение написанное чуть иначе но с тем же смыслом
+- разница в одном-двух словах не меняющая смысл
+
+Если все условия договора совпадают по смыслу — это ИДЕНТИЧНЫЕ документы, даже если есть технические отличия форматирования.
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{"match":true/false,"summary":"Краткий вывод","discrepancies":[{"section":"номер пункта","type":"изменение/добавление/удаление","agreed_text":"точный текст из согласованного","signed_text":"точный текст из подписанного","severity":"высокая/средняя/низкая"}]}`
+          },
+          {
+            role: 'user',
+            content: userContent
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+      })
+    })
+
+    const aiData = await aiRes.json()
+    const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+
+    if (!rawContent) {
+      return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
+    }
+
+    // убрано логирование
+
+    let result
+    try {
+      // Агрессивная очистка от markdown
+      let clean = rawContent
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        .replace(/^\s*json\s*/i, '')
+        .trim()
+
+      // Находим первый JSON объект в тексте
+      const startIdx = clean.indexOf('{')
+      const endIdx = clean.lastIndexOf('}')
+      if (startIdx !== -1 && endIdx !== -1) {
+        clean = clean.slice(startIdx, endIdx + 1)
+      }
+
+      result = JSON.parse(clean)
+
+      // Проверяем структуру
+      if (typeof result.match !== 'boolean') {
+        result.match = false
+      }
+      if (!Array.isArray(result.discrepancies)) {
+        result.discrepancies = []
+      }
+    } catch {
+      // Если парсинг не удался — пробуем извлечь match из текста
+      const isMatch = rawContent.toLowerCase().includes('"match": true') ||
+                      rawContent.toLowerCase().includes('"match":true')
+      return NextResponse.json({
+        success: true,
+        result: {
+          match: isMatch,
+          summary: isMatch
+            ? 'Документы соответствуют друг другу'
+            : 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
+          discrepancies: [],
+        }
+      })
+    }
+
+    return NextResponse.json({ success: true, result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -7446,201 +7875,6 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ analyses: data ?? [] })
-}
-
-================
-File: app/api/ai-document-compare/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!
-
-// Извлекаем текст из файла по URL
-async function extractText(fileUrl: string, fileName: string): Promise<string> {
-  const response = await fetch(fileUrl)
-  const buffer = await response.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-
-  if (fileName.toLowerCase().endsWith('.pdf')) {
-    // Возвращаем base64 для прямой передачи в Gemini
-    return `__PDF_BASE64__${Buffer.from(bytes).toString('base64')}`
-  }
-
-  if (fileName.toLowerCase().endsWith('.docx')) {
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(bytes)
-    const xml = await zip.file('word/document.xml')?.async('text') ?? ''
-    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-  }
-
-  return ''
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { contract_id, signed_file_url, signed_file_name, compare_file_id, compare_file_type } = body
-
-    // Получаем URL файла для сравнения
-    let compareFileUrl = ''
-    let compareFileName = ''
-
-    if (compare_file_type === 'version') {
-      const { data } = await supabase.from('versions').select('file_url, file_name').eq('id', compare_file_id).single()
-      compareFileUrl = data?.file_url ?? ''
-      compareFileName = data?.file_name ?? ''
-    } else if (compare_file_type === 'attachment') {
-      const { data } = await supabase.from('document_attachments').select('file_url, file_name').eq('id', compare_file_id).single()
-      compareFileUrl = data?.file_url ?? ''
-      compareFileName = data?.file_name ?? ''
-    }
-
-    if (!compareFileUrl) {
-      return NextResponse.json({ error: 'Файл для сравнения не найден' }, { status: 404 })
-    }
-
-    // Извлекаем текст из обоих документов параллельно
-    const [signedText, compareText] = await Promise.all([
-      extractText(signed_file_url, signed_file_name),
-      extractText(compareFileUrl, compareFileName),
-    ])
-
-    if (!signedText || !compareText) {
-      return NextResponse.json({
-        error: `Не удалось извлечь текст. Подписанный: ${signedText.length} симв., Согласованный: ${compareText.length} симв.`
-      }, { status: 400 })
-    }
-
-    // Формируем контент для AI
-    const isPdfBase64 = signedText.startsWith('__PDF_BASE64__')
-    const pdfBase64 = isPdfBase64 ? signedText.replace('__PDF_BASE64__', '') : null
-
-    const userContent = isPdfBase64
-      ? [
-          {
-            type: 'text',
-            text: `Сравни два документа по содержанию. СОГЛАСОВАННЫЙ ДОКУМЕНТ (текст из DOCX):\n\n${compareText.slice(0, 15000)}\n\nПОДПИСАННЫЙ ДОКУМЕНТ — смотри прикреплённый PDF файл. Верни ТОЛЬКО JSON без markdown блоков.`
-          },
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: pdfBase64
-            }
-          }
-        ]
-      : `СОГЛАСОВАННЫЙ ДОКУМЕНТ (DOCX):\n${compareText.slice(0, 12000)}\n\n---\n\nПОДПИСАННЫЙ ДОКУМЕНТ:\n${signedText.slice(0, 12000)}`
-
-    // AI сравнение — используем Claude через OpenRouter (лучше следует JSON формату)
-    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'Epotos-YurIntel',
-      },
-      body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4-5',
-        messages: [
-          {
-            role: 'system',
-            content: `Ты юридический эксперт-юрист с опытом проверки договоров.
-
-Твоя задача: определить есть ли ЮРИДИЧЕСКИ ЗНАЧИМЫЕ расхождения между согласованным договором (DOCX) и подписанным договором (PDF).
-
-ЮРИДИЧЕСКИ ЗНАЧИМОЕ РАСХОЖДЕНИЕ — это когда изменяется смысл условия:
-- изменена сумма, процент, срок, количество дней
-- изменено право или обязанность стороны (было "обязан" стало "вправе")
-- добавлен или удалён целый пункт с условием
-- изменено наименование стороны или предмет договора
-
-НЕ ЯВЛЯЕТСЯ РАСХОЖДЕНИЕМ:
-- разные пробелы, переносы строк, форматирование
-- пустые строки для подписей "___________"
-- незаполненные поля реквизитов (факс, банк контрагента)
-- колонтитулы, нумерация страниц
-- текст из соседнего пункта попавший из-за разрыва страницы PDF
-- одно и то же предложение написанное чуть иначе но с тем же смыслом
-- разница в одном-двух словах не меняющая смысл
-
-Если все условия договора совпадают по смыслу — это ИДЕНТИЧНЫЕ документы, даже если есть технические отличия форматирования.
-
-Верни ТОЛЬКО валидный JSON без markdown:
-{"match":true/false,"summary":"Краткий вывод","discrepancies":[{"section":"номер пункта","type":"изменение/добавление/удаление","agreed_text":"точный текст из согласованного","signed_text":"точный текст из подписанного","severity":"высокая/средняя/низкая"}]}`
-          },
-          {
-            role: 'user',
-            content: userContent
-          }
-        ],
-        max_tokens: 4000,
-        temperature: 0.1,
-      })
-    })
-
-    const aiData = await aiRes.json()
-    const rawContent = aiData.choices?.[0]?.message?.content ?? ''
-
-    if (!rawContent) {
-      return NextResponse.json({ error: 'AI не вернул ответ' }, { status: 500 })
-    }
-
-    // убрано логирование
-
-    let result
-    try {
-      // Агрессивная очистка от markdown
-      let clean = rawContent
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .replace(/^\s*json\s*/i, '')
-        .trim()
-
-      // Находим первый JSON объект в тексте
-      const startIdx = clean.indexOf('{')
-      const endIdx = clean.lastIndexOf('}')
-      if (startIdx !== -1 && endIdx !== -1) {
-        clean = clean.slice(startIdx, endIdx + 1)
-      }
-
-      result = JSON.parse(clean)
-
-      // Проверяем структуру
-      if (typeof result.match !== 'boolean') {
-        result.match = false
-      }
-      if (!Array.isArray(result.discrepancies)) {
-        result.discrepancies = []
-      }
-    } catch {
-      // Если парсинг не удался — пробуем извлечь match из текста
-      const isMatch = rawContent.toLowerCase().includes('"match": true') ||
-                      rawContent.toLowerCase().includes('"match":true')
-      return NextResponse.json({
-        success: true,
-        result: {
-          match: isMatch,
-          summary: isMatch
-            ? 'Документы соответствуют друг другу'
-            : 'Не удалось разобрать ответ AI. Рекомендуем проверить документы вручную.',
-          discrepancies: [],
-        }
-      })
-    }
-
-    return NextResponse.json({ success: true, result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
 }
 
 
