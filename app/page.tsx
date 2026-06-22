@@ -5,16 +5,14 @@ import PersonalStats from '@/app/components/PersonalStats'
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gray-50 overflow-y-auto">
-      <div className="max-w-6xl mx-auto w-full px-4 pt-6">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-y-auto">
+      <div className="max-w-6xl mx-auto w-full px-4 pt-6 flex-shrink-0">
         <Header />
         <MyDocuments />
         <PersonalStats />
       </div>
-      <div className="max-w-6xl mx-auto w-full px-4 pb-6">
-        <div className="h-[600px]">
-          <ContractsList />
-        </div>
+      <div className="max-w-6xl mx-auto w-full px-4 flex-1 min-h-[400px] pb-4">
+        <ContractsList />
       </div>
     </div>
   )
