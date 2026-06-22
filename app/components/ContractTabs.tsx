@@ -726,7 +726,10 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
 
   const openAddParticipantModal = async () => {
     // Определяем компанию из номера договора
-    const companyPrefix = contract.number.split('-')[0]
+    // Э-К имеет двойной префикс, поэтому используем company_prefix если есть
+    const companyPrefix = contract.company_prefix ?? (
+      contract.number.startsWith('Э-К') ? 'Э-К' : contract.number.split('-')[0]
+    )
     
     // Загружаем участников всех этапов для этой компании
     const stages = ['legal', 'finance', 'accounting', 'director', 'custom']
