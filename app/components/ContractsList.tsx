@@ -339,7 +339,7 @@ export default function ContractsList() {
         <div className="overflow-x-auto">
 <table className="w-full table-fixed">
           <colgroup>
-            <col style={{width: '130px'}} />
+            <col style={{width: '155px'}} />
             <col style={{width: 'auto'}} />
             <col className="hidden md:table-column" style={{width: '160px'}} />
             <col className="hidden lg:table-column" style={{width: '100px'}} />
