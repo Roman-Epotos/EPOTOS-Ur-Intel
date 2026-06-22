@@ -26,6 +26,7 @@ import dynamic from 'next/dynamic'
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { proxyUrl } from '@/app/utils/proxyUrl'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseClient = createClient(
@@ -232,14 +233,22 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     if (!cpUploadFile || !contract.counterparty_id) return
     setCpUploading(true)
     try {
-      const formData = new FormData()
-      formData.append('file', cpUploadFile)
-      formData.append('category', cpUploadCategory)
-      formData.append('uploaded_by_id', user?.id ?? '0')
-      formData.append('uploaded_by_name', user?.name ?? '')
+      const { public_url, file_name } = await uploadFileDirect(
+        cpUploadFile,
+        'counterparty-docs',
+        `${contract.counterparty_id}/${cpUploadCategory}`
+      )
       const res = await fetch(`${baseUrl}/api/counterparties/${contract.counterparty_id}/documents`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: cpUploadCategory,
+          file_name,
+          file_url: public_url,
+          file_type: cpUploadFile.type,
+          uploaded_by_id: user?.id ?? '0',
+          uploaded_by_name: user?.name ?? '',
+        }),
       })
       const data = await res.json()
       if (data.success) {
@@ -248,7 +257,9 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         setCpUploadFile(null)
         setCpUploadCategory('charter')
       }
-    } catch { /* тихо */ }
+    } catch (err) {
+      console.error('Ошибка загрузки:', err)
+    }
     finally { setCpUploading(false) }
   }
 
