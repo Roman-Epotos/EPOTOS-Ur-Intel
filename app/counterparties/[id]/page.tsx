@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { proxyUrl } from '@/app/utils/proxyUrl'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 interface Counterparty {
   id: string
@@ -55,6 +57,7 @@ const baseUrl = 'https://epotos-ur-intel.vercel.app'
 export default function CounterpartyPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { user } = useBitrixAuth()
   const [counterparty, setCounterparty] = useState<Counterparty | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -115,12 +118,22 @@ export default function CounterpartyPage() {
     setUploadingCategory(category)
     setCpDocError('')
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('category', category)
+      const { public_url, file_name } = await uploadFileDirect(
+        file,
+        'counterparty-docs',
+        `${id}/${category}`
+      )
       const res = await fetch(`${baseUrl}/api/counterparties/${id}/documents`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          file_name,
+          file_url: public_url,
+          file_type: file.type,
+          uploaded_by_id: user?.id ?? '0',
+          uploaded_by_name: user?.name ?? '',
+        }),
       })
       const data = await res.json()
       if (data.success) {
@@ -128,6 +141,8 @@ export default function CounterpartyPage() {
       } else {
         setCpDocError(data.error ?? 'Ошибка загрузки')
       }
+    } catch (err) {
+      setCpDocError(err instanceof Error ? err.message : 'Ошибка загрузки')
     } finally {
       setUploadingCategory(null)
     }

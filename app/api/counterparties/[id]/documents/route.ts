@@ -33,13 +33,35 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+    const contentType = request.headers.get('content-type') ?? ''
+
+    // JSON режим — файл уже загружен напрямую в Storage
+    if (contentType.includes('application/json')) {
+      const { category, file_name, file_url, file_type, uploaded_by_id, uploaded_by_name } = await request.json()
+      const { data, error } = await supabase
+        .from('counterparty_documents')
+        .insert({
+          counterparty_id: id,
+          category: category ?? 'other',
+          file_name,
+          file_url,
+          file_type: file_type ?? '',
+          uploaded_by_id: uploaded_by_id ? parseInt(uploaded_by_id) : null,
+          uploaded_by_name: uploaded_by_name ?? null,
+        })
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, document: data })
+    }
+
+    // FormData режим — старый способ (файл маленький)
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const category = formData.get('category') as string ?? 'other'
 
     if (!file) return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
 
-    // Загружаем в Supabase Storage
     const fileExt = file.name.split('.').pop()
     const safeName = file.name
       .replace(/[а-яёА-ЯЁ]/g, (c: string) => {
@@ -69,12 +91,10 @@ export async function POST(
 
     if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
 
-    // Получаем публичный URL
     const { data: urlData } = supabase.storage
       .from('counterparty-docs')
       .getPublicUrl(fileName)
 
-    // Сохраняем в БД
     const { data, error } = await supabase
       .from('counterparty_documents')
       .insert({
