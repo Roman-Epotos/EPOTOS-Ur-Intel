@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
 
 const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
@@ -75,21 +76,15 @@ export default function SignedDocumentUploadModal({
     setError('')
 
     try {
-      // Сначала загружаем файл временно для получения URL
-      const fd = new FormData()
-      fd.append('file', selectedFile)
-      fd.append('contract_id', contractId)
-      fd.append('user_name', userName)
-      fd.append('user_bitrix_id', userBitrixId)
-      fd.append('temp_upload', 'true')
+      // Загружаем файл напрямую в Supabase минуя Vercel
+      const { public_url, file_name } = await uploadFileDirect(
+        selectedFile,
+        'contracts',
+        `temp/${contractId}`
+      )
 
-      const uploadRes = await fetch(`${baseUrl}/api/signed-documents`, { method: 'POST', body: fd })
-      const uploadData = await uploadRes.json()
-
-      if (uploadData.error) { setError(uploadData.error); setStep('select'); return }
-
-      setTempFileUrl(uploadData.temp_url)
-      setTempFileName(selectedFile.name)
+      setTempFileUrl(public_url)
+      setTempFileName(file_name)
 
       // Запускаем AI сравнение
       const compareRes = await fetch(`${baseUrl}/api/ai-document-compare`, {
@@ -97,7 +92,7 @@ export default function SignedDocumentUploadModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contract_id: contractId,
-          signed_file_url: uploadData.temp_url,
+          signed_file_url: public_url,
           signed_file_name: selectedFile.name,
           compare_file_id: compareFileId,
           compare_file_type: compareFileType,
