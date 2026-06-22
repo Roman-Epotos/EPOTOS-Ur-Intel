@@ -107,6 +107,372 @@ Files
 ================================================================
 
 ================
+File: app/api/ai-analysis/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
+async function extractTextFromPdf(fileUrl: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const { extractText } = await import('unpdf')
+    const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
+    return text
+  } catch (err) {
+    console.error('PDF extraction error:', err)
+    return ''
+  }
+}
+
+async function extractTextFromDocx(fileUrl: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl, {
+      headers: { 'Accept': 'application/octet-stream' }
+    })
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    console.log('DOCX buffer size:', buffer.length, 'first bytes:', buffer.slice(0, 4).toString('hex'))
+    const mammoth = await import('mammoth')
+    const result = await mammoth.extractRawText({ buffer })
+    return result.value
+  } catch (err) {
+    console.error('DOCX extraction error:', err)
+    // Попробуем как xlsx если docx не работает
+    try {
+      const response2 = await fetch(fileUrl)
+      const arrayBuffer2 = await response2.arrayBuffer()
+      const buffer2 = Buffer.from(new Uint8Array(arrayBuffer2))
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const XLSX = require('xlsx')
+      const workbook = XLSX.read(buffer2, { type: 'buffer' })
+      const texts: string[] = []
+      workbook.SheetNames.forEach((sheetName: string) => {
+        const sheet = workbook.Sheets[sheetName]
+        const csv = XLSX.utils.sheet_to_csv(sheet)
+        if (csv.trim()) texts.push(csv)
+      })
+      return texts.join('\n')
+    } catch {
+      return ''
+    }
+  }
+}
+
+async function extractTextFromXlsx(fileUrl: string): Promise<string> {
+  try {
+    const response = await fetch(fileUrl)
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const XLSX = require('xlsx')
+    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    const texts: string[] = []
+    workbook.SheetNames.forEach((sheetName: string) => {
+      const sheet = workbook.Sheets[sheetName]
+      const csv = XLSX.utils.sheet_to_csv(sheet)
+      if (csv.trim()) texts.push(`Лист: ${sheetName}\n${csv}`)
+    })
+    return texts.join('\n\n')
+  } catch (err) {
+    console.error('XLSX extraction error:', err)
+    return ''
+  }
+}
+
+async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
+  const prompts: Record<string, string> = {
+    legal_review: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
+
+ВАЖНЫЕ ПРАВИЛА АНАЛИЗА:
+1. Компании ГК ЭПОТОС в роли стороны договора — НЕ являются риском, не упоминай их присутствие как проблему
+2. Пробелы, переносы строк, форматирование текста — НЕ являются юридическими рисками, игнорируй их полностью
+3. Стандартные формулировки типовых договоров — НЕ риск
+4. Анализируй ТОЛЬКО реальные юридические риски: невыгодные условия, дисбаланс ответственности, отсутствие важных защитных условий, неоднозначные формулировки
+
+Текст документа:
+${text.slice(0, 8000)}
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{
+  "red_flags": [
+    {"severity": "high|medium|low", "title": "название риска", "description": "описание проблемы", "recommendation": "рекомендация"}
+  ],
+  "warnings": [
+    {"title": "название", "description": "описание"}
+  ],
+  "positives": [
+    {"title": "название", "description": "описание"}
+  ],
+  "overall_risk": "high|medium|low",
+  "summary": "краткий вывод 2-3 предложения"
+}`,
+
+    passport: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
+
+ВАЖНО: Составь паспорт документа — краткую выжимку ключевых условий. Игнорируй форматирование и пробелы, работай только со смысловым содержанием.
+
+Текст документа:
+${text.slice(0, 8000)}
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{
+  "essence": "суть документа в 2-3 предложениях",
+  "parties": {
+    "our_obligations": ["обязательство 1", "обязательство 2"],
+    "counterparty_obligations": ["обязательство 1", "обязательство 2"]
+  },
+  "key_terms": {
+    "amount": "сумма договора",
+    "payment_terms": "условия оплаты",
+    "start_date": "дата начала",
+    "end_date": "дата окончания",
+    "auto_renewal": "условия пролонгации или отсутствует"
+  },
+  "termination": "условия расторжения",
+  "control_points": ["точка контроля 1", "точка контроля 2"],
+  "attention_zones": ["зона внимания 1", "зона внимания 2"]
+}`,
+
+    document_review: `Ты аналитик документов ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
+
+ВАЖНО: Игнорируй форматирование, пробелы и переносы строк — анализируй только смысловое содержание документа.
+
+Текст документа:
+${text.slice(0, 8000)}
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{
+  "summary": "краткое резюме документа 2-3 предложения",
+  "purpose": "цель документа и какое действие требуется",
+  "attention_points": ["важный момент 1", "важный момент 2"],
+  "recommendations": ["рекомендация 1", "рекомендация 2"],
+  "document_type": "тип документа",
+  "urgency": "high|medium|low"
+}`
+  }
+
+  const prompt = prompts[analysisType]
+  if (!prompt) throw new Error('Неизвестный тип анализа')
+
+  console.log('Calling OpenRouter, prompt length:', prompt.length)
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+        'X-Title': 'Epotos-YurIntel',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4000,
+        temperature: 0.2,
+      }),
+    })
+
+    console.log('OpenRouter response status:', response.status)
+    const data = await response.json()
+    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
+    const content = data.choices?.[0]?.message?.content ?? '{}'
+    const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+
+    try {
+      return JSON.parse(cleaned)
+    } catch {
+      return { error: 'Не удалось распарсить ответ AI', raw: content }
+    }
+  } catch (fetchError) {
+    console.error('OpenRouter fetch error:', fetchError)
+    return { error: 'Ошибка соединения с OpenRouter: ' + String(fetchError) }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { contract_id, version_id, attachment_id, file_url, file_name, analysis_type, user_name } = body
+
+    if (!contract_id || !file_url || !analysis_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    const { data: analysis, error: createError } = await supabase
+      .from('ai_analysis')
+      .insert({
+        contract_id,
+        version_id: version_id ?? null,
+        attachment_id: attachment_id ?? null,
+        type: analysis_type,
+        status: 'processing',
+        model_used: 'google/gemini-2.5-flash',
+      })
+      .select('id')
+      .single()
+
+    if (createError) {
+      return NextResponse.json({ error: createError.message }, { status: 400 })
+    }
+
+    console.log('Starting analysis:', { file_name, analysis_type, file_url: file_url.slice(0, 50) })
+    const fileName = file_name.toLowerCase()
+    let textOrUrl: string
+
+    if (fileName.endsWith('.pdf')) {
+      await supabase
+        .from('ai_analysis')
+        .update({ status: 'error', result_json: { error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' } })
+        .eq('id', analysis.id)
+      return NextResponse.json({ error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' }, { status: 400 })
+    } else if (fileName.endsWith('.doc')) {
+      return NextResponse.json({
+        error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
+      }, { status: 400 })
+    } else if (fileName.endsWith('.docx')) {
+      console.log('DOCX mode - extracting text with mammoth')
+      textOrUrl = await extractTextFromDocx(file_url)
+      console.log('DOCX text length:', textOrUrl.length)
+    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      console.log('XLSX mode - extracting text with xlsx')
+      textOrUrl = await extractTextFromXlsx(file_url)
+      console.log('XLSX text length:', textOrUrl.length)
+    } else {
+      return NextResponse.json({ error: 'Неподдерживаемый формат файла' }, { status: 400 })
+    }
+
+    if (!textOrUrl || (textOrUrl.length < 50 && !textOrUrl.startsWith('__PDF_BASE64__'))) {
+      await supabase
+        .from('ai_analysis')
+        .update({ status: 'error', result_json: { error: 'Не удалось извлечь текст из документа' } })
+        .eq('id', analysis.id)
+      return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
+    }
+
+    let result: object
+    if (false && textOrUrl.startsWith('__PDF_BASE64__')) {
+      // PDF через Claude — временно отключено
+      const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
+      console.log('PDF base64 size:', pdfBase64.length, 'analysis_type:', analysis_type)
+      const systemPrompts: Record<string, string> = {
+        legal_review: 'Ты юридический эксперт ГК ЭПОТОС. Проведи юридический анализ документа. ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К — компании группы, их присутствие не является риском. Верни ТОЛЬКО валидный JSON без markdown: {"red_flags":[{"severity":"high|medium|low","title":"название","description":"описание","recommendation":"рекомендация"}],"warnings":[{"title":"название","description":"описание"}],"positives":[{"title":"название","description":"описание"}],"overall_risk":"high|medium|low","summary":"краткий вывод"}',
+        passport: 'Ты юридический эксперт ГК ЭПОТОС. Составь паспорт документа. Верни ТОЛЬКО валидный JSON без markdown: {"essence":"суть документа","parties":{"our_obligations":["обязательство"],"counterparty_obligations":["обязательство"]},"key_terms":{"amount":"сумма","payment_terms":"условия оплаты","start_date":"дата начала","end_date":"дата окончания","auto_renewal":"пролонгация"},"termination":"условия расторжения","control_points":["точка контроля"],"attention_zones":["зона внимания"]}',
+        document_review: 'Ты аналитик документов ГК ЭПОТОС. Проанализируй документ. Верни ТОЛЬКО валидный JSON без markdown: {"summary":"краткое резюме","purpose":"цель документа","attention_points":["важный момент"],"recommendations":["рекомендация"],"document_type":"тип документа","urgency":"high|medium|low"}'
+      }
+      const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY!}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
+          'X-Title': 'Epotos-YurIntel',
+          'X-Anthropic-Beta': 'pdfs-2024-09-25',
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-sonnet-4-5',
+          messages: [
+            {
+              role: 'system',
+              content: 'Ты юридический эксперт ГК ЭПОТОС. Анализируй документы на русском языке. Возвращай ТОЛЬКО валидный JSON без markdown блоков.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: systemPrompts[analysis_type] ?? systemPrompts.document_review
+                },
+                {
+                  type: 'document',
+                  source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
+                }
+              ]
+            }
+          ],
+          max_tokens: 4000,
+          temperature: 0.2,
+        })
+      })
+      const aiData = await aiRes.json()
+      console.log('Claude PDF response status:', aiRes.status)
+      const rawContent = aiData.choices?.[0]?.message?.content ?? ''
+      console.log('Claude PDF rawContent:', typeof rawContent, String(rawContent).slice(0, 500))
+      try {
+        const clean = rawContent
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*/g, '')
+          .replace(/'''\s*json\s*/gi, '')
+          .replace(/'''\s*/g, '')
+          .trim()
+        const jsonMatch = clean.match(/\{[\s\S]*\}/)
+        result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
+      } catch {
+        result = { error: 'Не удалось разобрать ответ AI', raw: rawContent.slice(0, 300) }
+      }
+    } else {
+      result = await analyzeWithAI(textOrUrl, analysis_type)
+    }
+
+    await supabase
+      .from('ai_analysis')
+      .update({
+        status: 'completed',
+        result_json: result,
+      })
+      .eq('id', analysis.id)
+
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: analysis_type === 'legal_review' ? 'AI Legal Review выполнен' : analysis_type === 'document_review' ? 'AI Анализ документа выполнен' : 'AI Паспорт документа создан',
+        details: `Анализ выполнен моделью openrouter/auto`,
+        user_name: user_name ?? 'Система',
+      })
+
+    return NextResponse.json({ success: true, analysis_id: analysis.id, result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const contractId = request.nextUrl.searchParams.get('contract_id')
+  const type = request.nextUrl.searchParams.get('type')
+
+  if (!contractId) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  let query = supabase
+    .from('ai_analysis')
+    .select('*')
+    .eq('contract_id', contractId)
+    .order('created_at', { ascending: false })
+
+  if (type) {
+    query = query.eq('type', type)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ analyses: data ?? [] })
+}
+
+================
 File: app/api/ai-chat/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -2978,63 +3344,6 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/counterparties/upload-url/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const CORS = { 'Access-Control-Allow-Origin': '*' }
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { bucket, path } = await request.json()
-    if (!bucket || !path) {
-      return NextResponse.json({ error: 'bucket и path обязательны' }, { status: 400, headers: CORS })
-    }
-
-    const allowedBuckets = ['counterparty-docs', 'contracts']
-    if (!allowedBuckets.includes(bucket)) {
-      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
-    }
-
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUploadUrl(path)
-
-    if (error || !data) {
-      return NextResponse.json({ error: error?.message ?? 'Ошибка получения URL' }, { status: 500, headers: CORS })
-    }
-
-    // Также возвращаем публичный URL файла после загрузки
-    const { data: publicData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(path)
-
-    return NextResponse.json({
-      signed_url: data.signedUrl,
-      token: data.token,
-      path: data.path,
-      public_url: publicData.publicUrl,
-    }, { headers: CORS })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
-  }
-}
-
-================
 File: app/api/cron-checklist-deadline/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -4590,209 +4899,6 @@ export async function sendBitrixChatMessage(chatId: number, message: string): Pr
 }
 
 ================
-File: app/api/approvals/[sessionId]/edo/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-const baseNotifyUrl = 'https://epotos-ur-intel.vercel.app'
-
-async function sendEdoNotify(recipients: number[], type: string, document_id: string, document_number: string, extra_message: string) {
-  try {
-    await fetch(`${baseNotifyUrl}/api/bitrix-notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipients, type: 'document_approved', document_id, document_title: extra_message, document_number }),
-    })
-  } catch { /* игнорируем ошибки уведомлений */ }
-}
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { action, bitrix_user_id, user_name, contract_id, contract_number } = body
-
-    // Получаем сессию
-    const { data: session } = await supabase
-      .from('approval_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-
-    if (!session) return NextResponse.json({ error: 'Сессия не найдена' }, { status: 404 })
-
-    // --- Запрос разрешения у ГД ---
-    if (action === 'request') {
-      const { edo_director_bitrix_id, edo_director_name } = body
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update({
-          edo_requested: true,
-          edo_requested_by_id: bitrix_user_id,
-          edo_requested_by_name: user_name,
-          edo_requested_at: new Date().toISOString(),
-          edo_director_bitrix_id,
-          edo_director_name,
-        })
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `📧 ${user_name} запросил разрешение на подписание через ЭДО у ${edo_director_name}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомление ГД
-      await sendEdoNotify([edo_director_bitrix_id], 'edo_request', contract_id, contract_number ?? '', `${user_name} запрашивает разрешение на подписание документа ${contract_number} через ЭДО. Откройте карточку документа.`)
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Запрос на ЭДО',
-        details: `${user_name} запросил разрешение на ЭДО у ${edo_director_name}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    // --- Решение ГД ---
-    if (action === 'director_decision') {
-      const { decision } = body
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update({
-          edo_director_decision: decision,
-          edo_director_decided_at: new Date().toISOString(),
-        })
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      const decisionText = decision === 'approved' ? 'разрешил подписание через ЭДО' : 'отклонил подписание через ЭДО'
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомляем инициатора и участников
-      const { data: participants } = await supabase
-        .from('approval_participants')
-        .select('bitrix_user_id')
-        .eq('session_id', sessionId)
-        .not('bitrix_user_id', 'is', null)
-
-      const recipientIds = (participants ?? [])
-        .map(p => p.bitrix_user_id)
-        .filter((id): id is number => id !== null)
-
-      if (session.initiated_by_bitrix_id) recipientIds.push(session.initiated_by_bitrix_id)
-
-      const uniqueIds = [...new Set(recipientIds)]
-      if (uniqueIds.length > 0) {
-        await sendEdoNotify(uniqueIds, 'edo_decision', contract_id, contract_number ?? '', `${user_name} ${decisionText} по документу ${contract_number}`)
-      }
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: decision === 'approved' ? 'ЭДО разрешено' : 'ЭДО отклонено',
-        details: `${user_name} ${decisionText}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    // --- Выбор метода подписания ---
-    if (action === 'set_method') {
-      const { method, edo_specialist_bitrix_id, edo_specialist_name } = body
-
-      const updates: Record<string, unknown> = {
-        signing_method: method,
-        signing_method_set_by_id: bitrix_user_id,
-        signing_method_set_by_name: user_name,
-        signing_method_set_at: new Date().toISOString(),
-      }
-
-      if (method === 'edo') {
-        updates.edo_specialist_bitrix_id = edo_specialist_bitrix_id
-        updates.edo_specialist_name = edo_specialist_name
-        updates.edo_task_sent_at = new Date().toISOString()
-      }
-
-      const { error } = await supabase
-        .from('approval_sessions')
-        .update(updates)
-        .eq('id', sessionId)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-      // Меняем статус договора на «на_подписи_в_эдо» если выбрано ЭДО
-      if (method === 'edo') {
-        await supabase
-          .from('contracts')
-          .update({ status: 'на_подписи_в_эдо' })
-          .eq('id', contract_id)
-      }
-
-      const methodText = method === 'edo'
-        ? `выбрал подписание через ЭДО (специалист: ${edo_specialist_name})`
-        : 'выбрал простую подпись'
-
-      // Сообщение в чат
-      await supabase.from('approval_messages').insert({
-        session_id: sessionId,
-        message: `🖊 ${user_name} ${methodText}`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-      // Уведомление специалисту ЭДО
-      if (method === 'edo' && edo_specialist_bitrix_id) {
-        await sendEdoNotify([edo_specialist_bitrix_id], 'edo_task', contract_id, contract_number ?? '', `Вам направлен документ ${contract_number} для подписания через ЭДО. Подписание согласовано генеральным директором.`)
-      }
-
-      // Лог
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: method === 'edo' ? 'Выбрано ЭДО' : 'Выбрана простая подпись',
-        details: `${user_name} ${methodText}`,
-        user_name,
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/approvals/[sessionId]/messages/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -5558,190 +5664,6 @@ export async function DELETE(request: NextRequest) {
 }
 
 ================
-File: app/api/contracts-list/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-  const role = request.nextUrl.searchParams.get('role')
-  const companiesParam = request.nextUrl.searchParams.get('companies')
-  const parentOnly = request.nextUrl.searchParams.get('parent_only')
-  const search = request.nextUrl.searchParams.get('search')
-
-  // Режим поиска родительских документов
-  if (parentOnly === 'true' && bitrixUserId) {
-    try {
-      let query = supabase
-        .from('contracts')
-        .select('id, number, title, counterparty, status')
-        .is('deleted_at', null)
-        .in('status', ['согласован', 'подписан', 'на_исполнении'])
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-      if (search) {
-        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%,customer_number.ilike.%${search}%`)
-      }
-
-      const { data, error } = await query
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ contracts: data ?? [] })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка'
-      return NextResponse.json({ error: message }, { status: 500 })
-    }
-  }
-
-  if (!bitrixUserId || !role) {
-    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  try {
-    let query = supabase
-      .from('contracts')
-      .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-
-    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'finance_company', 'legal_gc'].includes(role)) {
-      // Роли ГК видят все договоры
-    } else if (role === 'director' || role === 'legal' || role === 'finance') {
-      // ГД и юристы видят договоры своих компаний
-      if (companiesParam) {
-        const companies = companiesParam.split(',')
-        // Фильтруем по company_prefix (надёжно) с фоллбэком на номер
-        const prefixFilters = companies.map(c => `company_prefix.eq.${c},number.like.${c}-%`).join(',')
-        query = query.or(prefixFilters)
-      }
-    } else {
-      // Обычный пользователь — только свои договоры
-      // 1. Созданные им
-      // 2. В согласовании которых участвовал
-      const { data: participantSessions } = await supabase
-        .from('approval_participants')
-        .select('approval_sessions!inner(contract_id)')
-        .eq('bitrix_user_id', userId)
-
-      const contractIds = participantSessions?.map(
-        (p: { approval_sessions: { contract_id: string }[] }) =>
-          Array.isArray(p.approval_sessions)
-            ? p.approval_sessions[0]?.contract_id
-            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
-      ).filter(Boolean) as string[] ?? []
-
-      // Добавляем ID договоров где он автор
-      const { data: authorContracts } = await supabase
-        .from('contracts')
-        .select('id')
-        .eq('author_bitrix_id', userId)
-
-      const authorIds = authorContracts?.map(c => c.id) ?? []
-      const allIds = [...new Set([...contractIds, ...authorIds])]
-
-      if (allIds.length === 0) {
-        return NextResponse.json({ contracts: [] })
-      }
-
-      query = query.in('id', allIds)
-    }
-
-    const { data: contractsRaw, error } = await query
-    
-    // Проверяем наличие файлов для каждого договора
-    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let versionsMap: Record<string, boolean> = {}
-    
-    if (contractIds.length > 0) {
-      const { data: versions } = await supabase
-        .from('versions')
-        .select('contract_id')
-        .in('contract_id', contractIds)
-      
-      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
-        acc[v.contract_id] = true
-        return acc
-      }, {})
-    }
-    
-    // Собираем тип последнего файла по договору
-    const { data: versions2 } = await supabase
-      .from('versions')
-      .select('contract_id, file_name')
-      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
-      .order('version_number', { ascending: false })
-
-    const fileTypeMap: Record<string, string> = {}
-    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
-      if (!fileTypeMap[v.contract_id]) {
-        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
-      }
-    })
-
-    // Получаем количество сообщений в чатах согласования
-    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
-    let unreadMap: Record<string, number> = {}
-    let lastMsgTimeMap: Record<string, string> = {}
-
-    if (contractIds2.length > 0) {
-      const { data: sessions } = await supabase
-        .from('approval_sessions')
-        .select('id, contract_id')
-        .in('contract_id', contractIds2)
-        .eq('status', 'active')
-
-      if (sessions && sessions.length > 0) {
-        const sessionIds = sessions.map((s: { id: string }) => s.id)
-        const sessionContractMap: Record<string, string> = {}
-        sessions.forEach((s: { id: string, contract_id: string }) => {
-          sessionContractMap[s.id] = s.contract_id
-        })
-
-        const { data: messages } = await supabase
-          .from('approval_messages')
-          .select('session_id, created_at')
-          .in('session_id', sessionIds)
-          .order('created_at', { ascending: false })
-
-        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
-          const contractId = sessionContractMap[m.session_id]
-          if (contractId) {
-            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
-              lastMsgTimeMap[contractId] = m.created_at
-            }
-          }
-        })
-      }
-    }
-
-    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
-      ...c,
-      has_files: versionsMap[c.id] ?? false,
-      file_type: fileTypeMap[c.id] ?? null,
-      unread_messages: unreadMap[c.id] ?? 0,
-      last_message_at: lastMsgTimeMap[c.id] ?? null,
-    }))
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    return NextResponse.json({ contracts: contracts ?? [] })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/counterparties/check-cache/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -5966,6 +5888,63 @@ export async function POST(request: NextRequest) {
       .single()
 
     return NextResponse.json({ ...(saved ?? {}), from_cache: false }, { headers: CORS })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
+  }
+}
+
+================
+File: app/api/counterparties/upload-url/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
+  })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { bucket, path } = await request.json()
+    if (!bucket || !path) {
+      return NextResponse.json({ error: 'bucket и path обязательны' }, { status: 400, headers: CORS })
+    }
+
+    const allowedBuckets = ['counterparty-docs', 'contracts']
+    if (!allowedBuckets.includes(bucket)) {
+      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
+    }
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUploadUrl(path)
+
+    if (error || !data) {
+      return NextResponse.json({ error: error?.message ?? 'Ошибка получения URL' }, { status: 500, headers: CORS })
+    }
+
+    // Также возвращаем публичный URL файла после загрузки
+    const { data: publicData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+
+    return NextResponse.json({
+      signed_url: data.signedUrl,
+      token: data.token,
+      path: data.path,
+      public_url: publicData.publicUrl,
+    }, { headers: CORS })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Ошибка'
@@ -7249,6 +7228,231 @@ export async function DELETE(request: NextRequest) {
 }
 
 ================
+File: app/api/approvals/[sessionId]/edo/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+const baseNotifyUrl = 'https://epotos-ur-intel.vercel.app'
+
+async function sendEdoNotify(recipients: number[], type: string, document_id: string, document_number: string, extra_message: string) {
+  try {
+    await fetch(`${baseNotifyUrl}/api/bitrix-notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipients, type: 'document_approved', document_id, document_title: extra_message, document_number }),
+    })
+  } catch { /* игнорируем ошибки уведомлений */ }
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { action, bitrix_user_id, user_name, contract_id, contract_number } = body
+
+    // Получаем сессию
+    const { data: session } = await supabase
+      .from('approval_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single()
+
+    if (!session) return NextResponse.json({ error: 'Сессия не найдена' }, { status: 404 })
+
+    // --- Запрос разрешения у ГД ---
+    if (action === 'request') {
+      const { edo_director_bitrix_id, edo_director_name } = body
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update({
+          edo_requested: true,
+          edo_requested_by_id: bitrix_user_id,
+          edo_requested_by_name: user_name,
+          edo_requested_at: new Date().toISOString(),
+          edo_director_bitrix_id,
+          edo_director_name,
+        })
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `📧 ${user_name} запросил разрешение на подписание через ЭДО у ${edo_director_name}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Уведомление ГД
+      await sendEdoNotify([edo_director_bitrix_id], 'edo_request', contract_id, contract_number ?? '', `${user_name} запрашивает разрешение на подписание документа ${contract_number} через ЭДО. Откройте карточку документа.`)
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Запрос на ЭДО',
+        details: `${user_name} запросил разрешение на ЭДО у ${edo_director_name}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // --- Решение ГД ---
+    if (action === 'director_decision') {
+      const { decision } = body
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update({
+          edo_director_decision: decision,
+          edo_director_decided_at: new Date().toISOString(),
+        })
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      const decisionText = decision === 'approved' ? 'разрешил подписание через ЭДО' : 'отклонил подписание через ЭДО'
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Персональное уведомление инициатору запроса
+      if (session.edo_requested_by_id) {
+        const approvedText = decision === 'approved'
+          ? `✅ ГД разрешил подписание через ЭДО\nДокумент: ${contract_number}\nРешение принято: ${user_name}`
+          : `❌ ГД отказал в подписании через ЭДО\nДокумент: ${contract_number}\nРешение принято: ${user_name}`
+        await sendEdoNotify(
+          [session.edo_requested_by_id],
+          'edo_decision',
+          contract_id,
+          contract_number ?? '',
+          approvedText
+        )
+      }
+
+      // Уведомление остальным участникам
+      const { data: participants } = await supabase
+        .from('approval_participants')
+        .select('bitrix_user_id')
+        .eq('session_id', sessionId)
+        .not('bitrix_user_id', 'is', null)
+
+      const recipientIds = (participants ?? [])
+        .map(p => p.bitrix_user_id)
+        .filter((id): id is number => id !== null && id !== session.edo_requested_by_id)
+
+      if (session.initiated_by_bitrix_id && session.initiated_by_bitrix_id !== session.edo_requested_by_id) {
+        recipientIds.push(session.initiated_by_bitrix_id)
+      }
+
+      const uniqueIds = [...new Set(recipientIds)]
+      if (uniqueIds.length > 0) {
+        await sendEdoNotify(
+          uniqueIds,
+          'edo_decision',
+          contract_id,
+          contract_number ?? '',
+          `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText} по документу ${contract_number}`
+        )
+      }
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: decision === 'approved' ? 'ЭДО разрешено' : 'ЭДО отклонено',
+        details: `${user_name} ${decisionText}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // --- Выбор метода подписания ---
+    if (action === 'set_method') {
+      const { method, edo_specialist_bitrix_id, edo_specialist_name } = body
+
+      const updates: Record<string, unknown> = {
+        signing_method: method,
+        signing_method_set_by_id: bitrix_user_id,
+        signing_method_set_by_name: user_name,
+        signing_method_set_at: new Date().toISOString(),
+      }
+
+      if (method === 'edo') {
+        updates.edo_specialist_bitrix_id = edo_specialist_bitrix_id
+        updates.edo_specialist_name = edo_specialist_name
+        updates.edo_task_sent_at = new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('approval_sessions')
+        .update(updates)
+        .eq('id', sessionId)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      // Меняем статус договора на «на_подписи_в_эдо» если выбрано ЭДО
+      if (method === 'edo') {
+        await supabase
+          .from('contracts')
+          .update({ status: 'на_подписи_в_эдо' })
+          .eq('id', contract_id)
+      }
+
+      const methodText = method === 'edo'
+        ? `выбрал подписание через ЭДО (специалист: ${edo_specialist_name})`
+        : 'выбрал простую подпись'
+
+      // Сообщение в чат
+      await supabase.from('approval_messages').insert({
+        session_id: sessionId,
+        message: `🖊 ${user_name} ${methodText}`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+      // Уведомление специалисту ЭДО
+      if (method === 'edo' && edo_specialist_bitrix_id) {
+        await sendEdoNotify([edo_specialist_bitrix_id], 'edo_task', contract_id, contract_number ?? '', `Вам направлен документ ${contract_number} для подписания через ЭДО. Подписание согласовано генеральным директором.`)
+      }
+
+      // Лог
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: method === 'edo' ? 'Выбрано ЭДО' : 'Выбрана простая подпись',
+        details: `${user_name} ${methodText}`,
+        user_name,
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/bitrix-notify/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -7361,6 +7565,300 @@ export async function POST(request: NextRequest) {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/api/contracts-list/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+  const role = request.nextUrl.searchParams.get('role')
+  const companiesParam = request.nextUrl.searchParams.get('companies')
+  const parentOnly = request.nextUrl.searchParams.get('parent_only')
+  const search = request.nextUrl.searchParams.get('search')
+
+  // Режим поиска родительских документов
+  if (parentOnly === 'true' && bitrixUserId) {
+    try {
+      let query = supabase
+        .from('contracts')
+        .select('id, number, title, counterparty, status')
+        .is('deleted_at', null)
+        .in('status', ['согласован', 'подписан', 'на_исполнении'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (search) {
+        query = query.or(`number.ilike.%${search}%,title.ilike.%${search}%,counterparty.ilike.%${search}%,customer_number.ilike.%${search}%`)
+      }
+
+      const { data, error } = await query
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ contracts: data ?? [] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+  }
+
+  if (!bitrixUserId || !role) {
+    return NextResponse.json({ error: 'Параметры обязательны' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    let query = supabase
+      .from('contracts')
+      .select('*, approval_sessions(edo_requested, edo_director_decision, edo_requested_by_id, signing_method)')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (['admin', 'gc_manager', 'developer', 'finance_gc', 'finance_company', 'legal_gc'].includes(role)) {
+      // Роли ГК видят все договоры
+    } else if (role === 'director' || role === 'legal' || role === 'finance') {
+      // ГД и юристы видят договоры своих компаний
+      if (companiesParam) {
+        const companies = companiesParam.split(',')
+        // Фильтруем по company_prefix (надёжно) с фоллбэком на номер
+        const prefixFilters = companies.map(c => `company_prefix.eq.${c},number.like.${c}-%`).join(',')
+        query = query.or(prefixFilters)
+      }
+    } else {
+      // Обычный пользователь — только свои договоры
+      // 1. Созданные им
+      // 2. В согласовании которых участвовал
+      const { data: participantSessions } = await supabase
+        .from('approval_participants')
+        .select('approval_sessions!inner(contract_id)')
+        .eq('bitrix_user_id', userId)
+
+      const contractIds = participantSessions?.map(
+        (p: { approval_sessions: { contract_id: string }[] }) =>
+          Array.isArray(p.approval_sessions)
+            ? p.approval_sessions[0]?.contract_id
+            : (p.approval_sessions as unknown as { contract_id: string }).contract_id
+      ).filter(Boolean) as string[] ?? []
+
+      // Добавляем ID договоров где он автор
+      const { data: authorContracts } = await supabase
+        .from('contracts')
+        .select('id')
+        .eq('author_bitrix_id', userId)
+
+      const authorIds = authorContracts?.map(c => c.id) ?? []
+      const allIds = [...new Set([...contractIds, ...authorIds])]
+
+      if (allIds.length === 0) {
+        return NextResponse.json({ contracts: [] })
+      }
+
+      query = query.in('id', allIds)
+    }
+
+    const { data: contractsRaw, error } = await query
+    
+    // Проверяем наличие файлов для каждого договора
+    const contractIds = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let versionsMap: Record<string, boolean> = {}
+    
+    if (contractIds.length > 0) {
+      const { data: versions } = await supabase
+        .from('versions')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+      
+      versionsMap = (versions ?? []).reduce((acc: Record<string, boolean>, v: { contract_id: string }) => {
+        acc[v.contract_id] = true
+        return acc
+      }, {})
+    }
+    
+    // Собираем тип последнего файла по договору
+    const { data: versions2 } = await supabase
+      .from('versions')
+      .select('contract_id, file_name')
+      .in('contract_id', contractIds.length > 0 ? contractIds : [''])
+      .order('version_number', { ascending: false })
+
+    const fileTypeMap: Record<string, string> = {}
+    ;(versions2 ?? []).forEach((v: { contract_id: string, file_name: string }) => {
+      if (!fileTypeMap[v.contract_id]) {
+        fileTypeMap[v.contract_id] = v.file_name.split('.').pop()?.toLowerCase() ?? ''
+      }
+    })
+
+    // Получаем количество сообщений в чатах согласования
+    const contractIds2 = (contractsRaw ?? []).map((c: { id: string }) => c.id)
+    let unreadMap: Record<string, number> = {}
+    let lastMsgTimeMap: Record<string, string> = {}
+
+    if (contractIds2.length > 0) {
+      const { data: sessions } = await supabase
+        .from('approval_sessions')
+        .select('id, contract_id')
+        .in('contract_id', contractIds2)
+        .eq('status', 'active')
+
+      if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s: { id: string }) => s.id)
+        const sessionContractMap: Record<string, string> = {}
+        sessions.forEach((s: { id: string, contract_id: string }) => {
+          sessionContractMap[s.id] = s.contract_id
+        })
+
+        const { data: messages } = await supabase
+          .from('approval_messages')
+          .select('session_id, created_at')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: false })
+
+        ;(messages ?? []).forEach((m: { session_id: string, created_at: string }) => {
+          const contractId = sessionContractMap[m.session_id]
+          if (contractId) {
+            if (!lastMsgTimeMap[contractId] || m.created_at > lastMsgTimeMap[contractId]) {
+              lastMsgTimeMap[contractId] = m.created_at
+            }
+          }
+        })
+      }
+    }
+
+    const contracts = (contractsRaw ?? []).map((c: { id: string }) => ({
+      ...c,
+      has_files: versionsMap[c.id] ?? false,
+      file_type: fileTypeMap[c.id] ?? null,
+      unread_messages: unreadMap[c.id] ?? 0,
+      last_message_at: lastMsgTimeMap[c.id] ?? null,
+    }))
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ contracts: contracts ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/api/my-documents/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+
+  if (!bitrixUserId) {
+    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
+  }
+
+  const userId = parseInt(bitrixUserId)
+
+  try {
+    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
+      .select(`
+        id,
+        role,
+        status,
+        stage,
+        session_id,
+        approval_sessions!inner (
+          id,
+          contract_id,
+          deadline,
+          initiated_by_name,
+          contracts!inner (
+            id,
+            number,
+            title,
+            counterparty,
+            status,
+            amount
+          )
+        )
+      `)
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+      .filter('approval_sessions.contracts.deleted_at', 'is', null)
+
+    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
+    const { data: myDrafts } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
+      .in('document_category', ['contract', 'document'])
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id,
+        deadline,
+        status,
+        created_at,
+        contracts!inner (
+          id,
+          number,
+          title,
+          counterparty,
+          status,
+          amount
+        )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .filter('contracts.deleted_at', 'is', null)
+      .order('created_at', { ascending: false })
+// Фильтруем — только основные документы (не вложения)
+    const filteredApprovals = (myApprovals ?? []).filter(p => {
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const category = sessions?.contracts?.document_category
+      return category !== 'attachment'
+    })
+    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
+    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
+    // Документы на подписи в ЭДО где пользователь автор или участник согласования
+    const { data: myEdo } = await supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, status, amount, company_prefix')
+      .eq('status', 'на_подписи_в_эдо')
+      .is('deleted_at', null)
+      .or(`author_bitrix_id.eq.${userId}`)
+      .order('updated_at', { ascending: false })
+
+    return NextResponse.json({
+      required_approvals: requiredApprovals,
+      optional_approvals: optionalApprovals,
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+      my_edo: myEdo ?? [],
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -7524,116 +8022,6 @@ export async function DELETE(
 }
 
 ================
-File: app/api/my-documents/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-
-  if (!bitrixUserId) {
-    return NextResponse.json({ error: 'bitrix_user_id РѕР±СЏР·Р°С‚РµР»РµРЅ' }, { status: 400 })
-  }
-
-  const userId = parseInt(bitrixUserId)
-
-  try {
-    // 1. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ СЃРѕРіР»Р°СЃСѓСЋС‰РёР№ (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№) СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј pending
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
-      .select(`
-        id,
-        role,
-        status,
-        stage,
-        session_id,
-        approval_sessions!inner (
-          id,
-          contract_id,
-          deadline,
-          initiated_by_name,
-          contracts!inner (
-            id,
-            number,
-            title,
-            counterparty,
-            status,
-            amount
-          )
-        )
-      `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-      .filter('approval_sessions.contracts.deleted_at', 'is', null)
-
-    // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
-    const { data: myDrafts } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
-      .in('document_category', ['contract', 'document'])
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-
-    // 3. Р”РѕРєСѓРјРµРЅС‚С‹ РіРґРµ СЏ РёРЅРёС†РёР°С‚РѕСЂ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id,
-        deadline,
-        status,
-        created_at,
-        contracts!inner (
-          id,
-          number,
-          title,
-          counterparty,
-          status,
-          amount
-        )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .filter('contracts.deleted_at', 'is', null)
-      .order('created_at', { ascending: false })
-// Фильтруем — только основные документы (не вложения)
-    const filteredApprovals = (myApprovals ?? []).filter(p => {
-      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
-      const category = sessions?.contracts?.document_category
-      return category !== 'attachment'
-    })
-    const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
-    const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
-    // Документы на подписи в ЭДО где пользователь автор или участник согласования
-    const { data: myEdo } = await supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, status, amount, company_prefix')
-      .eq('status', 'на_подписи_в_эдо')
-      .is('deleted_at', null)
-      .or(`author_bitrix_id.eq.${userId}`)
-      .order('updated_at', { ascending: false })
-
-    return NextResponse.json({
-      required_approvals: requiredApprovals,
-      optional_approvals: optionalApprovals,
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-      my_edo: myEdo ?? [],
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/counterparties/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -7780,372 +8168,6 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
   }
-}
-
-================
-File: app/api/ai-analysis/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
-
-async function extractTextFromPdf(fileUrl: string): Promise<string> {
-  try {
-    const response = await fetch(fileUrl)
-    const arrayBuffer = await response.arrayBuffer()
-    const { extractText } = await import('unpdf')
-    const { text } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true })
-    return text
-  } catch (err) {
-    console.error('PDF extraction error:', err)
-    return ''
-  }
-}
-
-async function extractTextFromDocx(fileUrl: string): Promise<string> {
-  try {
-    const response = await fetch(fileUrl, {
-      headers: { 'Accept': 'application/octet-stream' }
-    })
-    const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-    console.log('DOCX buffer size:', buffer.length, 'first bytes:', buffer.slice(0, 4).toString('hex'))
-    const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ buffer })
-    return result.value
-  } catch (err) {
-    console.error('DOCX extraction error:', err)
-    // Попробуем как xlsx если docx не работает
-    try {
-      const response2 = await fetch(fileUrl)
-      const arrayBuffer2 = await response2.arrayBuffer()
-      const buffer2 = Buffer.from(new Uint8Array(arrayBuffer2))
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const XLSX = require('xlsx')
-      const workbook = XLSX.read(buffer2, { type: 'buffer' })
-      const texts: string[] = []
-      workbook.SheetNames.forEach((sheetName: string) => {
-        const sheet = workbook.Sheets[sheetName]
-        const csv = XLSX.utils.sheet_to_csv(sheet)
-        if (csv.trim()) texts.push(csv)
-      })
-      return texts.join('\n')
-    } catch {
-      return ''
-    }
-  }
-}
-
-async function extractTextFromXlsx(fileUrl: string): Promise<string> {
-  try {
-    const response = await fetch(fileUrl)
-    const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const XLSX = require('xlsx')
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
-    const texts: string[] = []
-    workbook.SheetNames.forEach((sheetName: string) => {
-      const sheet = workbook.Sheets[sheetName]
-      const csv = XLSX.utils.sheet_to_csv(sheet)
-      if (csv.trim()) texts.push(`Лист: ${sheetName}\n${csv}`)
-    })
-    return texts.join('\n\n')
-  } catch (err) {
-    console.error('XLSX extraction error:', err)
-    return ''
-  }
-}
-
-async function analyzeWithAI(text: string, analysisType: string): Promise<object> {
-  const prompts: Record<string, string> = {
-    legal_review: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
-
-ВАЖНЫЕ ПРАВИЛА АНАЛИЗА:
-1. Компании ГК ЭПОТОС в роли стороны договора — НЕ являются риском, не упоминай их присутствие как проблему
-2. Пробелы, переносы строк, форматирование текста — НЕ являются юридическими рисками, игнорируй их полностью
-3. Стандартные формулировки типовых договоров — НЕ риск
-4. Анализируй ТОЛЬКО реальные юридические риски: невыгодные условия, дисбаланс ответственности, отсутствие важных защитных условий, неоднозначные формулировки
-
-Текст документа:
-${text.slice(0, 8000)}
-
-Верни ТОЛЬКО валидный JSON без markdown:
-{
-  "red_flags": [
-    {"severity": "high|medium|low", "title": "название риска", "description": "описание проблемы", "recommendation": "рекомендация"}
-  ],
-  "warnings": [
-    {"title": "название", "description": "описание"}
-  ],
-  "positives": [
-    {"title": "название", "description": "описание"}
-  ],
-  "overall_risk": "high|medium|low",
-  "summary": "краткий вывод 2-3 предложения"
-}`,
-
-    passport: `Ты юридический эксперт ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
-
-ВАЖНО: Составь паспорт документа — краткую выжимку ключевых условий. Игнорируй форматирование и пробелы, работай только со смысловым содержанием.
-
-Текст документа:
-${text.slice(0, 8000)}
-
-Верни ТОЛЬКО валидный JSON без markdown:
-{
-  "essence": "суть документа в 2-3 предложениях",
-  "parties": {
-    "our_obligations": ["обязательство 1", "обязательство 2"],
-    "counterparty_obligations": ["обязательство 1", "обязательство 2"]
-  },
-  "key_terms": {
-    "amount": "сумма договора",
-    "payment_terms": "условия оплаты",
-    "start_date": "дата начала",
-    "end_date": "дата окончания",
-    "auto_renewal": "условия пролонгации или отсутствует"
-  },
-  "termination": "условия расторжения",
-  "control_points": ["точка контроля 1", "точка контроля 2"],
-  "attention_zones": ["зона внимания 1", "зона внимания 2"]
-}`,
-
-    document_review: `Ты аналитик документов ГК ЭПОТОС (группа компаний: ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К).
-
-ВАЖНО: Игнорируй форматирование, пробелы и переносы строк — анализируй только смысловое содержание документа.
-
-Текст документа:
-${text.slice(0, 8000)}
-
-Верни ТОЛЬКО валидный JSON без markdown:
-{
-  "summary": "краткое резюме документа 2-3 предложения",
-  "purpose": "цель документа и какое действие требуется",
-  "attention_points": ["важный момент 1", "важный момент 2"],
-  "recommendations": ["рекомендация 1", "рекомендация 2"],
-  "document_type": "тип документа",
-  "urgency": "high|medium|low"
-}`
-  }
-
-  const prompt = prompts[analysisType]
-  if (!prompt) throw new Error('Неизвестный тип анализа')
-
-  console.log('Calling OpenRouter, prompt length:', prompt.length)
-  try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-        'X-Title': 'Epotos-YurIntel',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 4000,
-        temperature: 0.2,
-      }),
-    })
-
-    console.log('OpenRouter response status:', response.status)
-    const data = await response.json()
-    console.log('OpenRouter data:', JSON.stringify(data).slice(0, 300))
-    const content = data.choices?.[0]?.message?.content ?? '{}'
-    const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-
-    try {
-      return JSON.parse(cleaned)
-    } catch {
-      return { error: 'Не удалось распарсить ответ AI', raw: content }
-    }
-  } catch (fetchError) {
-    console.error('OpenRouter fetch error:', fetchError)
-    return { error: 'Ошибка соединения с OpenRouter: ' + String(fetchError) }
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { contract_id, version_id, attachment_id, file_url, file_name, analysis_type, user_name } = body
-
-    if (!contract_id || !file_url || !analysis_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    const { data: analysis, error: createError } = await supabase
-      .from('ai_analysis')
-      .insert({
-        contract_id,
-        version_id: version_id ?? null,
-        attachment_id: attachment_id ?? null,
-        type: analysis_type,
-        status: 'processing',
-        model_used: 'google/gemini-2.5-flash',
-      })
-      .select('id')
-      .single()
-
-    if (createError) {
-      return NextResponse.json({ error: createError.message }, { status: 400 })
-    }
-
-    console.log('Starting analysis:', { file_name, analysis_type, file_url: file_url.slice(0, 50) })
-    const fileName = file_name.toLowerCase()
-    let textOrUrl: string
-
-    if (fileName.endsWith('.pdf')) {
-      await supabase
-        .from('ai_analysis')
-        .update({ status: 'error', result_json: { error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' } })
-        .eq('id', analysis.id)
-      return NextResponse.json({ error: 'PDF анализ временно недоступен. Пожалуйста, конвертируйте файл в формат DOCX и загрузите снова.' }, { status: 400 })
-    } else if (fileName.endsWith('.doc')) {
-      return NextResponse.json({
-        error: 'Формат .doc не поддерживается. Пожалуйста, конвертируйте файл в .docx или .pdf и загрузите снова.'
-      }, { status: 400 })
-    } else if (fileName.endsWith('.docx')) {
-      console.log('DOCX mode - extracting text with mammoth')
-      textOrUrl = await extractTextFromDocx(file_url)
-      console.log('DOCX text length:', textOrUrl.length)
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      console.log('XLSX mode - extracting text with xlsx')
-      textOrUrl = await extractTextFromXlsx(file_url)
-      console.log('XLSX text length:', textOrUrl.length)
-    } else {
-      return NextResponse.json({ error: 'Неподдерживаемый формат файла' }, { status: 400 })
-    }
-
-    if (!textOrUrl || (textOrUrl.length < 50 && !textOrUrl.startsWith('__PDF_BASE64__'))) {
-      await supabase
-        .from('ai_analysis')
-        .update({ status: 'error', result_json: { error: 'Не удалось извлечь текст из документа' } })
-        .eq('id', analysis.id)
-      return NextResponse.json({ error: 'Не удалось извлечь текст из документа' }, { status: 400 })
-    }
-
-    let result: object
-    if (false && textOrUrl.startsWith('__PDF_BASE64__')) {
-      // PDF через Claude — временно отключено
-      const pdfBase64 = textOrUrl.replace('__PDF_BASE64__', '')
-      console.log('PDF base64 size:', pdfBase64.length, 'analysis_type:', analysis_type)
-      const systemPrompts: Record<string, string> = {
-        legal_review: 'Ты юридический эксперт ГК ЭПОТОС. Проведи юридический анализ документа. ООО Техно, НПП ЭПОТОС, СПТ, ОС, Эпотос-К — компании группы, их присутствие не является риском. Верни ТОЛЬКО валидный JSON без markdown: {"red_flags":[{"severity":"high|medium|low","title":"название","description":"описание","recommendation":"рекомендация"}],"warnings":[{"title":"название","description":"описание"}],"positives":[{"title":"название","description":"описание"}],"overall_risk":"high|medium|low","summary":"краткий вывод"}',
-        passport: 'Ты юридический эксперт ГК ЭПОТОС. Составь паспорт документа. Верни ТОЛЬКО валидный JSON без markdown: {"essence":"суть документа","parties":{"our_obligations":["обязательство"],"counterparty_obligations":["обязательство"]},"key_terms":{"amount":"сумма","payment_terms":"условия оплаты","start_date":"дата начала","end_date":"дата окончания","auto_renewal":"пролонгация"},"termination":"условия расторжения","control_points":["точка контроля"],"attention_zones":["зона внимания"]}',
-        document_review: 'Ты аналитик документов ГК ЭПОТОС. Проанализируй документ. Верни ТОЛЬКО валидный JSON без markdown: {"summary":"краткое резюме","purpose":"цель документа","attention_points":["важный момент"],"recommendations":["рекомендация"],"document_type":"тип документа","urgency":"high|medium|low"}'
-      }
-      const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY!}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://epotos-ur-intel.vercel.app',
-          'X-Title': 'Epotos-YurIntel',
-          'X-Anthropic-Beta': 'pdfs-2024-09-25',
-        },
-        body: JSON.stringify({
-          model: 'anthropic/claude-sonnet-4-5',
-          messages: [
-            {
-              role: 'system',
-              content: 'Ты юридический эксперт ГК ЭПОТОС. Анализируй документы на русском языке. Возвращай ТОЛЬКО валидный JSON без markdown блоков.'
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: systemPrompts[analysis_type] ?? systemPrompts.document_review
-                },
-                {
-                  type: 'document',
-                  source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
-                }
-              ]
-            }
-          ],
-          max_tokens: 4000,
-          temperature: 0.2,
-        })
-      })
-      const aiData = await aiRes.json()
-      console.log('Claude PDF response status:', aiRes.status)
-      const rawContent = aiData.choices?.[0]?.message?.content ?? ''
-      console.log('Claude PDF rawContent:', typeof rawContent, String(rawContent).slice(0, 500))
-      try {
-        const clean = rawContent
-          .replace(/```json\s*/gi, '')
-          .replace(/```\s*/g, '')
-          .replace(/'''\s*json\s*/gi, '')
-          .replace(/'''\s*/g, '')
-          .trim()
-        const jsonMatch = clean.match(/\{[\s\S]*\}/)
-        result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(clean)
-      } catch {
-        result = { error: 'Не удалось разобрать ответ AI', raw: rawContent.slice(0, 300) }
-      }
-    } else {
-      result = await analyzeWithAI(textOrUrl, analysis_type)
-    }
-
-    await supabase
-      .from('ai_analysis')
-      .update({
-        status: 'completed',
-        result_json: result,
-      })
-      .eq('id', analysis.id)
-
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: analysis_type === 'legal_review' ? 'AI Legal Review выполнен' : analysis_type === 'document_review' ? 'AI Анализ документа выполнен' : 'AI Паспорт документа создан',
-        details: `Анализ выполнен моделью openrouter/auto`,
-        user_name: user_name ?? 'Система',
-      })
-
-    return NextResponse.json({ success: true, analysis_id: analysis.id, result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const contractId = request.nextUrl.searchParams.get('contract_id')
-  const type = request.nextUrl.searchParams.get('type')
-
-  if (!contractId) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  let query = supabase
-    .from('ai_analysis')
-    .select('*')
-    .eq('contract_id', contractId)
-    .order('created_at', { ascending: false })
-
-  if (type) {
-    query = query.eq('type', type)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ analyses: data ?? [] })
 }
 
 
