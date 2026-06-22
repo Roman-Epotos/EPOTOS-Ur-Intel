@@ -101,7 +101,21 @@ export async function POST(
         is_ai: false,
       })
 
-      // Уведомляем инициатора и участников
+      // Персональное уведомление инициатору запроса
+      if (session.edo_requested_by_id) {
+        const approvedText = decision === 'approved'
+          ? `✅ ГД разрешил подписание через ЭДО\nДокумент: ${contract_number}\nРешение принято: ${user_name}`
+          : `❌ ГД отказал в подписании через ЭДО\nДокумент: ${contract_number}\nРешение принято: ${user_name}`
+        await sendEdoNotify(
+          [session.edo_requested_by_id],
+          'edo_decision',
+          contract_id,
+          contract_number ?? '',
+          approvedText
+        )
+      }
+
+      // Уведомление остальным участникам
       const { data: participants } = await supabase
         .from('approval_participants')
         .select('bitrix_user_id')
@@ -110,13 +124,21 @@ export async function POST(
 
       const recipientIds = (participants ?? [])
         .map(p => p.bitrix_user_id)
-        .filter((id): id is number => id !== null)
+        .filter((id): id is number => id !== null && id !== session.edo_requested_by_id)
 
-      if (session.initiated_by_bitrix_id) recipientIds.push(session.initiated_by_bitrix_id)
+      if (session.initiated_by_bitrix_id && session.initiated_by_bitrix_id !== session.edo_requested_by_id) {
+        recipientIds.push(session.initiated_by_bitrix_id)
+      }
 
       const uniqueIds = [...new Set(recipientIds)]
       if (uniqueIds.length > 0) {
-        await sendEdoNotify(uniqueIds, 'edo_decision', contract_id, contract_number ?? '', `${user_name} ${decisionText} по документу ${contract_number}`)
+        await sendEdoNotify(
+          uniqueIds,
+          'edo_decision',
+          contract_id,
+          contract_number ?? '',
+          `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText} по документу ${contract_number}`
+        )
       }
 
       // Лог

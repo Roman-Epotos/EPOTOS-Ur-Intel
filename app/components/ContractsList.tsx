@@ -32,6 +32,13 @@ function ChatIndicator({ contractId, lastMessageAt }: { contractId: string, last
   )
 }
 
+interface ApprovalSession {
+  edo_requested: boolean | null
+  edo_director_decision: string | null
+  edo_requested_by_id: number | null
+  signing_method: string | null
+}
+
 interface Contract {
   id: string
   number: string
@@ -47,6 +54,7 @@ interface Contract {
   last_message_at?: string | null
   created_at: string
   customer_number?: string | null
+  approval_sessions?: ApprovalSession[]
 }
 
 interface UserRole {
@@ -239,6 +247,16 @@ export default function ContractsList() {
     user: 'Мои договоры',
   }
 
+  const getEdoStatus = (contract: Contract): { label: string, color: string } | null => {
+    const session = contract.approval_sessions?.[0]
+    if (!session) return null
+    if (!session.edo_requested) return null
+    if (session.signing_method === 'edo') return { label: '📨 ЭДО подписан', color: 'bg-green-100 text-green-800' }
+    if (session.edo_director_decision === 'approved') return { label: '✅ ЭДО одобрено', color: 'bg-blue-100 text-blue-800' }
+    if (session.edo_director_decision === 'rejected') return { label: '❌ ЭДО отказано', color: 'bg-red-100 text-red-700' }
+    return { label: '📨 ЭДО запрошено', color: 'bg-yellow-100 text-yellow-800' }
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full">
       <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
@@ -399,9 +417,20 @@ export default function ContractsList() {
                   </a>
                 </td>
                 <td className="px-2 md:px-3 py-3">
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                    {statusLabel[contract.status] ?? contract.status}
-                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {statusLabel[contract.status] ?? contract.status}
+                    </span>
+                    {(() => {
+                      const edo = getEdoStatus(contract)
+                      if (!edo) return null
+                      return (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${edo.color}`}>
+                          {edo.label}
+                        </span>
+                      )
+                    })()}
+                  </div>
                 </td>
               </tr>
             ))}

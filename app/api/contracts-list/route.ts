@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
   try {
     let query = supabase
       .from('contracts')
-      .select('*')
+      .select('*, approval_sessions(edo_requested, edo_director_decision, edo_requested_by_id, signing_method)')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
