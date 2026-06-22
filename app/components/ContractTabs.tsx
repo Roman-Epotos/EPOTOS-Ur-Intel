@@ -273,6 +273,36 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [rejectComment, setRejectComment] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
+  const [revokingParticipantId, setRevokingParticipantId] = useState<string | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
+  const [revokeLoading, setRevokeLoading] = useState(false)
+  const [revokeError, setRevokeError] = useState('')
+
+  const handleRevokeVote = async () => {
+    if (!revokeReason.trim()) { setRevokeError('Укажите причину отмены'); return }
+    setRevokeLoading(true)
+    setRevokeError('')
+    try {
+      if (!session) { setRevokeError('Сессия не найдена'); return }
+      const res = await fetch(`${baseUrl}/api/approvals/${session.id}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participant_id: revokingParticipantId,
+          reason: revokeReason,
+          user_bitrix_id: user?.id,
+          user_name: user?.name,
+          contract_id: contract.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRevokeError(data.error ?? 'Ошибка'); return }
+      setRevokingParticipantId(null)
+      setRevokeReason('')
+      await loadSession()
+    } catch { setRevokeError('Ошибка соединения') }
+    finally { setRevokeLoading(false) }
+  }
   const [attachments, setAttachments] = useState<{id: string, attachment_type: string, number: number, title: string | null, file_url: string, file_name: string, comment: string | null, created_at: string}[]>([])
   const [signedDocs, setSignedDocs] = useState<{id: string; file_url: string; file_name: string; uploaded_by_name: string; created_at: string; has_discrepancies?: boolean; discrepancy_comment?: string}[]>([])
   const [showSignedModal, setShowSignedModal] = useState(false)
@@ -1802,6 +1832,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_COLORS[p.status]}`}>
                                 {STATUS_LABELS[p.status]}
                               </span>
+                              {/* Кнопка удаления участника (только admin, только pending) */}
                               {ADMIN_IDS.includes(userId) && p.status === 'pending' && (
                                 <button
                                   onClick={async () => {
@@ -1826,6 +1857,16 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   className="text-red-400 hover:text-red-600 text-xs border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50 whitespace-nowrap">
                                   ✕
                                 </button>
+                              )}
+                              {/* Кнопка отмены голоса: ГД — своего, admin — любого со статусом approved/rejected */}
+                              {p.role === 'required' && ['approved', 'rejected'].includes(p.status) && (
+                                (ADMIN_IDS.includes(userId) || parseInt(user?.id ?? '0') === p.bitrix_user_id) && (
+                                  <button
+                                    onClick={() => { setRevokingParticipantId(p.id); setRevokeReason(''); setRevokeError('') }}
+                                    className="text-orange-400 hover:text-orange-600 text-xs border border-orange-200 px-1.5 py-0.5 rounded hover:bg-orange-50 whitespace-nowrap">
+                                    ↩ Отменить
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -2151,6 +2192,50 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
               <button onClick={() => { setShowApproveModal(false); setApproveComment('') }}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка отмены голоса */}
+      {revokingParticipantId && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">↩ Отмена согласования</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Решение участника будет сброшено — он снова получит запрос на согласование.
+              {contractStatus === 'согласован' && (
+                <span className="block mt-1 text-orange-600 font-medium">
+                  ⚠️ Документ вернётся в статус «На согласовании».
+                </span>
+              )}
+            </p>
+            {revokeError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-3">
+                {revokeError}
+              </div>
+            )}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Причина отмены <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={revokeReason}
+                onChange={e => setRevokeReason(e.target.value)}
+                placeholder="Например: ошибочно нажал, требуется пересмотр..."
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleRevokeVote} disabled={revokeLoading}
+                className="flex-1 bg-orange-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
+                {revokeLoading ? 'Отмена...' : '↩ Отменить согласование'}
+              </button>
+              <button onClick={() => { setRevokingParticipantId(null); setRevokeReason(''); setRevokeError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Закрыть
               </button>
             </div>
           </div>
