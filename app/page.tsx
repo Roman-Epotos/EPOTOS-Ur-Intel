@@ -12,7 +12,9 @@ export default function HomePage() {
         <PersonalStats />
       </div>
       <div className="max-w-6xl mx-auto w-full px-4 pb-6">
-        <ContractsList />
+        <div className="h-[600px]">
+          <ContractsList />
+        </div>
       </div>
     </div>
   )
