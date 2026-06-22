@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Эпотос-ЮрИнтел",
+  title: "ЮрИнтел-Эпотос",
   description: "Система управления юридическими документами",
 };
 

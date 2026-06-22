@@ -61,7 +61,7 @@ export default function Header() {
   return (
     <div className="flex items-center justify-between mb-4 md:mb-8">
       <div className="min-w-0 flex-1">
-        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">Эпотос-ЮрИнтел</h1>
+        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">ЮрИнтел-Эпотос</h1>
         <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
       </div>
 

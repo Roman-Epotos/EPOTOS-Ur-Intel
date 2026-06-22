@@ -26,7 +26,7 @@ function EditorContent() {
   const onlyofficeUrl = 'https://office.epotos-port.ru'
 
   useEffect(() => {
-    document.title = 'Эпотос-ЮрИнтел — Редактор'
+    document.title = 'ЮрИнтел-Эпотос — Редактор'
 
     if (!version_id && !attachment_id) return
 
@@ -55,7 +55,7 @@ function EditorContent() {
         script.src = `${onlyofficeUrl}/web-apps/apps/api/documents/api.js`
         script.onload = () => {
           setLoading(false)
-          document.title = 'Эпотос-ЮрИнтел — Редактор'
+          document.title = 'ЮрИнтел-Эпотос — Редактор'
           new window.DocsAPI.DocEditor('onlyoffice-editor', {
             ...data.config,
             token: data.token,
