@@ -337,50 +337,60 @@ export default function ContractsList() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-<table className="w-full min-w-[320px]">
+<table className="w-full table-fixed">
+          <colgroup>
+            <col style={{width: '130px'}} />
+            <col style={{width: 'auto'}} />
+            <col className="hidden md:table-column" style={{width: '160px'}} />
+            <col className="hidden lg:table-column" style={{width: '100px'}} />
+            <col className="hidden lg:table-column" style={{width: '85px'}} />
+            <col className="hidden lg:table-column" style={{width: '44px'}} />
+            <col className="hidden md:table-column" style={{width: '44px'}} />
+            <col style={{width: '120px'}} />
+          </colgroup>
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-              <th className="px-3 md:px-6 py-3 font-medium">Номер</th>
-              <th className="px-3 md:px-6 py-3 font-medium">Название</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Контрагент</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Сумма</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Срок</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Файлы</th>
-              <th className="hidden md:table-cell px-6 py-3 font-medium">Чат</th>
-              <th className="px-3 md:px-6 py-3 font-medium">Статус</th>
+              <th className="px-2 md:px-3 py-3 font-medium">Номер</th>
+              <th className="px-2 md:px-3 py-3 font-medium">Название</th>
+              <th className="hidden md:table-cell px-3 py-3 font-medium">Контрагент</th>
+              <th className="hidden lg:table-cell px-3 py-3 font-medium">Сумма</th>
+              <th className="hidden lg:table-cell px-3 py-3 font-medium">Срок</th>
+              <th className="hidden lg:table-cell px-3 py-3 font-medium">Файл</th>
+              <th className="hidden md:table-cell px-3 py-3 font-medium">Чат</th>
+              <th className="px-2 md:px-3 py-3 font-medium">Статус</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(contract => (
               <tr key={contract.id}
                 className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
-                <td className="px-3 md:px-6 py-4 text-xs md:text-sm font-medium text-gray-900">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                <td className="px-2 md:px-3 py-3 text-xs font-medium text-gray-900 truncate">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline block truncate">
                     {contract.number}
                   </Link>
                 </td>
-                <td className="px-3 md:px-6 py-4 text-xs md:text-sm text-gray-700 max-w-[120px] md:max-w-xs truncate">
-                  <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                <td className="px-2 md:px-3 py-3 text-xs text-gray-700 truncate">
+                  <Link href={`/contracts/${contract.id}`} className="hover:underline block truncate">
                     {contract.title}
                   </Link>
                 </td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.counterparty}</td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">
+                <td className="hidden md:table-cell px-3 py-3 text-xs text-gray-600 truncate">{contract.counterparty}</td>
+                <td className="hidden lg:table-cell px-3 py-3 text-xs text-gray-600 truncate">
                   {contract.amount ? Number(contract.amount).toLocaleString('ru-RU') + ' ₽' : '—'}
                 </td>
-                <td className="hidden md:table-cell px-6 py-4 text-sm text-gray-600">{contract.end_date ?? '—'}</td>
-                <td className="hidden md:table-cell px-6 py-4">
+                <td className="hidden lg:table-cell px-3 py-3 text-xs text-gray-600">{contract.end_date ?? '—'}</td>
+                <td className="hidden lg:table-cell px-3 py-3">
                   {contract.has_files && contract.file_type ? (
                     <img
                       src={`/${contract.file_type === 'pdf' ? 'PDF-ico' : contract.file_type === 'xlsx' || contract.file_type === 'xls' ? 'XLSX-ico' : 'DOCX-ico'}.png`}
                       alt={contract.file_type}
-                      className="w-6 h-6"
+                      className="w-5 h-5"
                     />
                   ) : (
                     <span className="text-gray-300 text-xs">—</span>
                   )}
                 </td>
-                <td className="hidden md:table-cell px-6 py-4">
+                <td className="hidden md:table-cell px-3 py-3">
                   <a href={`/contracts/${contract.id}?tab=details`} onClick={() => {
                     const now = new Date().toISOString()
                     localStorage.setItem(`chat_read_time_${contract.id}`, now)
@@ -388,8 +398,8 @@ export default function ContractsList() {
                     <ChatIndicator contractId={contract.id} lastMessageAt={contract.last_message_at ?? null} />
                   </a>
                 </td>
-                <td className="px-3 md:px-6 py-4">
-                  <span className={`text-xs px-1.5 py-0.5 md:px-2 md:py-1 rounded-full font-medium ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                <td className="px-2 md:px-3 py-3">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${statusColor[contract.status] ?? 'bg-gray-100 text-gray-700'}`}>
                     {statusLabel[contract.status] ?? contract.status}
                   </span>
                 </td>
