@@ -1,5 +1,5 @@
 # CONTEXT-YURINTEL.md — ЮрИнтел-Эпотос
-Дата: 2026-06-22
+Дата: 2026-06-23
 Статус: Спринт 4 активен
 
 =============================================================
@@ -61,7 +61,7 @@ RLS включён на всех таблицах.
   counterparties — УНИКАЛЬНЫЙ КЛЮЧ: (inn, kpp)!
   system_roles — role CHECK IN ('admin','gc_manager','finance_gc','finance_company','legal_gc')
   company_directors — справочник ГД (НЕ используется для ЭДО!)
-  edo_specialists — специалисты ЭДО по компаниям
+  edo_specialists — специалисты ЭДО по компаниям (таблица есть но выбор убран из UI)
   user_badge_seen — last_seen_at (bitrix_user_id UNIQUE)
 
   counterparties — дополнительные поля:
@@ -76,8 +76,6 @@ RLS включён на всех таблицах.
     category (charter/poa/order/other), file_name, file_url, file_type,
     uploaded_by_id, uploaded_by_name, created_at
     Storage bucket: counterparty-docs (PUBLIC)
-    Категории: Устав/Доверенность/Решение-Приказ/Прочее
-    ВАЖНО: имена файлов транслитерируются при загрузке (кириллица → латиница)
     ВАЖНО: загрузка напрямую в Supabase через presigned URL (uploadFileDirect)
 
   counterparty_checks — кэш проверок надёжности (10 дней):
@@ -86,27 +84,14 @@ RLS включён на всех таблицах.
     risk_level CHECK IN ('low','medium','high'),
     dadata JSONB, fssp JSONB, bankrupt JSONB, rnp JSONB,
     summary TEXT, created_at
-    Индексы: inn, expires_at
-    API: POST /api/counterparties/check (проверка + кэш)
-         GET /api/counterparties/check-cache?inns=... (batch кэш)
 
   company_requisites:
     company_prefix, company_name, inn, kpp, ogrn,
-    legal_address, actual_address, bank_name, bank_account,
-    bank_bik, bank_corr_account, director_name, director_title,
-    phone, email, website, short_name, signatory_name,
-    poa_number, poa_date, poa_expires,
-    director_short_name, basis, fax, warehouse_address
-
-  support_requests / support_messages (Realtime)
-
-  contracts — дополнительные поля:
-    deleted_at, deleted_by_bitrix_id, deleted_by_name, delete_reason
-    parent_contract_id, parent_contract_external, child_number, is_child
-    company_prefix, customer_number
-
-  signed_documents: has_discrepancies, discrepancy_comment, signed_date
-  approval_messages: reply_to_id, reply_to_author, reply_to_text
+    legal_address, actual_address, warehouse_address,  ← НОВОЕ ПОЛЕ
+    bank_name, bank_account, bank_bik, bank_corr_account,
+    director_name, director_title, phone, email, website,
+    short_name, signatory_name, poa_number, poa_date, poa_expires,
+    director_short_name, basis, fax
 
   approval_sessions — ЭДО поля:
     edo_requested, edo_requested_by_id, edo_requested_by_name, edo_requested_at
@@ -115,20 +100,17 @@ RLS включён на всех таблицах.
     signing_method CHECK IN ('edo','simple')
     signing_method_set_by_id, signing_method_set_by_name, signing_method_set_at
     edo_specialist_bitrix_id, edo_specialist_name, edo_task_sent_at
-
-  edo_specialists: id, company_prefix, bitrix_user_id, user_name, position
-    ТХ/НПП: Наумова Елена(158), Жукова Ольга(164), Симачева Алена(1036)
-    НПП: +Виноградова Анна(152); СПТ: Виноградова Анна(152)
-    ОС: Крылова Ирина(72)
-    Э-К: Окунева Екатерина(894), Шиврина Дарья(1286), Батуева Елена(910), Лямина(216)
+    ВАЖНО: выбор специалиста ЭДО убран из UI — подписание происходит вне системы
 
 approval_participants:
   status IN ('pending','approved','rejected','acknowledged','disabled','completed_by_initiator')
-  role: 'required' (согласует, зелёный) | 'optional' (ознакамливается, синий)
+  role: 'required' (согласует) | 'optional' (ознакамливается)
+  ВАЖНО: при запуске согласования обязательны ГД (director) и Бухгалтерия (accounting)
 
 company_requisites заполнены:
   ТХ: director_short_name='Чащина Е.П.', НПП: 'Веревка А.В.'
   СПТ/ОС: 'Валюк А.Г.', Э-К: 'Молоткин Е.А.', все basis='Устава', fax=NULL
+  warehouse_address заполнен для всех компаний
 
 
 =============================================================
@@ -136,17 +118,10 @@ company_requisites заполнены:
 =============================================================
 Нумерация: ПРЕФИКС-ТИПКОД-ГОД/МЕСЯЦ/НН
 Дочерние: номер родителя + замена типа + суффикс -N
-
-Типы: поставка, услуги, аренда, подряд, купля-продажа, агентский, дилерский,
-  лицензионный, сервисный, асц, спецификация, доп-соглашение, nda, эдо,
-  протокол-разногласий, доверенность, персданные
-TYPE_CODES: 'спецификация'='СПЕЦ', 'другое'='ДОК'
+ВАЖНО: Э-К имеет двойной префикс → company_prefix из БД или startsWith('Э-К')
 
 Статусы: черновик → на_согласовании → согласован → [на_подписи_в_эдо →]
   загружен_частично → подписан → на_исполнении (↘ отклонён)
-
-statusLabel/statusColor — в 3 местах (ContractsList.tsx х2, ContractTabs.tsx)
-  на_подписи_в_эдо: 'На подписи в ЭДО', 'bg-purple-100 text-purple-800'
 
 LOCKED_STATUSES = ['согласован','на_подписи_в_эдо','загружен_частично','подписан','на_исполнении']
 
@@ -168,94 +143,69 @@ ADMIN_IDS = [30, 1148]
 =============================================================
 ✅ CORE: документы, версионирование, OnlyOffice, журнал аудита
 ✅ СОГЛАСОВАНИЕ: сессии, Realtime, чат, уведомления Б24
+✅ ГД и Бухгалтерия обязательны при запуске согласования
+✅ Отмена согласования: ГД — своего, Admin — любого + причина в чат
 ✅ AI (EpotosGPT): Legal Review, Паспорт, Анализ — gemini-2.5-flash
-✅ Реквизиты компаний, реестр контрагентов (DaData)
+✅ Реквизиты компаний + поле «Адрес склада» (warehouse_address)
+✅ Реестр контрагентов (DaData + иностранные)
 ✅ Дашборды: юридический, финансовый
 ✅ Контроль исполнения, чек-листы, задачи Б24
 ✅ Автобэкап Яндекс.Диск (17:00), крон дедлайнов (09:00)
-✅ Soft delete (скрыт от всех включая рабочий стол)
-✅ Помощь и поддержка (FAQ, Realtime чат)
-✅ Связанные документы
+✅ Крон ЭДО-напоминания (07:00) — через 3 дня если файл не загружен
+✅ Soft delete, Помощь и поддержка, Связанные документы
 ✅ Inline edit реквизитов + блокировка LOCKED_STATUSES
 ✅ AI сравнение подписанного документа (Claude — ПЛАТНАЯ!)
-✅ Генерация шаблонов (JSZip) — ТХ все 10 шаблонов
-✅ Реестр контрагентов: поиск + DaData + запрет ручного ввода
-✅ Чат: reply + удаление (5 мин) + редактирование
-✅ Главная: sticky шапка, поиск по customer_number, фильтр контрагентов с автодополнением
-✅ Realtime сортировка по активности чата
-✅ ЭДО-голосование (полный цикл)
-✅ Мобильная адаптация (шапка, карточка, дашборды)
-✅ База знаний ИИ — вкладка в Настройках (загрузка в Эпотос-Core)
-✅ Безопасность: серверная верификация auth_id через /api/bitrix/verify
-✅ Уведомления: ссылка → конкретный документ (?contract_id=)
-✅ Фильтр шаблонов по компании в Настройках
-✅ ЭПОТОС-Ассистент: вкладка в /help (чат с ИИ, первая вкладка по умолчанию)
-✅ Иностранные контрагенты: фильтр, добавление, флаги 🇷🇺/🌍 в реестре
-✅ Файлы контрагента: 4 категории, Storage bucket counterparty-docs
-  API: /api/counterparties/[id]/documents (GET/POST/DELETE)
-✅ Переключатель 🇷🇺/🌍 в форме создания документа (new/page.tsx)
-✅ Проверка надёжности контрагентов (заменила СБИС):
-  Источники: DaData, ФССП, ЕФРСБ, РНП ФАС | Кэш: 10 дней
-  UI: карточка контрагента + индикатор 🟢/🟡/🔴 в реестре и форме создания
-✅ Вкладки карточки документа: Реквизиты/Чат + История (чат переехал)
-✅ Инструкция пользователя (Word + TXT в базе знаний Ассистента)
-✅ Документы контрагента в карточке договора (просмотр + загрузка)
-✅ Прокси файлов Supabase через Vercel: app/utils/proxyUrl.ts → proxyUrl(url)
-  Применено в: ContractTabs.tsx, counterparties/[id]/page.tsx, admin/page.tsx
-✅ Прямая загрузка файлов в Supabase Storage (обход лимита Vercel 4.5 МБ):
-  Утилита: app/utils/uploadFile.ts → uploadFileDirect(file, bucket, folder)
-  API: POST /api/counterparties/upload-url (presigned URL)
-  Применено в: карточка контрагента, карточка договора, подписанные документы
-  Bucket contracts разрешён для presigned upload
-✅ Отмена согласования:
-  ГД — своего голоса (пока статус не 'согласован')
-  Администратор — любого участника на любом статусе
-  Причина фиксируется в чат + история | API: POST /api/approvals/[sessionId]/revoke
-✅ Бейдж статуса ЭДО на главной странице:
-  📨 ЭДО запрошено (жёлтый) / ✅ ЭДО одобрено (синий) / ❌ ЭДО отказано (красный)
-  contracts-list API возвращает approval_sessions с edo полями
-✅ Улучшенные уведомления решения ГД по ЭДО:
-  Инициатору — персональное с чётким текстом ✅/❌
-  Остальным участникам — общее уведомление
-✅ Переименование: ЮрИнтел-Эпотос (заголовок, title, FAQ, Б24)
-✅ Таблица документов: table-fixed, колонки оптимизированы, статус всегда виден
-✅ Прокрутка главной страницы + внутренний скролл списка документов
-✅ Загрузка больших PDF (до ~100 МБ) во всех разделах системы
+✅ Генерация шаблонов (JSZip):
+   ТХ — все 10 шаблонов
+   СПТ — Договор поставки (загружен и протестирован ✅)
+   ОС — Договор поставки (тот же шаблон, другая компания)
+✅ Реестр контрагентов: поиск + DaData + иностранные
+✅ Проверка надёжности контрагентов: DaData, ФССП, ЕФРСБ, РНП ФАС
+✅ Вкладки карточки: Реквизиты/Чат + История
+✅ Инструкция пользователя + база знаний ЭПОТОС-Ассистента
+✅ Документы контрагента в карточке договора
+✅ Прокси файлов Supabase через Vercel (proxyUrl)
+✅ Прямая загрузка файлов в Supabase (uploadFileDirect + upload-proxy fallback)
+✅ Бейдж статуса ЭДО на главной + улучшенные уведомления
+✅ Переименование: ЮрИнтел-Эпотос
+✅ Таблица документов: статус всегда виден
+✅ Безопасность: редирект гостей на Б24 (window.self === window.top)
+✅ ЭДО упрощён: убран выбор специалиста, подписание вне системы
+✅ Уведомление участникам при загрузке подписанного файла
+✅ GenerateFromTemplate: поставка_спт без лимита ответственности
+✅ Фикс company_prefix для Э-К в модалке добавления участника
 
 
 =============================================================
 8. ИЗВЕСТНЫЕ ПРОБЛЕМЫ / НА ПАУЗЕ
 =============================================================
 ⚠️ PDF анализ — просим конвертировать в DOCX (unpdf нестабилен)
-⚠️ Мобильный Б24: пользователь без auth_id → разрешён доступ (УЯЗВИМОСТЬ!)
-    Решение: Вариант А — postMessage токен (официальный метод Б24)
-    Статус: запланировано
-⚠️ Баг: выпадашки «Для информирования»/«Обязательный» выходят за границы блока
-    в форме запуска согласования (Дополнительные согласующие) — НА ПАУЗЕ
-⚠️ Баг: кнопка загрузки в базе знаний зависает на ⏳ (но файл загружается)
-    Статус: отложено до конца разработки Core
-⚠️ Горизонтальный скролл на главной при наличии бейджа ЭДО — оставлен намеренно
+⚠️ Баг: выпадашки «Для информирования»/«Обязательный» за границами блока
+    в форме запуска согласования — НА ПАУЗЕ
+⚠️ Баг: кнопка загрузки в базе знаний зависает на ⏳ — отложено до Core
+⚠️ Горизонтальный скролл на главной при бейдже ЭДО — оставлен намеренно
+⬜ Drag & drop для загрузки подписанного файла — в плане
 
 
 =============================================================
-9. ГДЕ ОСТАНОВИЛИСЬ (22.06.2026)
+9. ГДЕ ОСТАНОВИЛИСЬ (23.06.2026)
 =============================================================
 Сделано в текущую сессию:
-  ✅ Отмена согласования ГД/администратором
-  ✅ Прямая загрузка файлов (presigned URL) — все разделы
-  ✅ Прокрутка главной страницы
-  ✅ Переименование ЮрИнтел-Эпотос
-  ✅ Бейдж статуса ЭДО на главной
-  ✅ Улучшенные уведомления решения ГД по ЭДО
-  ✅ Фикс таблицы документов
+  ✅ Исправлена мобильная уязвимость (редирект гостей на Б24)
+  ✅ Исправлен upload-proxy fallback для России
+  ✅ ЭДО упрощён (убран специалист ЭДО)
+  ✅ Бухгалтерия и ГД обязательны при согласовании
+  ✅ Уведомления при загрузке подписанного файла
+  ✅ Крон-напоминание ЭДО через 3 дня
+  ✅ Поле «Адрес склада» в реквизитах компаний
+  ✅ Шаблон СПТ Договор поставки — готов и загружен
+  ✅ GenerateFromTemplate: поставка_спт без лимита ответственности
 
 Следующие задачи (по приоритету):
-  1. Подготовка шаблонов СПТ/ОС/Эпотос-К:
-     - Роман загружает заготовки Word-файлов
-     - Совместная подготовка: якорные метки + check_xml.py + тестирование
-     - Загрузка через Настройки → Шаблоны
-  2. Исправление мобильной уязвимости (postMessage токен Б24)
-  3. ЭПОТОС-ПЕРСОНАЛ
+  1. Шаблоны ОС — тот же файл СПТ, загрузить с company_prefix=ОС
+  2. Остальные шаблоны СПТ/ОС/Эпотос-К (заготовки у Романа)
+  3. Drag & drop для загрузки подписанного файла
+  4. ЭПОТОС-ПЕРСОНАЛ
 
 
 =============================================================
@@ -263,22 +213,16 @@ ADMIN_IDS = [30, 1148]
 =============================================================
 ✅ Спринт 1, 2, 3 — завершены
 🔄 Спринт 4 (активен):
-  ✅ ЭПОТОС-Ассистент API + интерфейс
-  ✅ Иностранные контрагенты
-  ✅ Файлы контрагента
-  ✅ Переключатель рос/иностр в создании документа
-  ✅ Инструкция пользователя + база знаний
-  ✅ Проверка надёжности контрагентов
-  ✅ Реорганизация вкладок карточки документа
-  ✅ Документы контрагента в карточке договора
-  ✅ Прокси файлов Supabase через Vercel
-  ✅ Прямая загрузка файлов (presigned URL)
-  ✅ Отмена согласования ГД/администратором
-  ✅ Бейдж статуса ЭДО + улучшенные уведомления
-  ✅ Переименование ЮрИнтел-Эпотос
-  ✅ Фикс таблицы + прокрутка главной
-  ⬜ Шаблоны СПТ / ОС / Эпотос-К
-  ⬜ Исправление мобильной уязвимости
+  ✅ ЭПОТОС-Ассистент, иностранные контрагенты, файлы контрагента
+  ✅ Переключатель рос/иностр, инструкция, проверка надёжности
+  ✅ Реорганизация вкладок, документы контрагента в карточке
+  ✅ Прокси + прямая загрузка файлов
+  ✅ Отмена согласования, бейдж ЭДО, переименование
+  ✅ Фикс таблицы + прокрутка, мобильная безопасность
+  ✅ ЭДО упрощён, уведомления загрузки, крон-напоминание
+  ✅ Адрес склада, шаблон СПТ поставка
+  ⬜ Шаблоны ОС / остальные СПТ/ОС/Э-К
+  ⬜ Drag & drop загрузка подписанного файла
   ⬜ ЭПОТОС-ПЕРСОНАЛ
 
 🔴 Спринт 5:
@@ -291,62 +235,68 @@ ADMIN_IDS = [30, 1148]
 =============================================================
 11. АРХИТЕКТУРНЫЕ РЕШЕНИЯ
 =============================================================
-Уведомления: /api/bitrix-notify (POST напрямую)
-  Ссылка: /?contract_id=${id} → useBitrixAuth → window.location.replace
-
 Безопасность:
   auth_id → sessionStorage → /api/bitrix/verify → Б24 profile API
-  Без auth_id (мобильный) → доступ разрешён (УЯЗВИМОСТЬ — планируется исправить)
-  Планируемое решение: window.addEventListener('message') для мобильного Б24
+  Без auth_id в sessionStorage И без URL params → редирект на Б24
+  window.self === window.top → значит открыт не в iframe (прямая ссылка)
+  Мобильный Б24: нет auth_id → разрешаем (storedUser без auth_id)
 
-ЭДО: ГД из approval_settings (stage='director') — НЕ company_directors!
-  API: /api/approvals/[sessionId]/edo
-  Бейдж ЭДО: contracts-list возвращает approval_sessions(edo_requested, edo_director_decision, signing_method)
-
-Иностранные контрагенты:
-  is_foreign=true, inn='FOREIGN-{timestamp}', country, registration_number
-  API: ?foreign_only=true / ?russian_only=true
+ЭДО (упрощённый алгоритм):
+  1. Финансист → запрос у ГД (edo_request)
+  2. ГД → решение ✅/❌ (edo_decision) — уведомление инициатору персонально
+  3. Финансист → выбирает ЭДО или простую подпись (без назначения специалиста)
+  4. Подписание происходит вне системы
+  5. Бухгалтер или инициатор → загружает подписанный файл
+  6. Система → уведомляет всех участников (documents_uploaded)
+  Крон /api/cron/edo-reminder — каждый день 07:00, напоминание через 3 дня
 
 Прямая загрузка файлов:
   Утилита: app/utils/uploadFile.ts → uploadFileDirect(file, bucket, folder)
-  API presigned URL: POST /api/counterparties/upload-url → { signed_url, public_url }
+  Сначала пробует PUT на signed_url Supabase (быстро)
+  Fallback: POST /api/upload-proxy (через Vercel, для России)
+  API presigned: POST /api/counterparties/upload-url
   Разрешённые buckets: counterparty-docs, contracts
-  Применено: карточка контрагента, карточка договора (блок доков контрагента),
-    SignedDocumentUploadModal (temp_upload заменён на прямую загрузку)
 
 Прокси файлов Supabase:
-  API: GET /api/file-proxy?url=... — проксирует только supabase.co домены
+  API: GET /api/file-proxy?url=...
   Утилита: app/utils/proxyUrl.ts → proxyUrl(url)
-  Cache-Control: public, max-age=3600
 
-Проверка надёжности контрагентов:
-  Источники: DaData, ФССП API, ЕФРСБ API, РНП ФАС API
-  Кэш: counterparty_checks, expires_at = NOW() + 10 days
-  API: POST /api/counterparties/check, GET /api/counterparties/check-cache
+Шаблоны документов:
+  После правки в Word → py check_xml.py → загрузить из шаблоны\
+  ВАЖНО: check_xml.py нужно указывать INPUT = 'НазваниеФайла.docx' (без templates_fixed)
+  Готовы: ТХ (10), СПТ (1 — поставка)
+  В работе: ОС (тот же файл СПТ), Э-К
 
-Отмена голоса в согласовании:
-  API: POST /api/approvals/[sessionId]/revoke
-  Тело: { participant_id, reason, user_bitrix_id, user_name, contract_id }
-  Права: ГД — своего (пока не 'согласован'), Admin — любого всегда
-  После отмены: участник → pending, сообщение в чат, лог
-  Если был 'согласован' → возвращается в 'на_согласовании'
+  Метки шаблонов (34 штуки):
+  supplier_*: full_name, short_name, director_title, director_name,
+    director_short_name, basis, ogrn, inn, kpp, legal_address,
+    warehouse_address, phone, fax, email, bank_name, bank_account,
+    bank_corr_account, bank_bik
+  counterparty_*: full_name, signatory_title, signatory, basis,
+    inn, kpp, ogrn, address, phone, email, bank_name, bank_account,
+    bank_bik, bank_corr
+  contract_*: number, day, month, year
 
-ЭПОТОС-Ассистент:
-  Бэкенд: https://epotos-core.vercel.app
-  Эмбеддинги: google/gemini-embedding-001 → vector(3072)
-  ВАЖНО: индекс на embedding удалён (>2000 лимит ivfflat/hnsw)
+  EXTRA_FIELDS по типам:
+    поставка (ТХ): payment_days, contract_end_date, liability_limit_num
+    поставка_спт (СПТ/ОС): payment_days, contract_end_date (БЕЗ лимита!)
+    Определение: isSptOs = ['СПТ','ОС'].includes(company_prefix)
 
-Вкладки карточки документа (ContractTabs.tsx):
-  'details' = Реквизиты/Чат | 'generate' = Генерация | 'documents' = Документы
-  'approval' = Согласование | 'ai' = EpotosGPT | 'execution' = Контроль исполнения
-  'related' = Связанные документы | 'history' = История
-  Вкладка 'chat' — УДАЛЕНА
+  counterparty_signatory = signatory_name из карточки контрагента
+  ВАЖНО: заполнять в формате «Фамилия И.О.» прямо в карточке контрагента
 
-Шаблоны:
-  После правки в Word → py check_xml.py → загрузить из templates_fixed\
-  Путь: шаблоны\templates_fixed\
-  Готовы: ТХ (10 шаблонов)
-  В работе: СПТ, ОС, Эпотос-К (заготовки загружаются пользователем)
+Фикс Э-К:
+  company_prefix = contract.company_prefix ?? (startsWith('Э-К') ? 'Э-К' : split('-')[0])
+  Применено в: openAddParticipantModal, approve/page.tsx
+
+Notify types: document_created, sent_for_approval, approval_required,
+  document_approved, document_rejected, documents_uploaded,
+  checklist_generated, checklist_deadline, edo_reminder
+
+Вкладки карточки документа:
+  details=Реквизиты/Чат, generate=Генерация, documents=Документы,
+  approval=Согласование, ai=EpotosGPT, execution=Контроль исполнения,
+  related=Связанные документы, history=История
 
 
 =============================================================
@@ -365,4 +315,4 @@ ADMIN_IDS = [30, 1148]
 8. Деплой: git add -A / git commit -m "..." / git push
 9. Если фрагмент не найден → обновить repomix
 10. git log завис → нажать q
-11. Python скрипты → терминал из папки шаблоны (py script.py)
+11. check_xml.py: указать INPUT = 'ИмяФайла.docx' в начале скрипта

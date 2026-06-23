@@ -5001,6 +5001,7 @@ export default function AdminPage() {
     poa_number: '',
     poa_date: '',
     poa_expires: '',
+    warehouse_address: '',
   })
   const [savingRequisites, setSavingRequisites] = useState(false)
   const [requisitesSuccess, setRequisitesSuccess] = useState('')
@@ -5127,6 +5128,7 @@ useEffect(() => {
           company_prefix: selectedCompany,
           company_name: '',
           short_name: '',
+          warehouse_address: '',
           inn: '', kpp: '', ogrn: '',
           legal_address: '', actual_address: '',
           bank_name: '', bank_account: '', bank_bik: '', bank_corr_account: '',
@@ -5897,6 +5899,12 @@ useEffect(() => {
                     <label className="block text-xs font-medium text-gray-500 mb-1">Фактический адрес</label>
                     <input value={requisitesForm.actual_address} onChange={e => setRequisitesForm(p => ({...p, actual_address: e.target.value}))}
                       placeholder="г. Москва, ул. Примерная, д. 1"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Адрес склада</label>
+                    <input value={requisitesForm.warehouse_address ?? ''} onChange={e => setRequisitesForm(p => ({...p, warehouse_address: e.target.value}))}
+                      placeholder="196641, г. Санкт-Петербург, пос. Металлострой, д. 9Б"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
 
