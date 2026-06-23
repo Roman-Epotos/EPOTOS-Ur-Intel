@@ -42,19 +42,38 @@ export async function uploadFileDirect(
     throw new Error(urlData.error ?? 'Ошибка получения URL загрузки')
   }
 
-  // Загружаем файл напрямую в Supabase (минуя Vercel)
-  const uploadRes = await fetch(urlData.signed_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-    body: file,
+  // Пробуем загрузить напрямую в Supabase (быстро, без лимита Vercel)
+  try {
+    const uploadRes = await fetch(urlData.signed_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    })
+    if (uploadRes.ok) {
+      return { public_url: urlData.public_url, file_name: safeName, path }
+    }
+  } catch {
+    // Прямая загрузка не удалась — используем proxy
+  }
+
+  // Fallback: загружаем через наш Vercel proxy (для России)
+  const proxyForm = new FormData()
+  proxyForm.append('file', file)
+  proxyForm.append('bucket', bucket)
+  proxyForm.append('path', path)
+
+  const proxyRes = await fetch(`${baseUrl}/api/upload-proxy`, {
+    method: 'POST',
+    body: proxyForm,
   })
 
-  if (!uploadRes.ok) {
-    throw new Error(`Ошибка загрузки файла: ${uploadRes.status}`)
+  const proxyData = await proxyRes.json()
+  if (!proxyRes.ok || proxyData.error) {
+    throw new Error(proxyData.error ?? 'Ошибка загрузки файла')
   }
 
   return {
-    public_url: urlData.public_url,
+    public_url: proxyData.public_url,
     file_name: safeName,
     path,
   }
