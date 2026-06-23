@@ -7,6 +7,7 @@ export type NotifyType =
   | 'documents_uploaded'
   | 'checklist_generated'
   | 'checklist_deadline'
+  | 'edo_reminder'
 
 interface NotifyOptions {
   recipients: number[]
@@ -30,6 +31,7 @@ function buildMessage(type: NotifyType, documentTitle: string, documentNumber: s
     documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
     checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
     checklist_deadline:  `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
+    edo_reminder:        `📋 Напоминание: загрузите подписанный через ЭДО документ в систему.\nДокумент: ${doc}`,
   }
   return messages[type] ?? `Уведомление по документу: ${doc}`
 }
