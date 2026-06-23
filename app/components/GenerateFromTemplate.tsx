@@ -159,6 +159,10 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
     { key: 'liability_limit_num', label: 'Лимит ответственности (руб.)', placeholder: '1000000' },
   ],
+  'поставка_спт': [
+    { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
   'поставка_снг': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
@@ -538,7 +542,12 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
   // ШАГ 2 — Форма заполнения полей
   if (step === 'form' && selectedTemplate) {
     const isSng = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
-    const templateKey = isSng ? selectedTemplate.type + '_снг' : selectedTemplate.type ?? ''
+    const isSptOs = ['СПТ', 'ОС'].includes(selectedTemplate.company_prefix ?? '')
+    const templateKey = isSng
+      ? selectedTemplate.type + '_снг'
+      : isSptOs
+        ? selectedTemplate.type + '_спт'
+        : selectedTemplate.type ?? ''
     const extraFieldsDef = EXTRA_FIELDS[templateKey] ?? EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
     return (
       <div className="space-y-5">
