@@ -152,6 +152,19 @@ export default function ApprovePage() {
       return
     }
 
+    // Проверяем обязательное наличие ГД и бухгалтера
+    const hasDirector = requiredParticipants.some(p => p.stage === 'director')
+    const hasAccounting = requiredParticipants.some(p => p.stage === 'accounting')
+
+    if (!hasDirector) {
+      setError('Необходимо выбрать Генерального директора')
+      return
+    }
+    if (!hasAccounting) {
+      setError('Необходимо выбрать представителя Бухгалтерии')
+      return
+    }
+
     // Собираем дополнительных из строк
     const customParticipants: Participant[] = customRows
       .filter(r => r.user_name.trim())
