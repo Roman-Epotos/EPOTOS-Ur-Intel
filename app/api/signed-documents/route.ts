@@ -147,6 +147,43 @@ export async function POST(request: NextRequest) {
       const newStatus = docsCount >= 2 ? 'подписан' : 'загружен_частично'
       await supabase.from('contracts').update({ status: newStatus }).eq('id', contract_id)
 
+      // Уведомляем всех участников согласования о загрузке подписанного документа
+      const { data: lastSession2 } = await supabase
+        .from('approval_sessions')
+        .select('id, initiated_by_bitrix_id')
+        .eq('contract_id', contract_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (lastSession2) {
+        const { data: participantsData2 } = await supabase
+          .from('approval_participants')
+          .select('bitrix_user_id')
+          .eq('session_id', lastSession2.id)
+          .not('bitrix_user_id', 'is', null)
+        const participantIds2 = participantsData2?.map(p => p.bitrix_user_id).filter(Boolean) ?? []
+        const { data: contractData2 } = await supabase
+          .from('contracts')
+          .select('title, number, author_bitrix_id')
+          .eq('id', contract_id)
+          .single()
+        if (contractData2) {
+          const recipients2 = [...new Set([
+            ...(contractData2.author_bitrix_id ? [contractData2.author_bitrix_id] : []),
+            ...(lastSession2.initiated_by_bitrix_id ? [lastSession2.initiated_by_bitrix_id] : []),
+            ...participantIds2,
+          ])]
+          await sendBitrixNotify({
+            recipients: recipients2,
+            type: 'documents_uploaded',
+            document_id: contract_id,
+            document_title: contractData2.title ?? '',
+            document_number: contractData2.number ?? '',
+          })
+        }
+      }
+
       return NextResponse.json({ success: true })
     }
 
