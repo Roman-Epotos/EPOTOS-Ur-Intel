@@ -2021,14 +2021,9 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                   <p className="text-xs text-green-700 font-medium">✅ ЭДО разрешено директором</p>
                                   {['finance_gc','finance_company'].some(r => currentUserRole === r) && (
                                     <div className="space-y-1.5">
-                                      <select value={selectedEdoSpecialistId ?? ''} onChange={e => setSelectedEdoSpecialistId(parseInt(e.target.value))}
-                                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
-                                        <option value="">— Специалист ЭДО —</option>
-                                        {edoSpecialists.map(s => <option key={s.bitrix_user_id} value={s.bitrix_user_id}>{s.user_name}</option>)}
-                                      </select>
-                                      <button onClick={() => handleEdoSendTask('edo')} disabled={edoLoading || !selectedEdoSpecialistId}
+                                      <button onClick={() => handleEdoSendTask('edo')} disabled={edoLoading}
                                         className="w-full bg-blue-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                                        {edoLoading ? '...' : '📧 Отправить на ЭДО'}
+                                        {edoLoading ? '...' : '📧 Подписание через ЭДО'}
                                       </button>
                                       <button onClick={() => handleEdoSendTask('simple')} disabled={edoLoading}
                                         className="w-full bg-gray-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
@@ -2049,7 +2044,6 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               {session.signing_method === 'edo' ? (
                                 <div>
                                   <p className="text-xs text-blue-700 font-medium">📧 Подписание через ЭДО</p>
-                                  <p className="text-xs text-gray-500 mt-0.5">Специалист: {session.edo_specialist_name}</p>
                                 </div>
                               ) : (
                                 <p className="text-xs text-gray-700 font-medium">✍️ Простая подпись</p>
