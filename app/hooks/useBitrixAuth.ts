@@ -102,9 +102,13 @@ export function useBitrixAuth() {
         }
 
         // 3. Ждём postMessage от мобильного Б24 (3 секунды)
+        // Если нет вообще ничего в sessionStorage — показываем экран входа
+        // Если есть старая запись без auth_id — разрешаем (десктоп Б24 после первого входа)
         postMessageTimer = setTimeout(() => {
-          // postMessage не пришёл — требуем ручной вход
-          setNeedManualAuth(true)
+          const storedAfterWait = sessionStorage.getItem('bitrix_user')
+          if (!storedAfterWait) {
+            setNeedManualAuth(true)
+          }
           setLoading(false)
         }, 3000)
 
