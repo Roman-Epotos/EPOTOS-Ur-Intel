@@ -613,6 +613,54 @@ export default function ApprovalPortalPage() {
 }
 
 ================
+File: app/contracts/[id]/page.tsx
+================
+import { createClient } from '@supabase/supabase-js'
+import { notFound } from 'next/navigation'
+import ContractTabs from '@/app/components/ContractTabs'
+
+export default async function ContractPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (!contract || contract.deleted_at) notFound()
+
+  const { data: logs } = await supabase
+    .from('contract_logs')
+    .select('*')
+    .eq('contract_id', id)
+    .order('created_at', { ascending: false })
+
+  const { data: versions } = await supabase
+    .from('versions')
+    .select('*')
+    .eq('contract_id', id)
+    .order('version_number', { ascending: false })
+
+  return (
+    <ContractTabs
+      contract={contract}
+      versions={versions ?? []}
+      logs={logs ?? []}
+    />
+  )
+}
+
+================
 File: app/dashboard/page.tsx
 ================
 'use client'
@@ -939,54 +987,6 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-================
-File: app/contracts/[id]/page.tsx
-================
-import { createClient } from '@supabase/supabase-js'
-import { notFound } from 'next/navigation'
-import ContractTabs from '@/app/components/ContractTabs'
-
-export default async function ContractPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-
-  const { data: contract } = await supabase
-    .from('contracts')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (!contract || contract.deleted_at) notFound()
-
-  const { data: logs } = await supabase
-    .from('contract_logs')
-    .select('*')
-    .eq('contract_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: versions } = await supabase
-    .from('versions')
-    .select('*')
-    .eq('contract_id', id)
-    .order('version_number', { ascending: false })
-
-  return (
-    <ContractTabs
-      contract={contract}
-      versions={versions ?? []}
-      logs={logs ?? []}
-    />
   )
 }
 
@@ -2074,6 +2074,19 @@ export default function ApprovePage() {
       return
     }
 
+    // Проверяем обязательное наличие ГД и бухгалтера
+    const hasDirector = requiredParticipants.some(p => p.stage === 'director')
+    const hasAccounting = requiredParticipants.some(p => p.stage === 'accounting')
+
+    if (!hasDirector) {
+      setError('Необходимо выбрать Генерального директора')
+      return
+    }
+    if (!hasAccounting) {
+      setError('Необходимо выбрать представителя Бухгалтерии')
+      return
+    }
+
     // Собираем дополнительных из строк
     const customParticipants: Participant[] = customRows
       .filter(r => r.user_name.trim())
@@ -3150,47 +3163,6 @@ export default function NewContractPage() {
 }
 
 ================
-File: app/layout.tsx
-================
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import AuthGuard from "@/app/components/AuthGuard";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "ЮрИнтел-Эпотос",
-  description: "Система управления юридическими документами",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <head>
-        <script src="https://api.bitrix24.com/api/v1/" async></script>
-      </head>
-      <body className="min-h-full flex flex-col"><AuthGuard>{children}</AuthGuard></body>
-    </html>
-  );
-}
-
-================
 File: app/counterparties/page.tsx
 ================
 'use client'
@@ -4255,6 +4227,47 @@ export default function HelpPage() {
       </div>
     </div>
   )
+}
+
+================
+File: app/layout.tsx
+================
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "ЮрИнтел-Эпотос",
+  description: "Система управления юридическими документами",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <head>
+        <script src="https://api.bitrix24.com/api/v1/" async></script>
+      </head>
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
 }
 
 ================
