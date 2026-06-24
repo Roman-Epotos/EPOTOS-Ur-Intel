@@ -185,8 +185,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'contract_end_date', label: 'Дата окончания договора', placeholder: '31.12.2026' },
   ],
   'nda': [
-    { key: 'nda_penalty_num', label: 'Штраф за разглашение (цифрами)', placeholder: '1000000' },
-    { key: 'nda_penalty_kopecks', label: 'Копеек', placeholder: '00' },
+    { key: 'liability_limit_num', label: 'Штраф за разглашение (руб.)', placeholder: '1000000' },
   ],
   'эдо': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
