@@ -36,13 +36,14 @@ export async function GET(request: NextRequest) {
             title,
             counterparty,
             status,
-            amount
+            amount,
+            deleted_at,
+            document_category
           )
         )
       `)
       .eq('bitrix_user_id', userId)
       .eq('status', 'pending')
-      .filter('approval_sessions.contracts.deleted_at', 'is', null)
 
     // 2. РњРѕРё С‡РµСЂРЅРѕРІРёРєРё
     const { data: myDrafts } = await supabase
@@ -76,11 +77,12 @@ export async function GET(request: NextRequest) {
       .eq('status', 'active')
       .filter('contracts.deleted_at', 'is', null)
       .order('created_at', { ascending: false })
-// Фильтруем — только основные документы (не вложения)
+// Фильтруем — только основные документы (не вложения) и не удалённые
     const filteredApprovals = (myApprovals ?? []).filter(p => {
-      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string } }
+      const sessions = p.approval_sessions as unknown as { contracts: { document_category?: string, deleted_at?: string | null } }
       const category = sessions?.contracts?.document_category
-      return category !== 'attachment'
+      const deletedAt = sessions?.contracts?.deleted_at
+      return category !== 'attachment' && !deletedAt
     })
     const requiredApprovals = filteredApprovals.filter(p => p.role === 'required')
     const optionalApprovals = filteredApprovals.filter(p => p.role === 'optional')
