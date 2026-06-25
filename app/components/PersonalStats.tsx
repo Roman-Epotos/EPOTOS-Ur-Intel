@@ -25,7 +25,7 @@ export default function PersonalStats() {
       try {
         const [contractsRes, myDocsRes] = await Promise.all([
           fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
-          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}`),
+          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`, { cache: 'no-store' }),
         ])
 
         const contractsData = await contractsRes.json()
