@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       .from('contracts')
       .select('*')
       .eq('author_bitrix_id', userId)
-      .eq('status', 'С‡РµСЂРЅРѕРІРёРє')
+      .eq('status', 'черновик')
       .in('document_category', ['contract', 'document'])
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
