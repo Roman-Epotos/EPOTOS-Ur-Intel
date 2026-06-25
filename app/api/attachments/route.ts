@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const maxDuration = 60
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SECRET_KEY!
@@ -80,17 +82,26 @@ export async function POST(request: NextRequest) {
     })
     const cleanFileName = safeFileName.replace(/[^a-zA-Z0-9._\-]/g, '_')
     const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${cleanFileName}`
-    const arrayBuffer = await file.arrayBuffer()
 
-    const { error: uploadError } = await supabase.storage
+    // Получаем presigned URL для прямой загрузки
+    const { data: signedData, error: signedError } = await supabase.storage
       .from('contracts')
-      .upload(filePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      })
+      .createSignedUploadUrl(filePath)
 
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
+    if (signedError || !signedData) {
+      return NextResponse.json({ error: signedError?.message ?? 'Ошибка получения URL' }, { status: 500 })
+    }
+
+    // Загружаем напрямую в Supabase
+    const arrayBuffer = await file.arrayBuffer()
+    const uploadRes = await fetch(signedData.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: new Uint8Array(arrayBuffer),
+    })
+
+    if (!uploadRes.ok) {
+      return NextResponse.json({ error: `Ошибка загрузки: ${uploadRes.status}` }, { status: 500 })
     }
 
     const { data: urlData } = supabase.storage
