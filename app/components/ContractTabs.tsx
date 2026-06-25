@@ -570,28 +570,46 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     if (!attachmentFile) return
     setUploadingAttachment(true)
 
-    const formData = new FormData()
-    formData.append('file', attachmentFile)
-    formData.append('contract_id', contract.id)
-    formData.append('attachment_type', attachmentType)
-    formData.append('title', attachmentTitle)
-    formData.append('comment', attachmentComment)
-    formData.append('user_name', user?.name ?? 'Система')
-    formData.append('user_bitrix_id', user?.id ?? '')
+    try {
+      // Загружаем файл напрямую в Supabase минуя Vercel
+      const { public_url, file_name } = await uploadFileDirect(
+        attachmentFile,
+        'contracts',
+        `attachments/${contract.id}`
+      )
 
-    const res = await fetch(`${baseUrl}/api/attachments`, { method: 'POST', body: formData })
-    const data = await res.json()
+      // Сохраняем метаданные через API
+      const res = await fetch(`${baseUrl}/api/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_url: public_url,
+          file_name,
+          file_type: attachmentFile.type,
+          contract_id: contract.id,
+          attachment_type: attachmentType,
+          title: attachmentTitle,
+          comment: attachmentComment,
+          user_name: user?.name ?? 'Система',
+          user_bitrix_id: user?.id ?? '',
+        }),
+      })
+      const data = await res.json()
 
-    if (!res.ok) {
-      alert('Ошибка: ' + data.error)
-    } else {
-      setShowAttachmentForm(false)
-      setAttachmentFile(null)
-      setAttachmentTitle('')
-      setAttachmentComment('')
-      await loadAttachments()
+      if (!res.ok) {
+        alert('Ошибка: ' + data.error)
+      } else {
+        setShowAttachmentForm(false)
+        setAttachmentFile(null)
+        setAttachmentTitle('')
+        setAttachmentComment('')
+        await loadAttachments()
+      }
+    } catch (err) {
+      alert('Ошибка загрузки: ' + (err instanceof Error ? err.message : 'неизвестная ошибка'))
+    } finally {
+      setUploadingAttachment(false)
     }
-    setUploadingAttachment(false)
   }
 
   const handleDeleteAttachment = async (id: string, file_url: string) => {
