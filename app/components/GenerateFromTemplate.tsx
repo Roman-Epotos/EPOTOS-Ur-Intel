@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
 
 interface Template {
   id: string
@@ -480,26 +481,39 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
     setUploading(true)
     try {
       const safeFileName = generatedFileName.replace(/\//g, '-')
-      const formData = new FormData()
-      formData.append('file', generatedBlob, safeFileName)
-      formData.append('contract_id', contract.id)
-      formData.append('user_name', user.name ?? 'Пользователь')
 
-      let endpoint: string
       if (category === 'main') {
+        const formData = new FormData()
+        formData.append('file', generatedBlob, safeFileName)
+        formData.append('contract_id', contract.id)
+        formData.append('user_name', user.name ?? 'Пользователь')
         formData.append('comment', 'Сгенерировано из шаблона')
-        endpoint = `${baseUrl}/api/versions`
+        const res = await fetch(`${baseUrl}/api/versions`, { method: 'POST', body: formData })
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error ?? 'Ошибка загрузки')
+        }
       } else {
-        formData.append('attachment_type', 'Другое')
-        formData.append('title', generatedFileName)
-        formData.append('user_bitrix_id', user.id)
-        endpoint = `${baseUrl}/api/attachments`
-      }
-
-      const res = await fetch(endpoint, { method: 'POST', body: formData })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error ?? 'Ошибка загрузки')
+        // Загружаем напрямую в Supabase минуя Vercel
+        const file = new File([generatedBlob], safeFileName, { type: generatedBlob.type })
+        const { public_url, file_name } = await uploadFileDirect(file, 'contracts', `attachments/${contract.id}`)
+        const res = await fetch(`${baseUrl}/api/attachments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_url: public_url,
+            file_name,
+            contract_id: contract.id,
+            attachment_type: 'Другое',
+            title: generatedFileName,
+            user_name: user.name ?? 'Пользователь',
+            user_bitrix_id: user.id,
+          }),
+        })
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error ?? 'Ошибка загрузки')
+        }
       }
       router.refresh()
       if (onUploaded) onUploaded()
