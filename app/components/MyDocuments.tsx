@@ -99,7 +99,16 @@ export default function MyDocuments() {
       }, () => load())
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Обновляем при возврате на страницу
+    window.addEventListener('focus', load)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) load()
+    })
+
+    return () => {
+      supabase.removeChannel(channel)
+      window.removeEventListener('focus', load)
+    }
   }, [user?.id])
 
   if (authLoading || loading) return null
