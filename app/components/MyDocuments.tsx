@@ -65,7 +65,7 @@ export default function MyDocuments() {
     const load = async () => {
       try {
         const res = await fetch(
-          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}`,
+          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`,
           { cache: 'no-store' }
         )
         const json = await res.json()
