@@ -806,7 +806,8 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
           return map[char] ?? '_'
         })
       const fileExt = file.name.split('.').pop()
-      const filePath = `chat/${session.id}/${Date.now()}_${safeFileName}`
+      const cleanChatFileName = safeFileName.replace(/[^a-zA-Z0-9._\-]/g, '_')
+      const filePath = `chat/${session.id}/${Date.now()}_${cleanChatFileName}`
 
       const { createClient } = await import('@supabase/supabase-js')
       const supabaseClient = createClient(

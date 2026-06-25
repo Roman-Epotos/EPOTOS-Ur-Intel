@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       }
       return map[char] ?? '_'
     })
-    const cleanFileName = safeFileName.replace(/\//g, '-').replace(/—/g, '-')
+    const cleanFileName = safeFileName.replace(/[^a-zA-Z0-9._\-]/g, '_')
     const filePath = `attachments/${contract_id}/${safeType}_${nextNumber}_${Date.now()}_${cleanFileName}`
     const arrayBuffer = await file.arrayBuffer()
 
