@@ -8,7 +8,7 @@ export default function HomePage() {
     <div className="h-screen bg-gray-50 flex flex-col overflow-y-auto">
       <div className="max-w-6xl mx-auto w-full px-4 pt-6 flex-shrink-0">
         <Header />
-        <MyDocuments />
+        <MyDocuments key={typeof window !== 'undefined' ? window.location.pathname : 'home'} />
         <PersonalStats />
       </div>
       <div className="max-w-6xl mx-auto w-full px-4 flex-1 min-h-[400px] pb-4">
