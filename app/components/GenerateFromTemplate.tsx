@@ -199,7 +199,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'персданные': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
-    { key: 'subject_birth_year', label: 'Год рождения', placeholder: '1985' },
+    { key: 'subject_birth_year', label: 'Дата рождения (дд.мм.гггг)', placeholder: '01.01.1985' },
     { key: 'passport_series', label: 'Серия паспорта', placeholder: '4510' },
     { key: 'passport_number', label: 'Номер паспорта', placeholder: '123456' },
     { key: 'passport_issued_by', label: 'Кем выдан', placeholder: 'ОУФМС России' },
@@ -211,7 +211,7 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   ],
   'pd_consent': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
-    { key: 'subject_birth_year', label: 'Год рождения', placeholder: '1985' },
+    { key: 'subject_birth_year', label: 'Дата рождения (дд.мм.гггг)', placeholder: '01.01.1985' },
     { key: 'passport_series', label: 'Серия паспорта', placeholder: '4510' },
     { key: 'passport_number', label: 'Номер паспорта', placeholder: '123456' },
     { key: 'passport_issued_by', label: 'Кем выдан', placeholder: 'ОУФМС России' },
