@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
         title: title || null,
         file_url,
         file_name,
-        file_type: file_type || '',
         comment: comment || null,
         uploaded_by_name: user_name || 'Система',
         uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
