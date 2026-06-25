@@ -68,7 +68,8 @@ export async function GET(request: NextRequest) {
           title,
           counterparty,
           status,
-          amount
+          amount,
+          deleted_at
         )
       `)
       .eq('initiated_by_bitrix_id', userId)
@@ -92,11 +93,17 @@ export async function GET(request: NextRequest) {
       .or(`author_bitrix_id.eq.${userId}`)
       .order('updated_at', { ascending: false })
 
+    // Дополнительная фильтрация удалённых на уровне JS
+    const filteredInitiated = (myInitiated ?? []).filter(s => {
+      const contract = s.contracts as unknown as { deleted_at: string | null }
+      return !contract?.deleted_at
+    })
+
     return NextResponse.json({
       required_approvals: requiredApprovals,
       optional_approvals: optionalApprovals,
       my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
+      my_initiated: filteredInitiated,
       my_edo: myEdo ?? [],
     })
   } catch (err) {
