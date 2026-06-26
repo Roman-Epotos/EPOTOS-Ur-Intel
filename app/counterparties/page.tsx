@@ -70,6 +70,47 @@ export default function CounterpartiesPage() {
   })
   const [individualSaving, setIndividualSaving] = useState(false)
   const [individualError, setIndividualError] = useState('')
+  const [innCheckLoading, setInnCheckLoading] = useState(false)
+  const [innCheckResult, setInnCheckResult] = useState<{ full_name: string | null; birth_date: string | null } | null>(null)
+  const [innCheckError, setInnCheckError] = useState('')
+  const [innVerified, setInnVerified] = useState(false)
+
+  const checkInnIndividual = async (inn: string) => {
+    if (inn.length !== 12 || !/^\d{12}$/.test(inn)) {
+      setInnCheckResult(null)
+      setInnCheckError('')
+      return
+    }
+    setInnCheckLoading(true)
+    setInnCheckResult(null)
+    setInnCheckError('')
+    setInnVerified(false)
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties/check-inn-individual?inn=${inn}`)
+      const data = await res.json()
+      if (data.found) {
+        setInnCheckResult(data.data)
+      } else {
+        setInnCheckError(data.message ?? 'Физлицо не найдено в DaData')
+      }
+    } catch {
+      setInnCheckError('Ошибка запроса к DaData')
+    } finally {
+      setInnCheckLoading(false)
+    }
+  }
+
+  const applyInnResult = () => {
+    if (!innCheckResult) return
+    setIndividualForm(p => ({
+      ...p,
+      full_name: innCheckResult.full_name ?? p.full_name,
+      birth_date: innCheckResult.birth_date ?? p.birth_date,
+    }))
+    setInnVerified(true)
+    setInnCheckResult(null)
+    setInnCheckError('')
+  }
 
   const saveIndividualCounterparty = async () => {
     if (!individualForm.full_name.trim()) {
@@ -101,12 +142,16 @@ export default function CounterpartiesPage() {
           passport_issued_date: individualForm.passport_issued_date.trim() || null,
           passport_dept_code: individualForm.passport_dept_code.trim() || null,
           person_snils: individualForm.snils.trim() || null,
+          inn_verified_at: innVerified ? new Date().toISOString() : null,
         }),
       })
       const data = await res.json()
       if (data.success) {
         setShowIndividualModal(false)
         setIndividualForm({ full_name: '', inn: '', birth_date: '', passport_series: '', passport_number: '', passport_issued_by: '', passport_issued_date: '', passport_dept_code: '', address: '', snils: '', phone: '', email: '' })
+        setInnCheckResult(null)
+        setInnCheckError('')
+        setInnVerified(false)
         setFilterType('individual')
         await loadCounterparties()
       } else {
@@ -451,7 +496,12 @@ export default function CounterpartiesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">ИНН</label>
-                  <input value={individualForm.inn} onChange={e => setIndividualForm(p => ({...p, inn: e.target.value}))}
+                  <input value={individualForm.inn} onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 12)
+                    setIndividualForm(p => ({...p, inn: val}))
+                    setInnVerified(false)
+                    checkInnIndividual(val)
+                  }}
                     placeholder="123456789012"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                 </div>
@@ -462,6 +512,37 @@ export default function CounterpartiesPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                 </div>
               </div>
+
+              {/* Результат проверки ИНН через DaData */}
+              {innCheckLoading && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-500">
+                  ⏳ Проверяем ИНН в DaData...
+                </div>
+              )}
+              {innCheckResult && !innVerified && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-green-700 font-medium mb-1">✅ Найдено в DaData:</p>
+                  <p className="text-sm text-green-900 font-semibold">{innCheckResult.full_name}</p>
+                  {innCheckResult.birth_date && (
+                    <p className="text-xs text-green-700">Дата рождения: {innCheckResult.birth_date}</p>
+                  )}
+                  <button type="button" onClick={applyInnResult}
+                    className="mt-2 w-full bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">
+                    Применить — заполнить ФИО и дату рождения
+                  </button>
+                </div>
+              )}
+              {innVerified && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+                  ✅ ИНН подтверждён через DaData
+                </div>
+              )}
+              {innCheckError && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs text-orange-700">
+                  ⚠️ {innCheckError}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Серия паспорта</label>
