@@ -29,6 +29,17 @@ interface Counterparty {
   poa_expires: string | null
   created_at: string
   updated_at: string
+  is_individual?: boolean
+  is_foreign?: boolean
+  country?: string | null
+  registration_number?: string | null
+  person_birth_date?: string | null
+  passport_series?: string | null
+  passport_number?: string | null
+  passport_issued_by?: string | null
+  passport_issued_date?: string | null
+  passport_dept_code?: string | null
+  person_snils?: string | null
   contracts?: {
     id: string
     number: string
@@ -243,7 +254,19 @@ export default function CounterpartyPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                {[
+                {(counterparty.is_individual ? [
+                  { label: 'ФИО', key: 'full_name' },
+                  { label: 'ИНН', key: 'inn' },
+                  { label: 'Дата рождения', key: 'person_birth_date' },
+                  { label: 'Серия паспорта', key: 'passport_series' },
+                  { label: 'Номер паспорта', key: 'passport_number' },
+                  { label: 'Кем выдан', key: 'passport_issued_by' },
+                  { label: 'Дата выдачи', key: 'passport_issued_date' },
+                  { label: 'Код подразделения', key: 'passport_dept_code' },
+                  { label: 'СНИЛС', key: 'person_snils' },
+                  { label: 'Телефон', key: 'phone' },
+                  { label: 'Email', key: 'email' },
+                ] : [
                   { label: 'Полное название', key: 'full_name' },
                   { label: 'Краткое название', key: 'short_name' },
                   { label: 'ИНН', key: 'inn' },
@@ -256,7 +279,7 @@ export default function CounterpartyPage() {
                   { label: 'Сайт', key: 'website' },
                   { label: 'Подписант по доверенности', key: 'signatory_name' },
                   { label: 'Номер доверенности', key: 'poa_number' },
-                ].map(({ label, key }) => (
+                ]).map(({ label, key }) => (
                   <div key={key}>
                     <p className="text-xs text-gray-400 mb-0.5">{label}</p>
                     {editing ? (
@@ -274,7 +297,19 @@ export default function CounterpartyPage() {
                   </div>
                 ))}
 
-                <div className="col-span-2">
+                {counterparty.is_individual && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 mb-0.5">Адрес регистрации</p>
+                    {editing ? (
+                      <input type="text" value={form.legal_address ?? ''}
+                        onChange={e => setForm(p => ({ ...p, legal_address: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400" />
+                    ) : (
+                      <p className="text-sm text-gray-900">{counterparty.legal_address ?? '—'}</p>
+                    )}
+                  </div>
+                )}
+                {!counterparty.is_individual && <div className="col-span-2">
                   <p className="text-xs text-gray-400 mb-0.5">Юридический адрес</p>
                   {editing ? (
                     <input type="text" value={form.legal_address ?? ''}
@@ -283,9 +318,9 @@ export default function CounterpartyPage() {
                   ) : (
                     <p className="text-sm text-gray-900">{counterparty.legal_address ?? '—'}</p>
                   )}
-                </div>
+                </div>}
 
-<div>
+                {!counterparty.is_individual && <div>
                   <p className="text-xs text-gray-400 mb-0.5">Дата доверенности</p>
                   {editing ? (
                     <input type="date" value={form.poa_date ?? ''}
@@ -294,8 +329,8 @@ export default function CounterpartyPage() {
                   ) : (
                     <p className="text-sm text-gray-900">{counterparty.poa_date ? new Date(counterparty.poa_date).toLocaleDateString('ru-RU') : '—'}</p>
                   )}
-                </div>
-                <div>
+                </div>}
+                {!counterparty.is_individual && <div>
                   <p className="text-xs text-gray-400 mb-0.5">Срок действия доверенности</p>
                   {editing ? (
                     <input type="date" value={form.poa_expires ?? ''}
@@ -307,7 +342,7 @@ export default function CounterpartyPage() {
                       {counterparty.poa_expires && new Date(counterparty.poa_expires) < new Date() ? ' ⚠️ истекла' : ''}
                     </p>
                   )}
-                </div>
+                </div>}
 
                 <div className="col-span-2">
                   <p className="text-xs text-gray-400 mb-0.5">Уровень риска</p>
