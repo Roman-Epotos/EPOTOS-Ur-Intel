@@ -79,7 +79,7 @@ export default function DashboardPage() {
   const loadDashboard = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${baseUrl}/api/dashboard?bitrix_user_id=${user!.id}`)
+      const res = await fetch(`${baseUrl}/api/dashboard?bitrix_user_id=${user!.id}&_t=${Date.now()}`, { cache: 'no-store' })
       const json = await res.json()
       setData(json)
     } finally {
