@@ -645,7 +645,7 @@ export default function NewContractPage() {
                       ))}
                     </div>
                   )}
-                  {individualSearch.length >= 2 && individualSuggestions.length === 0 && !showIndividualSuggestions && (
+                  {individualSearch.length >= 2 && individualSuggestions.length === 0 && (
                     <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
                       <p className="text-sm text-orange-700 mb-2">⚠️ Физлицо не найдено</p>
                       <a href="/counterparties" target="_blank"
