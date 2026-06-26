@@ -1741,13 +1741,11 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          {doc.file_name?.endsWith('.pdf') && (
-                            <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
-                              className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
-                              👁️ Просмотр
-                            </a>
-                          )}
                           <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                            👁️ Просмотр
+                          </a>
+                          <a href={proxyUrl(doc.file_url)} download={doc.file_name} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
                           </a>
