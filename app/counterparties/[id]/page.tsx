@@ -297,6 +297,19 @@ export default function CounterpartyPage() {
                   </div>
                 ))}
 
+                {counterparty.is_foreign && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 mb-0.5">Страна</p>
+                    {editing ? (
+                      <input type="text" value={(form as {country?: string}).country ?? ''}
+                        onChange={e => setForm(p => ({ ...p, country: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400" />
+                    ) : (
+                      <p className="text-sm text-gray-900">{counterparty.country ?? '—'}</p>
+                    )}
+                  </div>
+                )}
+
                 {counterparty.is_individual && (
                   <div className="col-span-2">
                     <p className="text-xs text-gray-400 mb-0.5">Адрес регистрации</p>
