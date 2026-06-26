@@ -33,7 +33,28 @@ export default function NewContractPage() {
     region: '',
     customer_number: '',
   })
-  const [counterpartyType, setCounterpartyType] = useState<'russian' | 'foreign'>('russian')
+  const [counterpartyType, setCounterpartyType] = useState<'russian' | 'foreign' | 'individual'>('russian')
+  const [individualSearch, setIndividualSearch] = useState('')
+  const [individualSuggestions, setIndividualSuggestions] = useState<{id: string, full_name: string, inn: string}[]>([])
+  const [showIndividualSuggestions, setShowIndividualSuggestions] = useState(false)
+
+  const searchIndividuals = async (q: string) => {
+    if (q.length < 2) { setIndividualSuggestions([]); setShowIndividualSuggestions(false); return }
+    try {
+      const res = await fetch(`https://epotos-ur-intel.vercel.app/api/counterparties?search=${encodeURIComponent(q)}&individual_only=true`)
+      const data = await res.json()
+      setIndividualSuggestions(data.counterparties ?? [])
+      setShowIndividualSuggestions(true)
+    } catch { setIndividualSuggestions([]) }
+  }
+
+  const selectIndividual = (c: {id: string, full_name: string, inn: string}) => {
+    setForm(p => ({ ...p, counterparty: c.full_name }))
+    setCounterpartyId(c.id)
+    setIndividualSearch(c.full_name)
+    setShowIndividualSuggestions(false)
+    setCounterpartyRisk(null)
+  }
   const [foreignSearch, setForeignSearch] = useState('')
   const [foreignSuggestions, setForeignSuggestions] = useState<{id: string, full_name: string, short_name: string | null, country: string | null, registration_number: string | null}[]>([])
   const [showForeignSuggestions, setShowForeignSuggestions] = useState(false)
@@ -596,9 +617,45 @@ export default function NewContractPage() {
                   className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${counterpartyType === 'foreign' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
                   🌍 Иностранный
                 </button>
+                <button type="button"
+                  onClick={() => { setCounterpartyType('individual'); setForm(p => ({...p, counterparty: ''})); setCounterpartyId(null); setCounterpartySearch(''); setForeignSearch(''); setIndividualSearch(''); setIndividualSuggestions([]); setForeignSuggestions([]); setForeignNotFound(false) }}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${counterpartyType === 'individual' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+                  👤 Физлицо
+                </button>
               </div>
 
-              {counterpartyType === 'foreign' ? (
+              {counterpartyType === 'individual' ? (
+                <div className="relative">
+                  <input type="text" value={individualSearch}
+                    onChange={e => { setIndividualSearch(e.target.value); setCounterpartyId(null); setForm(p => ({ ...p, counterparty: '' })); searchIndividuals(e.target.value) }}
+                    onBlur={() => setTimeout(() => setShowIndividualSuggestions(false), 200)}
+                    placeholder="Начните вводить ФИО..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  {counterpartyId && <span className="absolute right-3 top-2.5 text-green-500 text-xs">✓ из реестра</span>}
+                  {showIndividualSuggestions && individualSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                      {individualSuggestions.map(c => (
+                        <button key={c.id} type="button"
+                          onMouseDown={() => selectIndividual(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                          <p className="text-sm font-medium text-gray-900">👤 {c.full_name}</p>
+                          {c.inn && !c.inn.startsWith('IND-') && <p className="text-xs text-gray-400">ИНН: {c.inn}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {individualSearch.length >= 2 && individualSuggestions.length === 0 && !showIndividualSuggestions && (
+                    <div className="absolute z-10 w-full bg-white border border-orange-200 rounded-lg shadow-lg mt-1 px-3 py-3">
+                      <p className="text-sm text-orange-700 mb-2">⚠️ Физлицо не найдено</p>
+                      <a href="/counterparties" target="_blank"
+                        className="block w-full bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700 text-center">
+                        + Добавить физлицо в реестр
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : counterpartyType === 'foreign' ? (
                 <div className="relative">
                   <input type="text" value={foreignSearch}
                     onChange={e => { setForeignSearch(e.target.value); setCounterpartyId(null); setForm(p => ({ ...p, counterparty: '' })); searchForeignCounterparties(e.target.value) }}

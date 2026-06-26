@@ -57,10 +57,13 @@ export async function GET(request: NextRequest) {
       .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number')
       .order('full_name', { ascending: true })
 
-    if (foreignOnly === 'true') {
+    const individualOnly = request.nextUrl.searchParams.get('individual_only')
+    if (individualOnly === 'true') {
+      query = query.eq('is_individual', true)
+    } else if (foreignOnly === 'true') {
       query = query.eq('is_foreign', true)
     } else if (russianOnly === 'true') {
-      query = query.eq('is_foreign', false)
+      query = query.eq('is_foreign', false).eq('is_individual', false)
     }
 
     if (search) {

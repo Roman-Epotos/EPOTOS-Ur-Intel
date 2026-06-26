@@ -3160,178 +3160,6 @@ export async function PATCH(
 }
 
 ================
-File: app/api/contracts/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
-
-const TYPE_CODES: Record<string, string> = {
-  'поставка': 'ДОГ',
-  'услуги': 'ДОГ',
-  'аренда': 'ДОГ',
-  'подряд': 'ДОГ',
-  'купля-продажа': 'ДОГ',
-  'агентский': 'ДОГ',
-  'дилерский': 'ДОГ',
-  'лицензионный': 'ДОГ',
-  'сервисный': 'ДОГ',
-  'доп-соглашение': 'ДОП',
-  'nda': 'КОНФ',
-  'эдо': 'ЭДО',
-  'протокол-разногласий': 'ПРТ',
-  'претензия': 'ПРЗ',
-  'исковое': 'ИСК',
-  'ответ-претензию': 'ПРЗ',
-  'положение': 'ОРД',
-  'инструкция': 'ОРД',
-  'служебная-записка': 'ОРД',
-  'доверенность': 'ДОВ',
-  'персданные': 'СПД',
-  'акт': 'АКТ',
-  'заключение': 'ПРВ',
-  'справка': 'СПР',
-  'устав': 'УСТ',
-  'учредительный': 'ДОГ',
-  'письмо': 'ПСМ',
-  'счет': 'СЧТ',
-  'спецификация': 'СПЕЦ',
-  'другое': 'ДОК',
-}
-
-// Генерация номера договора
-export async function GET(request: NextRequest) {
-  const prefix = request.nextUrl.searchParams.get('prefix')
-  const type = request.nextUrl.searchParams.get('type') ?? ''
-  const childNumber = request.nextUrl.searchParams.get('child_number')
-  const parentId = request.nextUrl.searchParams.get('parent_id')
-  const childType = request.nextUrl.searchParams.get('child_type') ?? ''
-
-  // Генерация номера дочернего документа
-  if (childNumber === 'true' && parentId) {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-    const { data: parent } = await supabase
-      .from('contracts')
-      .select('number')
-      .eq('id', parentId)
-      .single()
-
-    if (!parent) return NextResponse.json({ error: 'Родительский документ не найден' }, { status: 404 })
-
-    // Считаем сколько дочерних документов уже есть
-    const { data: children } = await supabase
-      .from('contracts')
-      .select('child_number')
-      .eq('parent_contract_id', parentId)
-      .order('child_number', { ascending: false })
-      .limit(1)
-
-    const nextChildNum = children && children.length > 0 ? (children[0].child_number ?? 0) + 1 : 1
-    const childTypeCode = TYPE_CODES[childType] ?? 'ДОК'
-
-    // Берём номер родителя и меняем код типа
-    // ТХ-ДОГ-2026/06/1 → ТХ-СПЕЦ-2026/06/1-1
-    const parentParts = parent.number.split('-')
-    parentParts[1] = childTypeCode
-    const baseNumber = parentParts.join('-')
-    const number = `${baseNumber}-${nextChildNum}`
-
-    return NextResponse.json({ number })
-  }
-
-  if (!prefix) {
-    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
-  }
-
-  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
-  const fullPrefix = `${prefix}-${typeCode}`
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const data = await res.json()
-  let maxNum = 0
-  if (data && data.length > 0) {
-    const lastNumber = data[0].number as string
-    const parts = lastNumber.split('/')
-    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
-    if (!isNaN(lastSeq)) maxNum = lastSeq
-  }
-  const nextNum = String(maxNum + 1)
-  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
-
-  return NextResponse.json({ number })
-}
-
-// Сохранение договора
-export async function POST(request: NextRequest) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-  try {
-    const body = await request.json()
-    const { is_child, parent_contract_id, parent_contract_external, child_number: childNum } = body
-    const userName = body.user_name ?? 'Система'
-
-    // Сохраняем договор
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .insert({
-        number: body.number,
-        title: body.title,
-        counterparty: body.counterparty,
-        counterparty_id: body.counterparty_id ?? null,
-        type: body.type,
-        amount: body.amount ? parseFloat(body.amount) : null,
-        start_date: body.start_date || null,
-        end_date: body.end_date || null,
-        status: 'черновик',
-        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
-        document_category: body.document_category ?? 'contract',
-        is_child: body.is_child ?? false,
-        parent_contract_id: body.parent_contract_id ?? null,
-        parent_contract_external: body.parent_contract_external ?? null,
-        company_prefix: body.company_prefix ?? null,
-        customer_number: body.customer_number ?? null,
-      })
-      .select('id')
-      .single()
-
-    if (contractError) {
-      return NextResponse.json({ error: contractError.message }, { status: 400 })
-    }
-
-    // Записываем в лог с именем пользователя
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id: contract.id,
-        action: 'Документ создан',
-        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
-        user_name: userName,
-      })
-
-    return NextResponse.json({ success: true, id: contract.id })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/counterparties/check-inn/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -3609,7 +3437,7 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/dashboard/route.ts
+File: app/api/dashboard-legal/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -3621,31 +3449,76 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
-    if (!bitrixUserId) return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
-    const userId = parseInt(bitrixUserId)
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
 
-    // 1. Документы требующие моего согласования
-    const { data: myApprovals } = await supabase
-      .from('approval_participants')
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
+    // 1. Статистика по статусам
+    let contractsQuery = supabase
+      .from('contracts')
+      .select('status, company_prefix')
+      .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: allContracts } = await contractsQuery
+
+    const statusStats: Record<string, number> = {}
+    const companyStats: Record<string, number> = {}
+    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
+      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
+      if (c.company_prefix) {
+        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // 2. Просроченные согласования
+    let overdueApprovalsQuery = supabase
+      .from('approval_sessions')
       .select(`
-        id, role, status, stage,
-        approval_sessions!inner (
-          id, deadline, initiated_by_name,
-          contracts!inner (
-            id, number, title, counterparty, status, amount
-          )
-        )
+        id, deadline, initiated_by_name,
+        contracts!inner ( id, number, title, counterparty, status )
       `)
-      .eq('bitrix_user_id', userId)
-      .eq('status', 'pending')
-      .eq('role', 'required')
+      .eq('status', 'active')
+      .lt('deadline', new Date().toISOString())
+      .order('deadline', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
 
-    // 2. Пункты чек-листа с дедлайном в ближайшие 3 дня
-    const today = new Date()
-    const in3days = new Date()
-    in3days.setDate(today.getDate() + 3)
-    const { data: deadlineItems } = await supabase
+    // 3. Согласованы но без подписанных экземпляров
+    let unsignedQuery = supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at')
+      .eq('status', 'согласован')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
+
+    // 4. Просроченные пункты чек-листа (без задачи Б24)
+    let overdueChecklistQuery = supabase
       .from('contract_checklist')
       .select(`
         id, title, due_date, contract_id,
@@ -3653,102 +3526,53 @@ export async function GET(request: NextRequest) {
       `)
       .eq('is_done', false)
       .is('bitrix_task_id', null)
-      .gte('due_date', today.toISOString().slice(0, 10))
-      .lte('due_date', in3days.toISOString().slice(0, 10))
+      .lt('due_date', new Date().toISOString().slice(0, 10))
       .order('due_date', { ascending: true })
       .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
 
-    // 3. Мои черновики
-    const { data: myDrafts } = await supabase
+    // 5. Динамика создания документов за период
+    let recentContractsQuery = supabase
       .from('contracts')
-      .select('id, number, title, counterparty, created_at, type')
-      .eq('author_bitrix_id', userId)
-      .eq('status', 'черновик')
-      .order('created_at', { ascending: false })
-      .limit(5)
+      .select('created_at, company_prefix, status')
+      .gte('created_at', fromDateStr)
+      .order('created_at', { ascending: true })
+    if (companyPrefix) {
+      recentContractsQuery = recentContractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: recentContracts } = await recentContractsQuery
 
-    // 4. Мои активные согласования (где я инициатор)
-    const { data: myInitiated } = await supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, created_at,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('initiated_by_bitrix_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(5)
+    // Группируем по неделям
+    const weeklyMap: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
+      const date = new Date(c.created_at)
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
+    })
 
-    // 5. Контрагенты с высоким риском у которых есть активные документы
-    const { data: highRiskCounterparties } = await supabase
-      .from('counterparties')
-      .select('id, full_name, short_name, inn, risk_level, status')
-      .eq('risk_level', 'высокий')
-      .eq('status', 'активный')
-      .limit(5)
-
-    // 6. Статистика документов
-    const { count: totalDocs } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-
-    const { count: onApproval } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'на_согласовании')
-
-    const { count: onExecution } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'на_исполнении')
-
-    const { count: totalCounterparties } = await supabase
-      .from('counterparties')
-      .select('*', { count: 'exact', head: true })
-
-    // Проверяем доступ к дашбордам напрямую из БД
-    const { data: sysRole } = await supabase
-      .from('system_roles')
-      .select('role')
-      .eq('bitrix_user_id', userId)
-      .single()
-
-    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
-    const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
-
-    const { data: legalSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .eq('stage', 'legal').eq('is_active', true).limit(1)
-
-    const { data: financeSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .in('stage', ['finance', 'accounting']).eq('is_active', true).limit(1)
-
-    const { data: directorSetting } = await supabase
-      .from('approval_settings')
-      .select('id').eq('bitrix_user_id', userId)
-      .eq('stage', 'director').eq('is_active', true).limit(1)
-
-    const legalAccess = isGC || (legalSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
-    const financeAccess = isGC || (financeSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
+    // Группируем по компаниям за период
+    const companyPeriodStats: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
+      if (c.company_prefix) {
+        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
+      }
+    })
 
     return NextResponse.json({
-      my_approvals: myApprovals ?? [],
-      deadline_items: deadlineItems ?? [],
-      my_drafts: myDrafts ?? [],
-      my_initiated: myInitiated ?? [],
-      high_risk_counterparties: highRiskCounterparties ?? [],
-      has_dashboard_access: legalAccess || financeAccess,
-      legal_dashboard_access: legalAccess,
-      finance_dashboard_access: financeAccess,
-      stats: {
-        total_docs: totalDocs ?? 0,
-        on_approval: onApproval ?? 0,
-        on_execution: onExecution ?? 0,
-        total_counterparties: totalCounterparties ?? 0,
-      }
+      status_stats: statusStats,
+      company_stats: companyStats,
+      overdue_approvals: overdueApprovals ?? [],
+      unsigned_contracts: unsignedContracts ?? [],
+      overdue_checklist: overdueChecklist ?? [],
+      weekly_dynamics: weeklyMap,
+      company_period_stats: companyPeriodStats,
+      total_period: recentContracts?.length ?? 0,
+      period_days: days,
     })
 
   } catch (err) {
@@ -6230,6 +6054,178 @@ export async function GET(request: NextRequest) {
 }
 
 ================
+File: app/api/contracts/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY!
+
+const TYPE_CODES: Record<string, string> = {
+  'поставка': 'ДОГ',
+  'услуги': 'ДОГ',
+  'аренда': 'ДОГ',
+  'подряд': 'ДОГ',
+  'купля-продажа': 'ДОГ',
+  'агентский': 'ДОГ',
+  'дилерский': 'ДОГ',
+  'лицензионный': 'ДОГ',
+  'сервисный': 'ДОГ',
+  'доп-соглашение': 'ДОП',
+  'nda': 'КОНФ',
+  'эдо': 'ЭДО',
+  'протокол-разногласий': 'ПРТ',
+  'претензия': 'ПРЗ',
+  'исковое': 'ИСК',
+  'ответ-претензию': 'ПРЗ',
+  'положение': 'ОРД',
+  'инструкция': 'ОРД',
+  'служебная-записка': 'ОРД',
+  'доверенность': 'ДОВ',
+  'персданные': 'СПД',
+  'акт': 'АКТ',
+  'заключение': 'ПРВ',
+  'справка': 'СПР',
+  'устав': 'УСТ',
+  'учредительный': 'ДОГ',
+  'письмо': 'ПСМ',
+  'счет': 'СЧТ',
+  'спецификация': 'СПЕЦ',
+  'другое': 'ДОК',
+}
+
+// Генерация номера договора
+export async function GET(request: NextRequest) {
+  const prefix = request.nextUrl.searchParams.get('prefix')
+  const type = request.nextUrl.searchParams.get('type') ?? ''
+  const childNumber = request.nextUrl.searchParams.get('child_number')
+  const parentId = request.nextUrl.searchParams.get('parent_id')
+  const childType = request.nextUrl.searchParams.get('child_type') ?? ''
+
+  // Генерация номера дочернего документа
+  if (childNumber === 'true' && parentId) {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { data: parent } = await supabase
+      .from('contracts')
+      .select('number')
+      .eq('id', parentId)
+      .single()
+
+    if (!parent) return NextResponse.json({ error: 'Родительский документ не найден' }, { status: 404 })
+
+    // Считаем сколько дочерних документов уже есть
+    const { data: children } = await supabase
+      .from('contracts')
+      .select('child_number')
+      .eq('parent_contract_id', parentId)
+      .order('child_number', { ascending: false })
+      .limit(1)
+
+    const nextChildNum = children && children.length > 0 ? (children[0].child_number ?? 0) + 1 : 1
+    const childTypeCode = TYPE_CODES[childType] ?? 'ДОК'
+
+    // Берём номер родителя и меняем код типа
+    // ТХ-ДОГ-2026/06/1 → ТХ-СПЕЦ-2026/06/1-1
+    const parentParts = parent.number.split('-')
+    parentParts[1] = childTypeCode
+    const baseNumber = parentParts.join('-')
+    const number = `${baseNumber}-${nextChildNum}`
+
+    return NextResponse.json({ number })
+  }
+
+  if (!prefix) {
+    return NextResponse.json({ error: 'Префикс не указан' }, { status: 400 })
+  }
+
+  const typeCode = TYPE_CODES[type] ?? 'ДОГ'
+  const fullPrefix = `${prefix}-${typeCode}`
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&deleted_at=is.null&order=number.desc&limit=1`,
+    {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
+
+  const data = await res.json()
+  let maxNum = 0
+  if (data && data.length > 0) {
+    const lastNumber = data[0].number as string
+    const parts = lastNumber.split('/')
+    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
+    if (!isNaN(lastSeq)) maxNum = lastSeq
+  }
+  const nextNum = String(maxNum + 1)
+  const number = `${fullPrefix}-${year}/${month}/${nextNum}`
+
+  return NextResponse.json({ number })
+}
+
+// Сохранение договора
+export async function POST(request: NextRequest) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  try {
+    const body = await request.json()
+    const { is_child, parent_contract_id, parent_contract_external, child_number: childNum } = body
+    const userName = body.user_name ?? 'Система'
+
+    // Сохраняем договор
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .insert({
+        number: body.number,
+        title: body.title,
+        counterparty: body.counterparty,
+        counterparty_id: body.counterparty_id ?? null,
+        type: body.type,
+        amount: body.amount ? parseFloat(body.amount) : null,
+        start_date: body.start_date || null,
+        end_date: body.end_date || null,
+        status: 'черновик',
+        author_bitrix_id: body.user_bitrix_id ? parseInt(body.user_bitrix_id) : null,
+        document_category: body.document_category ?? 'contract',
+        is_child: body.is_child ?? false,
+        parent_contract_id: body.parent_contract_id ?? null,
+        parent_contract_external: body.parent_contract_external ?? null,
+        company_prefix: body.company_prefix ?? null,
+        customer_number: body.customer_number ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
+    }
+
+    // Записываем в лог с именем пользователя
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id: contract.id,
+        action: 'Документ создан',
+        details: `Договор "${body.title}" создан. Контрагент: ${body.counterparty}. Сумма: ${body.amount ? Number(body.amount).toLocaleString('ru-RU') + ' ₽' : 'не указана'}.`,
+        user_name: userName,
+      })
+
+    return NextResponse.json({ success: true, id: contract.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/counterparties/check-cache/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -6623,7 +6619,7 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/dashboard-legal/route.ts
+File: app/api/dashboard/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -6635,76 +6631,31 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
+    const bitrixUserId = request.nextUrl.searchParams.get('bitrix_user_id')
+    if (!bitrixUserId) return NextResponse.json({ error: 'bitrix_user_id обязателен' }, { status: 400 })
+    const userId = parseInt(bitrixUserId)
 
-    // Вспомогательная функция фильтра по префиксу компании
-    const prefixFilter = (prefix: string) =>
-      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
-
-    // ID договоров нужной компании (используем везде)
-    let companyContractIds: string[] | null = null
-    if (companyPrefix) {
-      const { data: filtered } = await supabase
-        .from('contracts')
-        .select('id')
-        .or(prefixFilter(companyPrefix))
-      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
-    }
-
-    // 1. Статистика по статусам
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('status, company_prefix')
-      .neq('status', 'архив')
-    if (companyPrefix) {
-      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: allContracts } = await contractsQuery
-
-    const statusStats: Record<string, number> = {}
-    const companyStats: Record<string, number> = {}
-    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
-      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
-      if (c.company_prefix) {
-        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    // 2. Просроченные согласования
-    let overdueApprovalsQuery = supabase
-      .from('approval_sessions')
+    // 1. Документы требующие моего согласования
+    const { data: myApprovals } = await supabase
+      .from('approval_participants')
       .select(`
-        id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
+        id, role, status, stage,
+        approval_sessions!inner (
+          id, deadline, initiated_by_name,
+          contracts!inner (
+            id, number, title, counterparty, status, amount
+          )
+        )
       `)
-      .eq('status', 'active')
-      .lt('deadline', new Date().toISOString())
-      .order('deadline', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueApprovals } = await overdueApprovalsQuery
+      .eq('bitrix_user_id', userId)
+      .eq('status', 'pending')
+      .eq('role', 'required')
 
-    // 3. Согласованы но без подписанных экземпляров
-    let unsignedQuery = supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at')
-      .eq('status', 'согласован')
-      .order('created_at', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      unsignedQuery = unsignedQuery.in('id', companyContractIds)
-    }
-    const { data: unsignedContracts } = await unsignedQuery
-
-    // 4. Просроченные пункты чек-листа (без задачи Б24)
-    let overdueChecklistQuery = supabase
+    // 2. Пункты чек-листа с дедлайном в ближайшие 3 дня
+    const today = new Date()
+    const in3days = new Date()
+    in3days.setDate(today.getDate() + 3)
+    const { data: deadlineItems } = await supabase
       .from('contract_checklist')
       .select(`
         id, title, due_date, contract_id,
@@ -6712,53 +6663,103 @@ export async function GET(request: NextRequest) {
       `)
       .eq('is_done', false)
       .is('bitrix_task_id', null)
-      .lt('due_date', new Date().toISOString().slice(0, 10))
+      .gte('due_date', today.toISOString().slice(0, 10))
+      .lte('due_date', in3days.toISOString().slice(0, 10))
       .order('due_date', { ascending: true })
       .limit(10)
-    if (companyContractIds) {
-      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueChecklist } = await overdueChecklistQuery
 
-    // 5. Динамика создания документов за период
-    let recentContractsQuery = supabase
+    // 3. Мои черновики
+    const { data: myDrafts } = await supabase
       .from('contracts')
-      .select('created_at, company_prefix, status')
-      .gte('created_at', fromDateStr)
-      .order('created_at', { ascending: true })
-    if (companyPrefix) {
-      recentContractsQuery = recentContractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: recentContracts } = await recentContractsQuery
+      .select('id, number, title, counterparty, created_at, type')
+      .eq('author_bitrix_id', userId)
+      .eq('status', 'черновик')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(5)
 
-    // Группируем по неделям
-    const weeklyMap: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
-      const date = new Date(c.created_at)
-      const weekStart = new Date(date)
-      weekStart.setDate(date.getDate() - date.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
-    })
+    // 4. Мои активные согласования (где я инициатор)
+    const { data: myInitiated } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, created_at,
+        contracts!inner ( id, number, title, counterparty, status )
+      `)
+      .eq('initiated_by_bitrix_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(5)
 
-    // Группируем по компаниям за период
-    const companyPeriodStats: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
-      if (c.company_prefix) {
-        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
-      }
-    })
+    // 5. Контрагенты с высоким риском у которых есть активные документы
+    const { data: highRiskCounterparties } = await supabase
+      .from('counterparties')
+      .select('id, full_name, short_name, inn, risk_level, status')
+      .eq('risk_level', 'высокий')
+      .eq('status', 'активный')
+      .limit(5)
+
+    // 6. Статистика документов
+    const { count: totalDocs } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+
+    const { count: onApproval } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'на_согласовании')
+
+    const { count: onExecution } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'на_исполнении')
+
+    const { count: totalCounterparties } = await supabase
+      .from('counterparties')
+      .select('*', { count: 'exact', head: true })
+
+    // Проверяем доступ к дашбордам напрямую из БД
+    const { data: sysRole } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('bitrix_user_id', userId)
+      .single()
+
+    const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'finance_company', 'legal_gc']
+    const isGC = userId === 30 || (sysRole && GC_ROLES.includes(sysRole.role))
+
+    const { data: legalSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .eq('stage', 'legal').eq('is_active', true).limit(1)
+
+    const { data: financeSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .in('stage', ['finance', 'accounting']).eq('is_active', true).limit(1)
+
+    const { data: directorSetting } = await supabase
+      .from('approval_settings')
+      .select('id').eq('bitrix_user_id', userId)
+      .eq('stage', 'director').eq('is_active', true).limit(1)
+
+    const legalAccess = isGC || (legalSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
+    const financeAccess = isGC || (financeSetting ?? []).length > 0 || (directorSetting ?? []).length > 0
 
     return NextResponse.json({
-      status_stats: statusStats,
-      company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
-      weekly_dynamics: weeklyMap,
-      company_period_stats: companyPeriodStats,
-      total_period: recentContracts?.length ?? 0,
-      period_days: days,
+      my_approvals: myApprovals ?? [],
+      deadline_items: deadlineItems ?? [],
+      my_drafts: myDrafts ?? [],
+      my_initiated: myInitiated ?? [],
+      high_risk_counterparties: highRiskCounterparties ?? [],
+      has_dashboard_access: legalAccess || financeAccess,
+      legal_dashboard_access: legalAccess,
+      finance_dashboard_access: financeAccess,
+      stats: {
+        total_docs: totalDocs ?? 0,
+        on_approval: onApproval ?? 0,
+        on_execution: onExecution ?? 0,
+        total_counterparties: totalCounterparties ?? 0,
+      }
     })
 
   } catch (err) {
@@ -7367,10 +7368,13 @@ export async function GET(request: NextRequest) {
       .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number')
       .order('full_name', { ascending: true })
 
-    if (foreignOnly === 'true') {
+    const individualOnly = request.nextUrl.searchParams.get('individual_only')
+    if (individualOnly === 'true') {
+      query = query.eq('is_individual', true)
+    } else if (foreignOnly === 'true') {
       query = query.eq('is_foreign', true)
     } else if (russianOnly === 'true') {
-      query = query.eq('is_foreign', false)
+      query = query.eq('is_foreign', false).eq('is_individual', false)
     }
 
     if (search) {
