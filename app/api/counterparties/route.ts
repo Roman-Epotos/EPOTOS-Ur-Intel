@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, ...fields } = body
+    const { id, contracts, check_risk, ...fields } = body
 
     fields.updated_at = new Date().toISOString()
 
