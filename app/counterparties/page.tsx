@@ -19,6 +19,14 @@ interface Counterparty {
   country?: string | null
   registration_number?: string | null
   check_risk?: 'low' | 'medium' | 'high' | null
+  is_individual?: boolean
+  person_birth_date?: string | null
+  passport_series?: string | null
+  passport_number?: string | null
+  passport_issued_by?: string | null
+  passport_issued_date?: string | null
+  passport_dept_code?: string | null
+  person_snils?: string | null
 }
 
 const statusColors: Record<string, string> = {
@@ -48,10 +56,66 @@ export default function CounterpartiesPage() {
   const [checkResult, setCheckResult] = useState<Record<string, string> | null>(null)
   const [checkError, setCheckError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [filterType, setFilterType] = useState<'all' | 'russian' | 'foreign'>('all')
+  const [filterType, setFilterType] = useState<'all' | 'russian' | 'foreign' | 'individual'>('all')
 
   // Модалка иностранного контрагента
   const [showForeignModal, setShowForeignModal] = useState(false)
+  const [showIndividualModal, setShowIndividualModal] = useState(false)
+  const [individualForm, setIndividualForm] = useState({
+    full_name: '', inn: '', birth_date: '',
+    passport_series: '', passport_number: '',
+    passport_issued_by: '', passport_issued_date: '',
+    passport_dept_code: '', address: '', snils: '',
+    phone: '', email: '',
+  })
+  const [individualSaving, setIndividualSaving] = useState(false)
+  const [individualError, setIndividualError] = useState('')
+
+  const saveIndividualCounterparty = async () => {
+    if (!individualForm.full_name.trim()) {
+      setIndividualError('Укажите ФИО')
+      return
+    }
+    setIndividualSaving(true)
+    setIndividualError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/counterparties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: individualForm.full_name.trim(),
+          short_name: individualForm.full_name.trim(),
+          inn: individualForm.inn.trim() || `IND-${Date.now()}`,
+          kpp: null,
+          ogrn: null,
+          legal_address: individualForm.address.trim() || null,
+          status: 'активный',
+          phone: individualForm.phone.trim() || null,
+          email: individualForm.email.trim() || null,
+          is_foreign: false,
+          is_individual: true,
+          person_birth_date: individualForm.birth_date.trim() || null,
+          passport_series: individualForm.passport_series.trim() || null,
+          passport_number: individualForm.passport_number.trim() || null,
+          passport_issued_by: individualForm.passport_issued_by.trim() || null,
+          passport_issued_date: individualForm.passport_issued_date.trim() || null,
+          passport_dept_code: individualForm.passport_dept_code.trim() || null,
+          person_snils: individualForm.snils.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowIndividualModal(false)
+        setIndividualForm({ full_name: '', inn: '', birth_date: '', passport_series: '', passport_number: '', passport_issued_by: '', passport_issued_date: '', passport_dept_code: '', address: '', snils: '', phone: '', email: '' })
+        setFilterType('individual')
+        await loadCounterparties()
+      } else {
+        setIndividualError(data.error ?? 'Ошибка сохранения')
+      }
+    } finally {
+      setIndividualSaving(false)
+    }
+  }
   const [foreignForm, setForeignForm] = useState({
     full_name: '', short_name: '', country: '',
     registration_number: '', director_name: '', phone: '', email: '',
@@ -208,6 +272,10 @@ export default function CounterpartiesPage() {
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
               🌍 Иностранный
             </button>
+            <button onClick={() => setShowIndividualModal(true)}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+              👤 Физлицо
+            </button>
           </div>
         </div>
 
@@ -224,10 +292,10 @@ export default function CounterpartiesPage() {
 
         {/* Фильтр тип */}
         <div className="flex gap-2 mb-4 flex-shrink-0">
-          {(['all','russian','foreign'] as const).map(f => (
+          {(['all','russian','foreign','individual'] as const).map(f => (
             <button key={f} onClick={() => setFilterType(f)}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${filterType === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {f === 'all' ? 'Все контрагенты' : f === 'russian' ? '🇷🇺 Российские' : '🌍 Иностранные'}
+              {f === 'all' ? 'Все контрагенты' : f === 'russian' ? '🇷🇺 Российские' : f === 'foreign' ? '🌍 Иностранные' : '👤 Физлица'}
             </button>
           ))}
         </div>
@@ -238,8 +306,9 @@ export default function CounterpartiesPage() {
             <div className="text-center py-12 text-gray-400">Загрузка...</div>
           ) : counterparties.filter(c =>
               filterType === 'all' ? true :
-              filterType === 'russian' ? !c.is_foreign :
-              !!c.is_foreign
+              filterType === 'russian' ? (!c.is_foreign && !c.is_individual) :
+              filterType === 'foreign' ? !!c.is_foreign :
+              !!c.is_individual
             ).length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">Контрагентов не найдено</p>
@@ -259,15 +328,17 @@ export default function CounterpartiesPage() {
               <tbody className="divide-y divide-gray-100">
                 {counterparties.filter(c =>
                   filterType === 'all' ? true :
-                  filterType === 'russian' ? !c.is_foreign :
-                  !!c.is_foreign
+                  filterType === 'russian' ? (!c.is_foreign && !c.is_individual) :
+                  filterType === 'foreign' ? (!!c.is_foreign && !c.is_individual) :
+                  !!c.is_individual
                 ).map(c => (
                   <tr key={c.id}
                     onClick={() => router.push(`/counterparties/${c.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        {c.is_foreign && <span className="text-base">🌍</span>}
+                        {c.is_individual && <span className="text-base">👤</span>}
+                        {c.is_foreign && !c.is_individual && <span className="text-base">🌍</span>}
                         <div>
                           <p className="text-sm font-medium text-gray-900">{c.short_name ?? c.full_name}</p>
                           {c.short_name && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{c.full_name}</p>}
@@ -356,6 +427,108 @@ export default function CounterpartiesPage() {
                 {foreignSaving ? 'Сохранение...' : 'Добавить'}
               </button>
               <button onClick={() => { setShowForeignModal(false); setForeignError('') }}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка физлица */}
+      {showIndividualModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-base font-semibold text-gray-900 mb-4">👤 Добавить физическое лицо</h3>
+            {individualError && <p className="text-sm text-red-600 mb-3">{individualError}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">ФИО <span className="text-red-500">*</span></label>
+                <input value={individualForm.full_name} onChange={e => setIndividualForm(p => ({...p, full_name: e.target.value}))}
+                  placeholder="Иванов Иван Иванович"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">ИНН</label>
+                  <input value={individualForm.inn} onChange={e => setIndividualForm(p => ({...p, inn: e.target.value}))}
+                    placeholder="123456789012"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Дата рождения</label>
+                  <input value={individualForm.birth_date} onChange={e => setIndividualForm(p => ({...p, birth_date: e.target.value}))}
+                    placeholder="01.01.1990"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Серия паспорта</label>
+                  <input value={individualForm.passport_series} onChange={e => setIndividualForm(p => ({...p, passport_series: e.target.value}))}
+                    placeholder="4510"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Номер паспорта</label>
+                  <input value={individualForm.passport_number} onChange={e => setIndividualForm(p => ({...p, passport_number: e.target.value}))}
+                    placeholder="123456"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Кем выдан</label>
+                <input value={individualForm.passport_issued_by} onChange={e => setIndividualForm(p => ({...p, passport_issued_by: e.target.value}))}
+                  placeholder="ОУФМС России по г. Москве"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Дата выдачи</label>
+                  <input value={individualForm.passport_issued_date} onChange={e => setIndividualForm(p => ({...p, passport_issued_date: e.target.value}))}
+                    placeholder="01.01.2020"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Код подразделения</label>
+                  <input value={individualForm.passport_dept_code} onChange={e => setIndividualForm(p => ({...p, passport_dept_code: e.target.value}))}
+                    placeholder="770-001"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Адрес регистрации</label>
+                <input value={individualForm.address} onChange={e => setIndividualForm(p => ({...p, address: e.target.value}))}
+                  placeholder="г. Москва, ул. Примерная, д. 1, кв. 1"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">СНИЛС</label>
+                  <input value={individualForm.snils} onChange={e => setIndividualForm(p => ({...p, snils: e.target.value}))}
+                    placeholder="123-321-456 02"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Телефон</label>
+                  <input value={individualForm.phone} onChange={e => setIndividualForm(p => ({...p, phone: e.target.value}))}
+                    placeholder="+7 (999) 123-45-67"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                <input value={individualForm.email} onChange={e => setIndividualForm(p => ({...p, email: e.target.value}))}
+                  placeholder="ivanov@example.com"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={saveIndividualCounterparty} disabled={individualSaving}
+                className="flex-1 bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                {individualSaving ? 'Сохранение...' : '👤 Добавить физлицо'}
+              </button>
+              <button onClick={() => { setShowIndividualModal(false); setIndividualError('') }}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Отмена
               </button>
