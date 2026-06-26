@@ -1543,6 +1543,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
                         Скачать
                       </a>
+                      {version.file_name.endsWith('.pdf') && (
+                        <a href={proxyUrl(version.file_url)} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-gray-700 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">
+                          👁️ Просмотр
+                        </a>
+                      )}
                       {(version.file_name.endsWith('.docx') || version.file_name.endsWith('.xlsx')) && (
                         <>
                           <a href={`https://epotos-ur-intel.vercel.app/editor?version_id=${version.id}&mode=view&user_id=${user?.id ?? ''}&user_name=${encodeURIComponent(user?.name ?? '')}`}
@@ -1682,6 +1688,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               )}
                             </>
                           )}
+                          {att.file_name?.endsWith('.pdf') && (
+                            <a href={proxyUrl(att.file_url)} target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                              👁️ Просмотр
+                            </a>
+                          )}
                           <a href={proxyUrl(att.file_url)} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
@@ -1729,6 +1741,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           </div>
                         </div>
                         <div className="flex gap-2">
+                          {doc.file_name?.endsWith('.pdf') && (
+                            <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-gray-700 border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                              👁️ Просмотр
+                            </a>
+                          )}
                           <a href={proxyUrl(doc.file_url)} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded hover:bg-gray-100">
                             Скачать
