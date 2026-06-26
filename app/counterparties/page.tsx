@@ -75,28 +75,25 @@ export default function CounterpartiesPage() {
   const [innCheckError, setInnCheckError] = useState('')
   const [innVerified, setInnVerified] = useState(false)
 
-  const checkInnIndividual = async (inn: string) => {
+  const checkInnIndividual = (inn: string) => {
     if (inn.length !== 12 || !/^\d{12}$/.test(inn)) {
       setInnCheckResult(null)
-      setInnCheckError('')
+      setInnCheckError(inn.length > 0 && inn.length < 12 ? '' : '')
+      setInnVerified(false)
       return
     }
-    setInnCheckLoading(true)
-    setInnCheckResult(null)
-    setInnCheckError('')
-    setInnVerified(false)
-    try {
-      const res = await fetch(`${baseUrl}/api/counterparties/check-inn-individual?inn=${inn}`)
-      const data = await res.json()
-      if (data.found) {
-        setInnCheckResult(data.data)
-      } else {
-        setInnCheckError(data.message ?? 'Физлицо не найдено в DaData')
-      }
-    } catch {
-      setInnCheckError('Ошибка запроса к DaData')
-    } finally {
-      setInnCheckLoading(false)
+    // Проверка контрольной суммы ИНН физлица по алгоритму ФНС
+    const d = inn.split('').map(Number)
+    const n11 = (7*d[0]+2*d[1]+4*d[2]+10*d[3]+3*d[4]+5*d[5]+9*d[6]+4*d[7]+6*d[8]+8*d[9]) % 11 % 10
+    const n12 = (3*d[0]+7*d[1]+2*d[2]+4*d[3]+10*d[4]+3*d[5]+5*d[6]+9*d[7]+4*d[8]+6*d[9]+8*d[10]) % 11 % 10
+    if (n11 === d[10] && n12 === d[11]) {
+      setInnCheckResult({ full_name: null, birth_date: null })
+      setInnCheckError('')
+      setInnVerified(true)
+    } else {
+      setInnCheckResult(null)
+      setInnCheckError('ИНН не прошёл проверку контрольной суммы (ФНС)')
+      setInnVerified(false)
     }
   }
 
@@ -514,27 +511,9 @@ export default function CounterpartiesPage() {
               </div>
 
               {/* Результат проверки ИНН через DaData */}
-              {innCheckLoading && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-500">
-                  ⏳ Проверяем ИНН в DaData...
-                </div>
-              )}
-              {innCheckResult && !innVerified && (
-                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                  <p className="text-xs text-green-700 font-medium mb-1">✅ Найдено в DaData:</p>
-                  <p className="text-sm text-green-900 font-semibold">{innCheckResult.full_name}</p>
-                  {innCheckResult.birth_date && (
-                    <p className="text-xs text-green-700">Дата рождения: {innCheckResult.birth_date}</p>
-                  )}
-                  <button type="button" onClick={applyInnResult}
-                    className="mt-2 w-full bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">
-                    Применить — заполнить ФИО и дату рождения
-                  </button>
-                </div>
-              )}
               {innVerified && (
                 <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
-                  ✅ ИНН подтверждён через DaData
+                  ✅ ИНН корректен (проверка по алгоритму ФНС)
                 </div>
               )}
               {innCheckError && (
