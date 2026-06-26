@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   const month = String(now.getMonth() + 1).padStart(2, '0')
 
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&order=number.desc&limit=1`,
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&deleted_at=is.null&order=number.desc&limit=1`,
     {
       headers: {
         apikey: SUPABASE_KEY,

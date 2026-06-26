@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       .select('id, number, title, counterparty, created_at, type')
       .eq('author_bitrix_id', userId)
       .eq('status', 'черновик')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(5)
 
