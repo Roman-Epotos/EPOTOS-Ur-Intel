@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('counterparties')
-      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number, is_individual')
       .order('full_name', { ascending: true })
 
     const individualOnly = request.nextUrl.searchParams.get('individual_only')
