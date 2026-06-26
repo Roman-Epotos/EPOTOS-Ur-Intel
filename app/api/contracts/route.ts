@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   const month = String(now.getMonth() + 1).padStart(2, '0')
 
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&deleted_at=is.null&order=number.desc&limit=1`,
+    `${SUPABASE_URL}/rest/v1/contracts?select=number&number=like.${encodeURIComponent(fullPrefix + '-' + year + '/%')}&deleted_at=is.null`,
     {
       headers: {
         apikey: SUPABASE_KEY,
@@ -101,11 +101,12 @@ export async function GET(request: NextRequest) {
 
   const data = await res.json()
   let maxNum = 0
-  if (data && data.length > 0) {
-    const lastNumber = data[0].number as string
-    const parts = lastNumber.split('/')
-    const lastSeq = parseInt(parts[parts.length - 1] ?? '0')
-    if (!isNaN(lastSeq)) maxNum = lastSeq
+  if (data && Array.isArray(data)) {
+    for (const row of data) {
+      const parts = (row.number as string).split('/')
+      const seq = parseInt(parts[parts.length - 1] ?? '0')
+      if (!isNaN(seq) && seq > maxNum) maxNum = seq
+    }
   }
   const nextNum = String(maxNum + 1)
   const number = `${fullPrefix}-${year}/${month}/${nextNum}`
