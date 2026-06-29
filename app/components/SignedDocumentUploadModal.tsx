@@ -61,6 +61,25 @@ export default function SignedDocumentUploadModal({
   const [tempFileUrl, setTempFileUrl] = useState('')
   const [tempFileName, setTempFileName] = useState('')
 
+  const ALLOWED_TYPES = ['.pdf', '.docx', '.xlsx']
+  const isAllowedFile = (file: File) =>
+    ALLOWED_TYPES.some(ext => file.name.toLowerCase().endsWith(ext))
+
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    if (!isAllowedFile(file)) {
+      setError('Поддерживаются только файлы PDF, DOCX, XLSX')
+      return
+    }
+    setError('')
+    setSelectedFile(file)
+  }
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -160,15 +179,20 @@ export default function SignedDocumentUploadModal({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Подписанный документ (PDF) <span className="text-red-500">*</span>
                 </label>
-                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl px-4 py-4 cursor-pointer hover:border-gray-400 transition-colors">
-                  <span className="text-2xl">📄</span>
+                <label
+                  className={`flex items-center gap-3 border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors
+                    ${isDragging ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-400'}`}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}>
+                  <span className="text-2xl">{isDragging ? '📂' : '📄'}</span>
                   <div>
                     <p className="text-sm font-medium text-gray-700">
-                      {selectedFile ? selectedFile.name : 'Нажмите для выбора файла'}
+                      {selectedFile ? selectedFile.name : isDragging ? 'Отпустите файл...' : 'Нажмите или перетащите файл'}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5">PDF, DOCX</p>
+                    <p className="text-xs text-gray-400 mt-0.5">PDF, DOCX, XLSX</p>
                   </div>
-                  <input type="file" className="hidden" accept=".pdf,.docx"
+                  <input type="file" className="hidden" accept=".pdf,.docx,.xlsx"
                     onChange={handleFileSelect} />
                 </label>
               </div>
