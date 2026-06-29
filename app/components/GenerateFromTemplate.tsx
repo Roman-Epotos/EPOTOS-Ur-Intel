@@ -164,6 +164,21 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
+  'поставка_эк': [
+    { key: 'place', label: 'Место заключения', placeholder: 'г. Киров' },
+    { key: 'counterparty_signatory_title', label: 'Должность подписанта контрагента', placeholder: 'Генеральный директор' },
+    { key: 'counterparty_basis', label: 'Основание полномочий контрагента', placeholder: 'Устава' },
+    { key: 'buyer_signatory_title', label: 'Должность подписанта Э-К', placeholder: 'Генеральный директор' },
+    { key: 'buyer_basis', label: 'Основание полномочий Э-К', placeholder: 'Устава' },
+    { key: 'prepayment_pct', label: 'Предоплата (%)', placeholder: '30' },
+    { key: 'prepayment_pct_words', label: 'Предоплата (прописью)', placeholder: 'тридцати' },
+    { key: 'postpayment_pct', label: 'Постоплата (%)', placeholder: '70' },
+    { key: 'postpayment_pct_words', label: 'Постоплата (прописью)', placeholder: 'семидесяти' },
+    { key: 'payment_days', label: 'Срок постоплаты (рабочих дней)', placeholder: '30' },
+    { key: 'payment_days_words', label: 'Срок постоплаты (прописью)', placeholder: 'тридцати' },
+    { key: 'counterparty_warehouse', label: 'Адрес склада контрагента', placeholder: 'г. Москва, ул. Складская, д. 1' },
+    { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
+  ],
   'поставка_снг': [
     { key: 'payment_days', label: 'Срок оплаты (дней)', placeholder: '5' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
@@ -410,6 +425,20 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       counterparty_bank_bik: (cp as {bank_bik?: string})?.bank_bik ?? '',
       counterparty_bank_corr: (cp as {bank_corr_account?: string})?.bank_corr_account ?? '',
       counterparty_email: (cp as {email?: string})?.email ?? '',
+      // Покупатель (Э-К) — только для шаблонов Э-К
+      buyer_full_name: req.company_name ?? '',
+      buyer_short_name: req.short_name ?? '',
+      buyer_signatory: req.director_name ?? '',
+      buyer_ogrn: req.ogrn ?? '',
+      buyer_inn: req.inn ?? '',
+      buyer_kpp: req.kpp ?? '',
+      buyer_address: req.legal_address ?? '',
+      buyer_bank_account: req.bank_account ?? '',
+      buyer_bank_name: req.bank_name ?? '',
+      buyer_bank_corr: req.bank_corr_account ?? '',
+      buyer_bank_bik: req.bank_bik ?? '',
+      buyer_phone: req.phone ?? '',
+      buyer_email: req.email ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
@@ -556,11 +585,14 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
   if (step === 'form' && selectedTemplate) {
     const isSng = selectedTemplate.name?.toLowerCase().includes('снг') || selectedTemplate.name?.toLowerCase().includes('sng')
     const isSptOs = ['СПТ', 'ОС'].includes(selectedTemplate.company_prefix ?? '')
+    const isEk = selectedTemplate.company_prefix === 'Э-К'
     const templateKey = isSng
       ? selectedTemplate.type + '_снг'
       : isSptOs
         ? selectedTemplate.type + '_спт'
-        : selectedTemplate.type ?? ''
+        : isEk
+          ? selectedTemplate.type + '_эк'
+          : selectedTemplate.type ?? ''
     const extraFieldsDef = EXTRA_FIELDS[templateKey] ?? EXTRA_FIELDS[selectedTemplate.type ?? ''] ?? []
     return (
       <div className="space-y-5">
