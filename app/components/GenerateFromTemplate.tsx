@@ -177,6 +177,8 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'payment_days', label: 'Срок постоплаты (рабочих дней)', placeholder: '30' },
     { key: 'payment_days_words', label: 'Срок постоплаты (прописью)', placeholder: 'тридцати' },
     { key: 'counterparty_warehouse', label: 'Адрес склада контрагента', placeholder: 'г. Москва, ул. Складская, д. 1' },
+    { key: 'fine_amount', label: 'Штраф п.6.13 (цифрами)', placeholder: '100 000' },
+    { key: 'fine_amount_words', label: 'Штраф п.6.13 (прописью)', placeholder: 'сто тысяч' },
     { key: 'contract_end_date', label: 'Дата окончания договора', type: 'date' },
   ],
   'поставка_снг': [
