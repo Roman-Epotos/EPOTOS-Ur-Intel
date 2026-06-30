@@ -79,6 +79,7 @@ export async function createBitrixChat(opts: {
   document_number: string
   document_title: string
   member_ids: number[]
+  contract_id?: string
 }): Promise<number | null> {
   const webhookUrl = process.env.BITRIX_WEBHOOK_URL
   if (!webhookUrl) return null
@@ -92,12 +93,19 @@ export async function createBitrixChat(opts: {
     const data = await res.json()
     if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
     const chatId = data.result
+    const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+    const link = opts.contract_id
+      ? `https://${bitrixPortal}/marketplace/app/248/?contract_id=${opts.contract_id}`
+      : null
+    const docRef = link
+      ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`
+      : `${opts.document_number} — ${opts.document_title}`
     await fetch(`${webhookUrl}im.message.add.json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         DIALOG_ID: `chat${chatId}`,
-        MESSAGE: `Это автоматический чат уведомлений по документу ${opts.document_number} — ${opts.document_title}.\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
+        MESSAGE: `📄 Это автоматический чат уведомлений по документу: ${docRef}\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
       }),
     })
     return chatId

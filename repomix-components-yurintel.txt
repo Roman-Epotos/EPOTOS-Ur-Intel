@@ -2911,93 +2911,6 @@ export default function Header() {
 }
 
 ================
-File: app/components/PersonalStats.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Stats {
-  total: number
-  on_approval: number
-  edo: number
-  signed: number
-  drafts: number
-  pending_my_action: number
-}
-
-export default function PersonalStats() {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [stats, setStats] = useState<Stats | null>(null)
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        const [contractsRes, myDocsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
-          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`, { cache: 'no-store' }),
-        ])
-
-        const contractsData = await contractsRes.json()
-        const myDocsData = await myDocsRes.json()
-
-        const contracts = contractsData.contracts ?? []
-        const pendingActions = (myDocsData.required_approvals?.length ?? 0) +
-          (myDocsData.optional_approvals?.length ?? 0)
-
-        setStats({
-          total: contracts.length,
-          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
-          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
-          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
-          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
-          pending_my_action: pendingActions,
-        })
-      } catch {
-        console.error('Ошибка загрузки статистики')
-      }
-    }
-
-    load()
-  }, [user?.id])
-
-  if (authLoading || !stats) return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
-          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
-        </div>
-      ))}
-    </div>
-  )
-
-  const items = [
-    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
-    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
-    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
-    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
-    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
-  ]
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {items.map(stat => (
-        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
-          <p className="text-sm text-gray-500">{stat.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-================
 File: app/components/AuthGuard.tsx
 ================
 'use client'
@@ -3050,6 +2963,92 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>
+}
+
+================
+File: app/components/PersonalStats.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import type { MyDocsData } from '@/app/components/MyDocuments'
+
+interface Stats {
+  total: number
+  on_approval: number
+  edo: number
+  signed: number
+  drafts: number
+  pending_my_action: number
+}
+
+interface PersonalStatsProps {
+  myDocsData: MyDocsData | null
+}
+
+export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
+        const contractsData = await contractsRes.json()
+        const contracts = contractsData.contracts ?? []
+        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
+          (myDocsData?.optional_approvals?.length ?? 0)
+
+        setStats({
+          total: contracts.length,
+          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
+          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
+          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
+          pending_my_action: pendingActions,
+        })
+      } catch {
+        console.error('Ошибка загрузки статистики')
+      }
+    }
+
+    load()
+  }, [user?.id, myDocsData])
+
+  if (authLoading || !stats) return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
+          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const items = [
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
+    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
+    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
+    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {items.map(stat => (
+        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+          <p className="text-sm text-gray-500">{stat.label}</p>
+          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 ================
@@ -3404,6 +3403,127 @@ export default function SignedDocumentUploadModal({
 }
 
 ================
+File: app/hooks/useBitrixAuth.ts
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+
+export interface BitrixUser {
+  id: string
+  name: string
+  email: string
+  avatar: string | null
+  auth_id: string
+  refresh_id: string
+  domain: string
+  member_id: string
+}
+
+// Объявляем тип для BX24 SDK
+declare global {
+  interface Window {
+    BX24?: {
+      setTitle: (count: number) => void
+      init: (callback: () => void) => void
+    }
+  }
+}
+
+export function useBitrixAuth() {
+  const [user, setUser] = useState<BitrixUser | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const authenticate = async () => {
+      try {
+        // 1. Проверяем параметры в URL (от Битрикс24)
+        const params = new URLSearchParams(window.location.search)
+        const authId = params.get('auth_id')
+        const refreshId = params.get('refresh_id')
+        const domain = params.get('domain')
+        const memberId = params.get('member_id')
+
+        if (authId && domain && memberId) {
+          const formData = new FormData()
+          formData.append('AUTH_ID', authId)
+          formData.append('REFRESH_ID', refreshId ?? '')
+          formData.append('DOMAIN', domain)
+          formData.append('member_id', memberId)
+
+          const response = await fetch('/api/bitrix/callback', { method: 'POST', body: formData })
+          const data = await response.json()
+
+          if (data.success) {
+            setUser(data.user)
+            sessionStorage.setItem('bitrix_user', JSON.stringify({
+              ...data.user,
+              auth_id: authId,
+              member_id: memberId,
+            }))
+            const contractId = params.get('contract_id')
+            if (contractId) {
+              window.location.replace(`/contracts/${contractId}`)
+            } else {
+              window.history.replaceState({}, '', '/')
+            }
+          }
+          setLoading(false)
+          return
+        }
+
+        // 2. Проверяем sessionStorage
+        const stored = sessionStorage.getItem('bitrix_user')
+        if (stored) {
+          const storedUser = JSON.parse(stored)
+          if (storedUser.auth_id && storedUser.member_id) {
+            const verifyRes = await fetch('/api/bitrix/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                auth_id: storedUser.auth_id,
+                member_id: storedUser.member_id,
+                user_id: storedUser.id,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            if (verifyData.valid) {
+              setUser(storedUser)
+            } else {
+              sessionStorage.removeItem('bitrix_user')
+              window.location.reload()
+            }
+          } else {
+            // Нет auth_id — мобильный Б24, разрешаем
+            setUser(storedUser)
+          }
+        } else {
+          // Нет ни URL параметров ни sessionStorage — редиректим в Б24
+          if (window.self === window.top) {
+            // Открыт не в iframe — прямая ссылка без авторизации
+            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/248/')
+          }
+        }
+      } catch (err) {
+        console.error('Bitrix auth error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    authenticate()
+  }, [])
+
+  const logout = () => {
+    sessionStorage.removeItem('bitrix_user')
+    setUser(null)
+    if (window.BX24?.setTitle) window.BX24.setTitle(0)
+  }
+
+  return { user, loading, logout }
+}
+
+================
 File: app/components/MyDocuments.tsx
 ================
 'use client'
@@ -3445,12 +3565,18 @@ interface SessionItem {
   contracts: Contract
 }
 
-interface MyDocsData {
+export interface MyDocsData {
   required_approvals: ApprovalItem[]
   optional_approvals: ApprovalItem[]
   my_drafts: Contract[]
   my_initiated: SessionItem[]
   my_edo: Contract[]
+}
+
+interface MyDocumentsProps {
+  data: MyDocsData | null
+  loading: boolean
+  onReload: () => void
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -3461,33 +3587,14 @@ const STAGE_LABELS: Record<string, string> = {
   custom: 'Доп.',
 }
 
-export default function MyDocuments() {
+export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
-  const [data, setData] = useState<MyDocsData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('approvals')
 
   useEffect(() => {
     if (!user?.id) return
 
-    const load = async () => {
-      try {
-        const res = await fetch(
-          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`,
-          { cache: 'no-store' }
-        )
-        const json = await res.json()
-        setData(json)
-      } catch {
-        console.error('Ошибка загрузки моих документов')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-
-    // Realtime подписка
+    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
@@ -3499,23 +3606,23 @@ export default function MyDocuments() {
         event: '*',
         schema: 'public',
         table: 'approval_participants',
-      }, () => load())
+      }, () => onReload())
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'contracts',
-      }, () => load())
+      }, () => onReload())
       .subscribe()
 
     // Обновляем при возврате на страницу
-    window.addEventListener('focus', load)
+    window.addEventListener('focus', onReload)
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) load()
+      if (!document.hidden) onReload()
     })
 
     return () => {
       supabase.removeChannel(channel)
-      window.removeEventListener('focus', load)
+      window.removeEventListener('focus', onReload)
     }
   }, [user?.id])
 
@@ -3738,127 +3845,6 @@ export default function MyDocuments() {
       </div>
     </div>
   )
-}
-
-================
-File: app/hooks/useBitrixAuth.ts
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-
-export interface BitrixUser {
-  id: string
-  name: string
-  email: string
-  avatar: string | null
-  auth_id: string
-  refresh_id: string
-  domain: string
-  member_id: string
-}
-
-// Объявляем тип для BX24 SDK
-declare global {
-  interface Window {
-    BX24?: {
-      setTitle: (count: number) => void
-      init: (callback: () => void) => void
-    }
-  }
-}
-
-export function useBitrixAuth() {
-  const [user, setUser] = useState<BitrixUser | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const authenticate = async () => {
-      try {
-        // 1. Проверяем параметры в URL (от Битрикс24)
-        const params = new URLSearchParams(window.location.search)
-        const authId = params.get('auth_id')
-        const refreshId = params.get('refresh_id')
-        const domain = params.get('domain')
-        const memberId = params.get('member_id')
-
-        if (authId && domain && memberId) {
-          const formData = new FormData()
-          formData.append('AUTH_ID', authId)
-          formData.append('REFRESH_ID', refreshId ?? '')
-          formData.append('DOMAIN', domain)
-          formData.append('member_id', memberId)
-
-          const response = await fetch('/api/bitrix/callback', { method: 'POST', body: formData })
-          const data = await response.json()
-
-          if (data.success) {
-            setUser(data.user)
-            sessionStorage.setItem('bitrix_user', JSON.stringify({
-              ...data.user,
-              auth_id: authId,
-              member_id: memberId,
-            }))
-            const contractId = params.get('contract_id')
-            if (contractId) {
-              window.location.replace(`/contracts/${contractId}`)
-            } else {
-              window.history.replaceState({}, '', '/')
-            }
-          }
-          setLoading(false)
-          return
-        }
-
-        // 2. Проверяем sessionStorage
-        const stored = sessionStorage.getItem('bitrix_user')
-        if (stored) {
-          const storedUser = JSON.parse(stored)
-          if (storedUser.auth_id && storedUser.member_id) {
-            const verifyRes = await fetch('/api/bitrix/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                auth_id: storedUser.auth_id,
-                member_id: storedUser.member_id,
-                user_id: storedUser.id,
-              }),
-            })
-            const verifyData = await verifyRes.json()
-            if (verifyData.valid) {
-              setUser(storedUser)
-            } else {
-              sessionStorage.removeItem('bitrix_user')
-              window.location.reload()
-            }
-          } else {
-            // Нет auth_id — мобильный Б24, разрешаем
-            setUser(storedUser)
-          }
-        } else {
-          // Нет ни URL параметров ни sessionStorage — редиректим в Б24
-          if (window.self === window.top) {
-            // Открыт не в iframe — прямая ссылка без авторизации
-            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/248/')
-          }
-        }
-      } catch (err) {
-        console.error('Bitrix auth error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    authenticate()
-  }, [])
-
-  const logout = () => {
-    sessionStorage.removeItem('bitrix_user')
-    setUser(null)
-    if (window.BX24?.setTitle) window.BX24.setTitle(0)
-  }
-
-  return { user, loading, logout }
 }
 
 ================

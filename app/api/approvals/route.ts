@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
         document_number: contractInfo.number ?? '',
         document_title: contractInfo.title ?? '',
         member_ids: chatMemberIds,
+        contract_id: contract_id,
       })
       if (chatId) {
         await supabase
