@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import type { MyDocsData } from '@/app/components/MyDocuments'
 
 interface Stats {
   total: number
@@ -12,7 +13,11 @@ interface Stats {
   pending_my_action: number
 }
 
-export default function PersonalStats() {
+interface PersonalStatsProps {
+  myDocsData: MyDocsData | null
+}
+
+export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
   const [stats, setStats] = useState<Stats | null>(null)
 
@@ -23,17 +28,11 @@ export default function PersonalStats() {
 
     const load = async () => {
       try {
-        const [contractsRes, myDocsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`),
-          fetch(`${baseUrl}/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`, { cache: 'no-store' }),
-        ])
-
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
         const contractsData = await contractsRes.json()
-        const myDocsData = await myDocsRes.json()
-
         const contracts = contractsData.contracts ?? []
-        const pendingActions = (myDocsData.required_approvals?.length ?? 0) +
-          (myDocsData.optional_approvals?.length ?? 0)
+        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
+          (myDocsData?.optional_approvals?.length ?? 0)
 
         setStats({
           total: contracts.length,
@@ -49,7 +48,7 @@ export default function PersonalStats() {
     }
 
     load()
-  }, [user?.id])
+  }, [user?.id, myDocsData])
 
   if (authLoading || !stats) return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">

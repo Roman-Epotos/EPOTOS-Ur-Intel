@@ -37,12 +37,18 @@ interface SessionItem {
   contracts: Contract
 }
 
-interface MyDocsData {
+export interface MyDocsData {
   required_approvals: ApprovalItem[]
   optional_approvals: ApprovalItem[]
   my_drafts: Contract[]
   my_initiated: SessionItem[]
   my_edo: Contract[]
+}
+
+interface MyDocumentsProps {
+  data: MyDocsData | null
+  loading: boolean
+  onReload: () => void
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -53,33 +59,14 @@ const STAGE_LABELS: Record<string, string> = {
   custom: 'Доп.',
 }
 
-export default function MyDocuments() {
+export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
-  const [data, setData] = useState<MyDocsData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('approvals')
 
   useEffect(() => {
     if (!user?.id) return
 
-    const load = async () => {
-      try {
-        const res = await fetch(
-          `https://epotos-ur-intel.vercel.app/api/my-documents?bitrix_user_id=${user.id}&_t=${Date.now()}`,
-          { cache: 'no-store' }
-        )
-        const json = await res.json()
-        setData(json)
-      } catch {
-        console.error('Ошибка загрузки моих документов')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-
-    // Realtime подписка
+    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
@@ -91,23 +78,23 @@ export default function MyDocuments() {
         event: '*',
         schema: 'public',
         table: 'approval_participants',
-      }, () => load())
+      }, () => onReload())
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'contracts',
-      }, () => load())
+      }, () => onReload())
       .subscribe()
 
     // Обновляем при возврате на страницу
-    window.addEventListener('focus', load)
+    window.addEventListener('focus', onReload)
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) load()
+      if (!document.hidden) onReload()
     })
 
     return () => {
       supabase.removeChannel(channel)
-      window.removeEventListener('focus', load)
+      window.removeEventListener('focus', onReload)
     }
   }, [user?.id])
 
