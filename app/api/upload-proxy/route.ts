@@ -7,6 +7,10 @@ const supabase = createClient(
 )
 
 export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+// Отключаем встроенный body parser Next.js для больших файлов
+export const fetchCache = 'force-no-store'
 
 const CORS = { 'Access-Control-Allow-Origin': '*' }
 

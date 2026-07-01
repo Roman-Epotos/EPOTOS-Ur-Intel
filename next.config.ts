@@ -6,6 +6,16 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '50mb',
     },
   },
+  async headers() {
+    return [
+      {
+        source: '/api/upload-proxy',
+        headers: [
+          { key: 'x-vercel-disable-body-size-limit', value: '1' },
+        ],
+      },
+    ]
+  },
 };
 
 export default nextConfig;

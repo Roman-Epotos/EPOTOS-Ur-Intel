@@ -82,6 +82,7 @@ app/api/counterparties/check/route.ts
 app/api/counterparties/route.ts
 app/api/counterparties/upload-url/route.ts
 app/api/cron-checklist-deadline/route.ts
+app/api/cron/approval-reminder/route.ts
 app/api/cron/edo-reminder/route.ts
 app/api/dashboard-finance/route.ts
 app/api/dashboard-legal/route.ts
@@ -6525,6 +6526,159 @@ export async function POST(request: NextRequest) {
 }
 
 ================
+File: app/api/cron/approval-reminder/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+import { sendBitrixNotify, sendBitrixChatMessage } from '@/app/lib/notify'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET() {
+  try {
+    const now = new Date()
+    const todayStr = now.toISOString().slice(0, 10)
+
+    // Завтра
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+
+    // 3 дня назад
+    const threeDaysAgo = new Date(now)
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+    const threeDaysAgoStr = threeDaysAgo.toISOString().slice(0, 10)
+
+    // Загружаем активные сессии согласования
+    const { data: sessions, error } = await supabase
+      .from('approval_sessions')
+      .select(`
+        id,
+        contract_id,
+        deadline,
+        initiated_by_bitrix_id,
+        bitrix_chat_id,
+        contracts (
+          id, number, title, author_bitrix_id
+        ),
+        approval_participants (
+          bitrix_user_id,
+          status
+        )
+      `)
+      .eq('status', 'active')
+      .not('deadline', 'is', null)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!sessions || sessions.length === 0) {
+      return NextResponse.json({ success: true, notified: 0, message: 'Нет активных сессий' })
+    }
+
+    const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+    let notified = 0
+
+    for (const session of sessions) {
+      const contract = Array.isArray(session.contracts)
+        ? session.contracts[0]
+        : session.contracts
+      if (!contract) continue
+
+      const deadlineStr = session.deadline.slice(0, 10)
+      const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${contract.id}`
+      const docRef = `[URL=${link}]${contract.number} — ${contract.title}[/URL]`
+
+      // Участники, которые ещё не согласовали
+      const pendingParticipants = (session.approval_participants ?? [])
+        .filter((p: { status: string; bitrix_user_id: number | null }) =>
+          p.status === 'pending' && p.bitrix_user_id
+        )
+        .map((p: { bitrix_user_id: number }) => p.bitrix_user_id)
+
+      // Инициатор + автор документа
+      const initiators = [...new Set([
+        session.initiated_by_bitrix_id,
+        contract.author_bitrix_id,
+      ].filter(Boolean) as number[])]
+
+      // Получатели колокольчика = те кто не согласовал + инициатор
+      const notifyRecipients = [...new Set([...pendingParticipants, ...initiators])]
+
+      // Список ожидающих для текста сообщения
+      const pendingCount = pendingParticipants.length
+      const pendingNote = pendingCount > 0
+        ? `Ожидают решения: ${pendingCount} участник(ов).`
+        : ''
+
+      let notifyType: 'approval_deadline_soon' | 'approval_deadline_reached' | 'approval_deadline_overdue' | null = null
+      let chatMessage = ''
+
+      if (deadlineStr === tomorrowStr) {
+        // За 1 день до дедлайна
+        notifyType = 'approval_deadline_soon'
+        chatMessage = `⚠️ Срок согласования истекает завтра!\nДокумент: ${docRef}\n${pendingNote}`
+      } else if (deadlineStr === todayStr) {
+        // В день дедлайна
+        notifyType = 'approval_deadline_reached'
+        chatMessage = `🔴 Срок согласования истёк сегодня!\nДокумент: ${docRef}\n${pendingNote}`
+      } else if (deadlineStr === threeDaysAgoStr) {
+        // Через 3 дня после дедлайна
+        notifyType = 'approval_deadline_overdue'
+        chatMessage = `🚨 Согласование просрочено на 3 дня. Рекомендуем продлить срок согласования с указанием причины.\nДокумент: ${docRef}\n${pendingNote}`
+      }
+
+      if (!notifyType) continue
+
+      // 1. Колокольчик (pending + инициатор)
+      if (notifyRecipients.length > 0) {
+        await sendBitrixNotify({
+          recipients: notifyRecipients,
+          type: notifyType,
+          document_id: contract.id,
+          document_title: contract.title ?? '',
+          document_number: contract.number ?? '',
+          extra: pendingNote,
+        })
+      }
+
+      // 2. Сообщение в чат Б24
+      if (session.bitrix_chat_id) {
+        await sendBitrixChatMessage(session.bitrix_chat_id, chatMessage)
+      }
+
+      // 3. Сообщение в ленту новостей Б24 (im.message.add всем участникам)
+      const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+      if (webhookUrl && notifyRecipients.length > 0) {
+        await Promise.all(notifyRecipients.map(async (userId) => {
+          try {
+            await fetch(`${webhookUrl}im.message.add.json`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                DIALOG_ID: userId,
+                MESSAGE: chatMessage,
+              }),
+            })
+          } catch (err) {
+            console.error(`approval-reminder message error for user ${userId}:`, err)
+          }
+        }))
+      }
+
+      notified++
+    }
+
+    return NextResponse.json({ success: true, notified, sessions_found: sessions.length })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/cron/edo-reminder/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -7720,151 +7874,6 @@ export async function DELETE(request: NextRequest) {
 }
 
 ================
-File: app/lib/notify.ts
-================
-export type NotifyType =
-  | 'document_created'
-  | 'sent_for_approval'
-  | 'approval_required'
-  | 'document_approved'
-  | 'document_rejected'
-  | 'documents_uploaded'
-  | 'checklist_generated'
-  | 'checklist_deadline'
-  | 'edo_reminder'
-
-interface NotifyOptions {
-  recipients: number[]
-  type: NotifyType
-  document_id: string
-  document_title: string
-  document_number: string
-  extra?: string
-}
-
-function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
-  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-  const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${documentId}`
-  const doc = `${documentNumber} — ${documentTitle} [${link}]`
-  const messages: Record<NotifyType, string> = {
-    document_created:    `📄 Создан новый документ: ${doc}`,
-    sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
-    approval_required:   `⚡ Требуется ваше согласование: ${doc}`,
-    document_approved:   `✅ Документ согласован: ${doc}`,
-    document_rejected:   `❌ Документ отклонён: ${doc}${extra ? `\nПричина: ${extra}` : ''}`,
-    documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
-    checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:  `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
-    edo_reminder:        `📋 Напоминание: загрузите подписанный через ЭДО документ в систему.\nДокумент: ${doc}`,
-  }
-  return messages[type] ?? `Уведомление по документу: ${doc}`
-}
-
-// Колокольчик (im.notify.system.add)
-export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
-  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
-  await Promise.all(opts.recipients.map(async (userId) => {
-    try {
-      const res = await fetch(`${webhookUrl}im.notify.system.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ USER_ID: userId, MESSAGE: message }),
-      })
-      const data = await res.json()
-      if (data.error) console.error(`Bitrix notify error for user ${userId}:`, data.error)
-    } catch (err) { console.error(`sendBitrixNotify error for user ${userId}:`, err) }
-  }))
-}
-
-// Личное сообщение (im.message.add)
-export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
-  if (!opts.recipients || opts.recipients.length === 0) return
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
-  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
-  await Promise.all(opts.recipients.map(async (userId) => {
-    try {
-      const res = await fetch(`${webhookUrl}im.message.add.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ DIALOG_ID: userId, USER_ID: userId, MESSAGE: message }),
-      })
-      const data = await res.json()
-      if (data.error) console.error(`Bitrix message error for user ${userId}:`, data.error)
-    } catch (err) { console.error(`sendBitrixMessage error for user ${userId}:`, err) }
-  }))
-}
-
-// Создать групповой чат Битрикс24
-export async function createBitrixChat(opts: {
-  document_number: string
-  document_title: string
-  member_ids: number[]
-  contract_id?: string
-}): Promise<number | null> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return null
-  try {
-    const title = `Чат согласования ${opts.document_number} — ${opts.document_title}`
-    const res = await fetch(`${webhookUrl}im.chat.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ TYPE: 'OPEN', TITLE: title, USERS: opts.member_ids }),
-    })
-    const data = await res.json()
-    if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
-    const chatId = data.result
-    const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-    const link = opts.contract_id
-      ? `https://${bitrixPortal}/marketplace/app/248/?contract_id=${opts.contract_id}`
-      : null
-    const docRef = link
-      ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`
-      : `${opts.document_number} — ${opts.document_title}`
-    await fetch(`${webhookUrl}im.message.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        DIALOG_ID: `chat${chatId}`,
-        MESSAGE: `📄 Это автоматический чат уведомлений по документу: ${docRef}\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
-      }),
-    })
-    return chatId
-  } catch (err) { console.error('createBitrixChat error:', err); return null }
-}
-
-// Добавить участника в чат Битрикс24
-export async function addUserToBitrixChat(chatId: number, userId: number): Promise<void> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return
-  try {
-    await fetch(`${webhookUrl}im.chat.user.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CHAT_ID: chatId, USERS: [userId] }),
-    })
-  } catch (err) { console.error('addUserToBitrixChat error:', err) }
-}
-
-// Отправить сообщение в групповой чат Битрикс24
-export async function sendBitrixChatMessage(chatId: number, message: string): Promise<void> {
-  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
-  if (!webhookUrl) return
-  try {
-    const res = await fetch(`${webhookUrl}im.message.add.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ DIALOG_ID: `chat${chatId}`, MESSAGE: message }),
-    })
-    const data = await res.json()
-    if (data.error) console.error('Bitrix chat message error:', data.error)
-  } catch (err) { console.error('sendBitrixChatMessage error:', err) }
-}
-
-================
 File: app/api/counterparties/[id]/documents/route.ts
 ================
 export const maxDuration = 60
@@ -8139,6 +8148,157 @@ export async function GET(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+
+================
+File: app/lib/notify.ts
+================
+export type NotifyType =
+  | 'document_created'
+  | 'sent_for_approval'
+  | 'approval_required'
+  | 'document_approved'
+  | 'document_rejected'
+  | 'documents_uploaded'
+  | 'checklist_generated'
+  | 'checklist_deadline'
+  | 'edo_reminder'
+  | 'approval_deadline_soon'
+  | 'approval_deadline_reached'
+  | 'approval_deadline_overdue'
+
+interface NotifyOptions {
+  recipients: number[]
+  type: NotifyType
+  document_id: string
+  document_title: string
+  document_number: string
+  extra?: string
+}
+
+function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
+  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+  const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${documentId}`
+  const doc = `${documentNumber} — ${documentTitle} [${link}]`
+  const messages: Record<NotifyType, string> = {
+    document_created:    `📄 Создан новый документ: ${doc}`,
+    sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
+    approval_required:   `⚡ Требуется ваше согласование: ${doc}`,
+    document_approved:   `✅ Документ согласован: ${doc}`,
+    document_rejected:   `❌ Документ отклонён: ${doc}${extra ? `\nПричина: ${extra}` : ''}`,
+    documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
+    checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
+    checklist_deadline:       `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
+    edo_reminder:             `📋 Напоминание: загрузите подписанный через ЭДО документ в систему.\nДокумент: ${doc}`,
+    approval_deadline_soon:   `⚠️ Срок согласования истекает завтра!\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_deadline_reached:`🔴 Срок согласования истёк сегодня!\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_deadline_overdue:`🚨 Согласование просрочено на 3 дня. Рекомендуем продлить срок согласования с указанием причины.\nДокумент: ${doc}\n${extra ?? ''}`,
+  }
+  return messages[type] ?? `Уведомление по документу: ${doc}`
+}
+
+// Колокольчик (im.notify.system.add)
+export async function sendBitrixNotify(opts: NotifyOptions): Promise<void> {
+  if (!opts.recipients || opts.recipients.length === 0) return
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
+  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
+  await Promise.all(opts.recipients.map(async (userId) => {
+    try {
+      const res = await fetch(`${webhookUrl}im.notify.system.add.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ USER_ID: userId, MESSAGE: message }),
+      })
+      const data = await res.json()
+      if (data.error) console.error(`Bitrix notify error for user ${userId}:`, data.error)
+    } catch (err) { console.error(`sendBitrixNotify error for user ${userId}:`, err) }
+  }))
+}
+
+// Личное сообщение (im.message.add)
+export async function sendBitrixMessage(opts: NotifyOptions): Promise<void> {
+  if (!opts.recipients || opts.recipients.length === 0) return
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) { console.error('BITRIX_WEBHOOK_URL не задан'); return }
+  const message = buildMessage(opts.type, opts.document_title, opts.document_number, opts.document_id, opts.extra)
+  await Promise.all(opts.recipients.map(async (userId) => {
+    try {
+      const res = await fetch(`${webhookUrl}im.message.add.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ DIALOG_ID: userId, USER_ID: userId, MESSAGE: message }),
+      })
+      const data = await res.json()
+      if (data.error) console.error(`Bitrix message error for user ${userId}:`, data.error)
+    } catch (err) { console.error(`sendBitrixMessage error for user ${userId}:`, err) }
+  }))
+}
+
+// Создать групповой чат Битрикс24
+export async function createBitrixChat(opts: {
+  document_number: string
+  document_title: string
+  member_ids: number[]
+  contract_id?: string
+}): Promise<number | null> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return null
+  try {
+    const title = `Чат согласования ${opts.document_number} — ${opts.document_title}`
+    const res = await fetch(`${webhookUrl}im.chat.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ TYPE: 'OPEN', TITLE: title, USERS: opts.member_ids }),
+    })
+    const data = await res.json()
+    if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
+    const chatId = data.result
+    const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+    const link = opts.contract_id
+      ? `https://${bitrixPortal}/marketplace/app/248/?contract_id=${opts.contract_id}`
+      : null
+    const docRef = link
+      ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`
+      : `${opts.document_number} — ${opts.document_title}`
+    await fetch(`${webhookUrl}im.message.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        DIALOG_ID: `chat${chatId}`,
+        MESSAGE: `📄 Это автоматический чат уведомлений по документу: ${docRef}\n\nВсе важные события согласования будут отображаться здесь.\nДля обсуждения документа используйте чат внутри системы ЮрИнтел.`,
+      }),
+    })
+    return chatId
+  } catch (err) { console.error('createBitrixChat error:', err); return null }
+}
+
+// Добавить участника в чат Битрикс24
+export async function addUserToBitrixChat(chatId: number, userId: number): Promise<void> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+  try {
+    await fetch(`${webhookUrl}im.chat.user.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CHAT_ID: chatId, USERS: [userId] }),
+    })
+  } catch (err) { console.error('addUserToBitrixChat error:', err) }
+}
+
+// Отправить сообщение в групповой чат Битрикс24
+export async function sendBitrixChatMessage(chatId: number, message: string): Promise<void> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+  try {
+    const res = await fetch(`${webhookUrl}im.message.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ DIALOG_ID: `chat${chatId}`, MESSAGE: message }),
+    })
+    const data = await res.json()
+    if (data.error) console.error('Bitrix chat message error:', data.error)
+  } catch (err) { console.error('sendBitrixChatMessage error:', err) }
 }
 
 ================
