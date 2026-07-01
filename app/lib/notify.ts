@@ -8,6 +8,9 @@ export type NotifyType =
   | 'checklist_generated'
   | 'checklist_deadline'
   | 'edo_reminder'
+  | 'approval_deadline_soon'
+  | 'approval_deadline_reached'
+  | 'approval_deadline_overdue'
 
 interface NotifyOptions {
   recipients: number[]
@@ -30,8 +33,11 @@ function buildMessage(type: NotifyType, documentTitle: string, documentNumber: s
     document_rejected:   `❌ Документ отклонён: ${doc}${extra ? `\nПричина: ${extra}` : ''}`,
     documents_uploaded:  `📎 Загружены подписанные документы: ${doc}`,
     checklist_generated: `📋 Сгенерирован чек-лист исполнения: ${doc}`,
-    checklist_deadline:  `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
-    edo_reminder:        `📋 Напоминание: загрузите подписанный через ЭДО документ в систему.\nДокумент: ${doc}`,
+    checklist_deadline:       `⏰ Дедлайн пункта чек-листа: ${extra ?? ''}\nДокумент: ${doc}`,
+    edo_reminder:             `📋 Напоминание: загрузите подписанный через ЭДО документ в систему.\nДокумент: ${doc}`,
+    approval_deadline_soon:   `⚠️ Срок согласования истекает завтра!\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_deadline_reached:`🔴 Срок согласования истёк сегодня!\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_deadline_overdue:`🚨 Согласование просрочено на 3 дня. Рекомендуем продлить срок согласования с указанием причины.\nДокумент: ${doc}\n${extra ?? ''}`,
   }
   return messages[type] ?? `Уведомление по документу: ${doc}`
 }

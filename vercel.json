@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/edo-reminder",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/approval-reminder",
+      "schedule": "0 6 * * *"
     }
   ]
 }
