@@ -205,6 +205,12 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
   'nda': [
     { key: 'liability_limit_num', label: 'Штраф за разглашение (руб.)', placeholder: '1000000' },
   ],
+  'nda_эк': [
+    { key: 'counterparty_signatory_title', label: 'Должность подписанта контрагента', placeholder: 'Генеральный директор' },
+    { key: 'counterparty_basis', label: 'Основание полномочий контрагента', placeholder: 'Устава' },
+    { key: 'fine_amount', label: 'Штраф (цифрами)', placeholder: '100 000' },
+    { key: 'fine_amount_words', label: 'Штраф (прописью)', placeholder: 'сто тысяч' },
+  ],
   'эдо': [
     { key: 'edo_operator', label: 'Оператор ЭДО контрагента', placeholder: 'Диадок' },
     { key: 'referenced_contract_date', label: 'Дата основного договора', placeholder: '01.05.2026', type: 'date' },
@@ -441,6 +447,7 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       buyer_bank_bik: req.bank_bik ?? '',
       buyer_phone: req.phone ?? '',
       buyer_email: req.email ?? '',
+      buyer_signatory_short: req.director_short_name ?? '',
       // Автоконвертация суммы прописью
       ...(extraFields.nda_penalty_num ? {
         nda_penalty_text: numberToWords(parseInt(extraFields.nda_penalty_num.replace(/\s/g, '').replace(/,/g, ''), 10))
