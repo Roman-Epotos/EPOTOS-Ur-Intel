@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
 
 export default function UploadVersionPage() {
   const params = useParams()
@@ -47,21 +48,30 @@ export default function UploadVersionPage() {
     setError('')
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('contract_id', contractId)
-      formData.append('comment', comment)
-      formData.append('user_name', user?.name ?? 'Система')
+      // Загружаем файл напрямую в Supabase (обходит лимит Vercel 4.5 МБ)
+      const { public_url, file_name } = await uploadFileDirect(
+        file,
+        'contracts',
+        `versions/${contractId}`
+      )
 
+      // Сохраняем запись о версии в БД
       const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          comment,
+          user_name: user?.name ?? 'Система',
+          file_url: public_url,
+          file_name,
+        }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        setError('Ошибка загрузки файла: ' + (data.error ?? 'Неизвестная ошибка'))
+        setError('Ошибка сохранения версии: ' + (data.error ?? 'Неизвестная ошибка'))
         setLoading(false)
         return
       }

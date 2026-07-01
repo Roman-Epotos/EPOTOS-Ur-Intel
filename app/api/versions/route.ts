@@ -33,63 +33,75 @@ export async function POST(request: NextRequest) {
   )
 
   try {
-    const formData = await request.formData()
-    console.log('formData parsed')
+    const contentType = request.headers.get('content-type') ?? ''
+    let contractId: string
+    let comment: string
+    let userName: string
+    let fileUrl: string
+    let fileName: string
 
-    const file = formData.get('file') as File
-    const contractId = formData.get('contract_id') as string
-    const comment = formData.get('comment') as string
+    if (contentType.includes('application/json')) {
+      // Файл уже загружен через uploadFileDirect — получаем только метаданные
+      const json = await request.json()
+      contractId = json.contract_id
+      comment = json.comment ?? ''
+      userName = json.user_name ?? 'Система'
+      fileUrl = json.file_url
+      fileName = json.file_name
 
-    console.log('file:', file?.name, 'contractId:', contractId)
+      if (!contractId || !fileUrl || !fileName) {
+        return NextResponse.json({ error: 'contract_id, file_url и file_name обязательны' }, { status: 400 })
+      }
+    } else {
+      // Старый путь через FormData (файлы до 4.5 МБ)
+      const formData = await request.formData()
+      const file = formData.get('file') as File
+      contractId = formData.get('contract_id') as string
+      comment = formData.get('comment') as string ?? ''
+      userName = formData.get('user_name') as string ?? 'Система'
 
-    if (!file || !contractId) {
-      return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
+      if (!file || !contractId) {
+        return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
+      }
+
+      const { count } = await supabase
+        .from('versions')
+        .select('*', { count: 'exact', head: true })
+        .eq('contract_id', contractId)
+
+      const versionNumber = (count ?? 0) + 1
+      const fileExt = file.name.split('.').pop()
+      const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
+      const arrayBuffer = await file.arrayBuffer()
+      const fileBuffer = new Uint8Array(arrayBuffer)
+
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(filePath, fileBuffer, { contentType: file.type, upsert: false })
+
+      if (uploadError) {
+        return NextResponse.json({ error: uploadError.message }, { status: 400 })
+      }
+
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath)
+      fileUrl = urlData.publicUrl
+      fileName = file.name
     }
 
-    // Получаем текущий номер версии
-    console.log('getting version count...')
-    const { count, error: countError } = await supabase
+    // Получаем номер версии
+    const { count: vCount } = await supabase
       .from('versions')
       .select('*', { count: 'exact', head: true })
       .eq('contract_id', contractId)
-
-    console.log('count:', count, 'countError:', countError)
-
-    const versionNumber = (count ?? 0) + 1
-
-    // Загружаем файл
-    const fileExt = file.name.split('.').pop()
-    const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
-
-    console.log('uploading to path:', filePath)
-
-    const arrayBuffer = await file.arrayBuffer()
-    const fileBuffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, fileBuffer, {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    console.log('upload result:', uploadError ? uploadError.message : 'success')
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
+    const versionNumber = (vCount ?? 0) + 1
 
     const { error: versionError } = await supabase
       .from('versions')
       .insert({
         contract_id: contractId,
         version_number: versionNumber,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
+        file_url: fileUrl,
+        file_name: fileName,
         comment: comment || null,
       })
 
@@ -104,7 +116,7 @@ export async function POST(request: NextRequest) {
       .insert({
         contract_id: contractId,
         action: `Загружена версия документа v${versionNumber}`,
-        details: `Файл: ${file.name}${comment ? '. Комментарий: ' + comment : ''}`,
+        details: `Файл: ${fileName}${comment ? '. Комментарий: ' + comment : ''}`,
         user_name: 'Система',
       })
 

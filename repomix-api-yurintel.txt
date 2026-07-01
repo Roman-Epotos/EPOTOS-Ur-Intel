@@ -6980,72 +6980,6 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/upload-proxy/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export const maxDuration = 60
-
-const CORS = { 'Access-Control-Allow-Origin': '*' }
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const bucket = formData.get('bucket') as string | null
-    const path = formData.get('path') as string | null
-
-    if (!file || !bucket || !path) {
-      return NextResponse.json({ error: 'file, bucket и path обязательны' }, { status: 400, headers: CORS })
-    }
-
-    const allowedBuckets = ['counterparty-docs', 'contracts']
-    if (!allowedBuckets.includes(bucket)) {
-      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
-    }
-
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(path, buffer, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: true,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500, headers: CORS })
-    }
-
-    const { data: publicData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(path)
-
-    return NextResponse.json({
-      success: true,
-      public_url: publicData.publicUrl,
-    }, { headers: CORS })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
-  }
-}
-
-================
 File: app/api/versions/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -7083,55 +7017,62 @@ export async function POST(request: NextRequest) {
   )
 
   try {
-    const formData = await request.formData()
-    console.log('formData parsed')
+    const contentType = request.headers.get('content-type') ?? ''
+    let contractId: string
+    let comment: string
+    let userName: string
+    let fileUrl: string
+    let fileName: string
 
-    const file = formData.get('file') as File
-    const contractId = formData.get('contract_id') as string
-    const comment = formData.get('comment') as string
+    if (contentType.includes('application/json')) {
+      // Файл уже загружен через uploadFileDirect — получаем только метаданные
+      const json = await request.json()
+      contractId = json.contract_id
+      comment = json.comment ?? ''
+      userName = json.user_name ?? 'Система'
+      fileUrl = json.file_url
+      fileName = json.file_name
 
-    console.log('file:', file?.name, 'contractId:', contractId)
+      if (!contractId || !fileUrl || !fileName) {
+        return NextResponse.json({ error: 'contract_id, file_url и file_name обязательны' }, { status: 400 })
+      }
+    } else {
+      // Старый путь через FormData (файлы до 4.5 МБ)
+      const formData = await request.formData()
+      const file = formData.get('file') as File
+      contractId = formData.get('contract_id') as string
+      comment = formData.get('comment') as string ?? ''
+      userName = formData.get('user_name') as string ?? 'Система'
 
-    if (!file || !contractId) {
-      return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
+      if (!file || !contractId) {
+        return NextResponse.json({ error: 'Файл и ID договора обязательны' }, { status: 400 })
+      }
+
+      const { count } = await supabase
+        .from('versions')
+        .select('*', { count: 'exact', head: true })
+        .eq('contract_id', contractId)
+
+      const versionNumber = (count ?? 0) + 1
+      const fileExt = file.name.split('.').pop()
+      const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
+      const arrayBuffer = await file.arrayBuffer()
+      const fileBuffer = new Uint8Array(arrayBuffer)
+
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(filePath, fileBuffer, { contentType: file.type, upsert: false })
+
+      if (uploadError) {
+        return NextResponse.json({ error: uploadError.message }, { status: 400 })
+      }
+
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath)
+      fileUrl = urlData.publicUrl
+      fileName = file.name
     }
 
-    // Получаем текущий номер версии
-    console.log('getting version count...')
-    const { count, error: countError } = await supabase
-      .from('versions')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contractId)
-
-    console.log('count:', count, 'countError:', countError)
-
-    const versionNumber = (count ?? 0) + 1
-
-    // Загружаем файл
-    const fileExt = file.name.split('.').pop()
-    const filePath = `${contractId}/v${versionNumber}_${Date.now()}.${fileExt}`
-
-    console.log('uploading to path:', filePath)
-
-    const arrayBuffer = await file.arrayBuffer()
-    const fileBuffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, fileBuffer, {
-        contentType: file.type,
-        upsert: false,
-      })
-
-    console.log('upload result:', uploadError ? uploadError.message : 'success')
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 })
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('contracts')
-      .getPublicUrl(filePath)
+    const { data: urlData } = { data: { publicUrl: fileUrl } }
 
     const { error: versionError } = await supabase
       .from('versions')
@@ -7870,6 +7811,76 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/api/upload-proxy/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+// Отключаем встроенный body parser Next.js для больших файлов
+export const fetchCache = 'force-no-store'
+
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
+  })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const bucket = formData.get('bucket') as string | null
+    const path = formData.get('path') as string | null
+
+    if (!file || !bucket || !path) {
+      return NextResponse.json({ error: 'file, bucket и path обязательны' }, { status: 400, headers: CORS })
+    }
+
+    const allowedBuckets = ['counterparty-docs', 'contracts']
+    if (!allowedBuckets.includes(bucket)) {
+      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
+    }
+
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = new Uint8Array(arrayBuffer)
+
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500, headers: CORS })
+    }
+
+    const { data: publicData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+
+    return NextResponse.json({
+      success: true,
+      public_url: publicData.publicUrl,
+    }, { headers: CORS })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
   }
 }
 
