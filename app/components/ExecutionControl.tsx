@@ -326,6 +326,7 @@ export default function ExecutionControl({
           contract_title: contractTitle,
           company_prefix: companyPrefix,
           responsible_bitrix_id: taskResponsibleId,
+          author_bitrix_id: authorBitrixId,
           task_title: title,
           mode: 'single_with_checklist',
           items: allItems.map(i => ({
@@ -367,6 +368,7 @@ export default function ExecutionControl({
           contract_title: contractTitle,
           company_prefix: companyPrefix,
           responsible_bitrix_id: taskResponsibleId,
+          author_bitrix_id: authorBitrixId,
           task_title: title,
           mode: 'single_with_checklist',
           items: selected.map(i => ({

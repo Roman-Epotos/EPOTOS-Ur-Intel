@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       item_description,
       due_date,
       responsible_bitrix_id,  // исполнитель (по умолчанию = автор документа)
+      author_bitrix_id,        // инициатор документа → наблюдатель в задаче
       // Для создания всех задач сразу
       items,  // массив {id, title, description, due_date} если bulk
       mode,   // 'single_with_checklist' для одной задачи с чек-листом
@@ -52,7 +53,9 @@ export async function POST(request: NextRequest) {
     ): Promise<{ bitrix_task_id: string | null; error?: string }> => {
       
       // Формируем описание задачи
-      const contractRef = `📄 Документ: ${contract_number} — ${contract_title}`
+      const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+      const contractLink = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${contract_id}`
+      const contractRef = `📄 Документ: [URL=${contractLink}]${contract_number} — ${contract_title}[/URL]`
       const noDeadlineNote = !deadline 
         ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 
         : ''
@@ -65,6 +68,9 @@ export async function POST(request: NextRequest) {
         RESPONSIBLE_ID: String(responsibleId),
         CREATED_BY: String(directorId),  // постановщик = ГД компании
         PRIORITY: '1',
+        ...(author_bitrix_id && author_bitrix_id !== responsibleId
+          ? { SE_PARAMETER: [{ CODE: 'WATCHERS', VALUE: String(author_bitrix_id) }] }
+          : {}),
       }
 
       if (deadline) {
