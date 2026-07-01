@@ -437,6 +437,8 @@ export default function GenerateFromTemplate({ contract, onUploaded }: GenerateF
       buyer_full_name: req.company_name ?? '',
       buyer_short_name: req.short_name ?? '',
       buyer_signatory: req.director_name ?? '',
+      buyer_signatory_title: req.director_title ?? 'Генерального директора',
+      buyer_basis: req.basis ?? 'Устава',
       buyer_ogrn: req.ogrn ?? '',
       buyer_inn: req.inn ?? '',
       buyer_kpp: req.kpp ?? '',
