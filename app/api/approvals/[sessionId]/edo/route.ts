@@ -2,6 +2,18 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 const baseNotifyUrl = 'https://epotos-ur-intel.vercel.app'
 
+async function sendBitrixChatMessage(chatId: number, message: string): Promise<void> {
+  const webhookUrl = process.env.BITRIX_WEBHOOK_URL
+  if (!webhookUrl) return
+  try {
+    await fetch(`${webhookUrl}im.message.add.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ DIALOG_ID: `chat${chatId}`, MESSAGE: message }),
+    })
+  } catch (err) { console.error('sendBitrixChatMessage error:', err) }
+}
+
 async function sendEdoNotify(recipients: number[], type: string, document_id: string, document_number: string, extra_message: string) {
   try {
     await fetch(`${baseNotifyUrl}/api/bitrix-notify`, {
@@ -139,6 +151,23 @@ export async function POST(
           contract_number ?? '',
           `${decision === 'approved' ? '✅' : '❌'} ${user_name} ${decisionText} по документу ${contract_number}`
         )
+      }
+
+      // Сообщение в чат Б24
+      const { data: sessionWithChat } = await supabase
+        .from('approval_sessions')
+        .select('bitrix_chat_id')
+        .eq('id', sessionId)
+        .single()
+
+      const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+      const contractLink = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${contract_id}`
+      const chatMsg = decision === 'approved'
+        ? `✅ Генеральный директор разрешил подписание через ЭДО\nДокумент: [URL=${contractLink}]${contract_number}[/URL]\nРешение принято: ${user_name}`
+        : `❌ Генеральный директор отказал в подписании через ЭДО\nДокумент: [URL=${contractLink}]${contract_number}[/URL]\nРешение принято: ${user_name}`
+
+      if (sessionWithChat?.bitrix_chat_id) {
+        await sendBitrixChatMessage(sessionWithChat.bitrix_chat_id, chatMsg)
       }
 
       // Лог
