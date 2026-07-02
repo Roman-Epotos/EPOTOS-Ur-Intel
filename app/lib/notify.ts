@@ -100,7 +100,7 @@ export async function createBitrixChat(opts: {
     if (data.error) { console.error('Bitrix chat create error:', data.error); return null }
     const chatId = data.result
     const link = opts.contract_id
-      ? `https://epotos-ur-intel.vercel.app/redirect?contract_id=${opts.contract_id}`
+      ? `https://epotos-ur-intel.vercel.app/contracts/${opts.contract_id}`
       : null
     const docRef = link
       ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`
