@@ -3526,330 +3526,6 @@ export function useBitrixAuth() {
 }
 
 ================
-File: app/components/MyDocuments.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
-
-interface Contract {
-  id: string
-  number: string
-  title: string
-  counterparty: string
-  status: string
-  amount: number | null
-}
-
-interface ApprovalItem {
-  id: string
-  role: string
-  status: string
-  stage: string
-  session_id: string
-  approval_sessions: {
-    id: string
-    contract_id: string
-    deadline: string
-    initiated_by_name: string
-    contracts: Contract
-  }
-}
-
-interface SessionItem {
-  id: string
-  deadline: string
-  status: string
-  created_at: string
-  contracts: Contract
-}
-
-export interface MyDocsData {
-  required_approvals: ApprovalItem[]
-  optional_approvals: ApprovalItem[]
-  my_drafts: Contract[]
-  my_initiated: SessionItem[]
-  my_edo: Contract[]
-}
-
-interface MyDocumentsProps {
-  data: MyDocsData | null
-  loading: boolean
-  onReload: () => void
-}
-
-const STAGE_LABELS: Record<string, string> = {
-  legal: 'Юридический',
-  finance: 'Финансовый',
-  accounting: 'Бухгалтерия',
-  director: 'Директор',
-  custom: 'Доп.',
-}
-
-export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState('approvals')
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-
-    const channel = supabase
-      .channel('my-docs-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'approval_participants',
-      }, () => onReload())
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'contracts',
-      }, () => onReload())
-      .subscribe()
-
-    // Обновляем при возврате на страницу
-    window.addEventListener('focus', onReload)
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) onReload()
-    })
-
-    return () => {
-      supabase.removeChannel(channel)
-      window.removeEventListener('focus', onReload)
-    }
-  }, [user?.id])
-
-  if (authLoading || loading) return null
-
-  if (!user) return null
-
-  const totalActions = (data?.required_approvals.length ?? 0) +
-    (data?.optional_approvals.length ?? 0)
-
-  const hasAnything = totalActions > 0 ||
-    (data?.my_drafts.length ?? 0) > 0 ||
-    (data?.my_initiated.length ?? 0) > 0 ||
-    (data?.my_edo.length ?? 0) > 0
-
-  if (!hasAnything) return null
-
-  const tabs = [
-    {
-      id: 'approvals',
-      label: 'Требуют действия',
-      count: totalActions,
-      show: totalActions > 0
-    },
-    {
-      id: 'initiated',
-      label: 'Я инициатор',
-      count: data?.my_initiated.length ?? 0,
-      show: (data?.my_initiated.length ?? 0) > 0
-    },
-    {
-      id: 'drafts',
-      label: 'Мои черновики',
-      count: data?.my_drafts.length ?? 0,
-      show: (data?.my_drafts.length ?? 0) > 0
-    },
-    {
-      id: 'edo',
-      label: 'На подписи в ЭДО',
-      count: data?.my_edo.length ?? 0,
-      show: (data?.my_edo.length ?? 0) > 0
-    },
-  ].filter(t => t.show)
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 mb-6">
-      <div className="px-6 py-4 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-900">
-            Мои документы
-            {totalActions > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {totalActions}
-              </span>
-            )}
-          </h2>
-        </div>
-
-        {/* Вкладки */}
-        <div className="flex gap-2 mt-3">
-          {tabs.map(tab => (
-            <button key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}>
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
-                  ? 'bg-white text-gray-900'
-                  : 'bg-gray-400 text-white'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-4">
-
-        {/* Требуют действия */}
-        {activeTab === 'approvals' && (
-          <div className="space-y-2">
-            {data?.required_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Согласовать
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {STAGE_LABELS[item.stage] ?? item.stage}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {data?.optional_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Ознакомиться
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {totalActions === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">
-                Нет документов требующих действий
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Я инициатор */}
-        {activeTab === 'initiated' && (
-          <div className="space-y-2">
-            {data?.my_initiated.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      На согласовании
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.contracts.number} — {item.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Мои черновики */}
-        {activeTab === 'drafts' && (
-          <div className="space-y-2">
-            {data?.my_drafts.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'edo' && (
-          <div className="space-y-2">
-            {data?.my_edo.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-      </div>
-    </div>
-  )
-}
-
-================
 File: app/components/ContractsList.tsx
 ================
 'use client'
@@ -4292,6 +3968,330 @@ export default function ContractsList() {
         </table>
         </div>
       )}
+      </div>
+    </div>
+  )
+}
+
+================
+File: app/components/MyDocuments.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { createClient } from '@supabase/supabase-js'
+
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
+}
+
+interface ApprovalItem {
+  id: string
+  role: string
+  status: string
+  stage: string
+  session_id: string
+  approval_sessions: {
+    id: string
+    contract_id: string
+    deadline: string
+    initiated_by_name: string
+    contracts: Contract
+  }
+}
+
+interface SessionItem {
+  id: string
+  deadline: string
+  status: string
+  created_at: string
+  contracts: Contract
+}
+
+export interface MyDocsData {
+  required_approvals: ApprovalItem[]
+  optional_approvals: ApprovalItem[]
+  my_drafts: Contract[]
+  my_initiated: SessionItem[]
+  my_edo: Contract[]
+}
+
+interface MyDocumentsProps {
+  data: MyDocsData | null
+  loading: boolean
+  onReload: () => void
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  legal: 'Юридический',
+  finance: 'Финансовый',
+  accounting: 'Бухгалтерия',
+  director: 'Директор',
+  custom: 'Доп.',
+}
+
+export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [activeTab, setActiveTab] = useState('approvals')
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+
+    const channel = supabase
+      .channel('my-docs-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => onReload())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => onReload())
+      .subscribe()
+
+    // Обновляем при возврате на страницу
+    window.addEventListener('focus', onReload)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) onReload()
+    })
+
+    return () => {
+      supabase.removeChannel(channel)
+      window.removeEventListener('focus', onReload)
+    }
+  }, [user?.id])
+
+  if (authLoading || loading) return null
+
+  if (!user) return null
+
+  const totalActions = (data?.required_approvals.length ?? 0) +
+    (data?.optional_approvals.length ?? 0)
+
+  const hasAnything = totalActions > 0 ||
+    (data?.my_drafts.length ?? 0) > 0 ||
+    (data?.my_initiated.length ?? 0) > 0 ||
+    (data?.my_edo.length ?? 0) > 0
+
+  if (!hasAnything) return null
+
+  const tabs = [
+    {
+      id: 'approvals',
+      label: 'Требуют действия',
+      count: totalActions,
+      show: totalActions > 0
+    },
+    {
+      id: 'initiated',
+      label: 'Я инициатор',
+      count: data?.my_initiated.length ?? 0,
+      show: (data?.my_initiated.length ?? 0) > 0
+    },
+    {
+      id: 'drafts',
+      label: 'Мои черновики',
+      count: data?.my_drafts.length ?? 0,
+      show: (data?.my_drafts.length ?? 0) > 0
+    },
+    {
+      id: 'edo',
+      label: 'На подписи в ЭДО',
+      count: data?.my_edo.length ?? 0,
+      show: (data?.my_edo.length ?? 0) > 0
+    },
+  ].filter(t => t.show)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mb-6">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-gray-900">
+            Мои документы
+            {totalActions > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {totalActions}
+              </span>
+            )}
+          </h2>
+        </div>
+
+        {/* Вкладки */}
+        <div className="flex gap-2 mt-3">
+          {tabs.map(tab => (
+            <button key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}>
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                  ? 'bg-white text-gray-900'
+                  : 'bg-gray-400 text-white'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4">
+
+        {/* Требуют действия */}
+        {activeTab === 'approvals' && (
+          <div className="space-y-2">
+            {data?.required_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Согласовать
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {STAGE_LABELS[item.stage] ?? item.stage}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {data?.optional_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Ознакомиться
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {totalActions === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">
+                Нет документов требующих действий
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Я инициатор */}
+        {activeTab === 'initiated' && (
+          <div className="space-y-2">
+            {data?.my_initiated.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      На согласовании
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.contracts.number} — {item.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Мои черновики */}
+        {activeTab === 'drafts' && (
+          <div className="space-y-2">
+            {data?.my_drafts.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'edo' && (
+          <div className="space-y-2">
+            {data?.my_edo.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
       </div>
     </div>
   )
@@ -5163,6 +5163,7 @@ import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { proxyUrl } from '@/app/utils/proxyUrl'
 import { uploadFileDirect } from '@/app/utils/uploadFile'
 import { createClient } from '@supabase/supabase-js'
+// jsPDF убран — используем HTML print вместо PDF
 
 const supabaseClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7125,6 +7126,190 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                         className="w-full text-xs border border-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors">
                         + Добавить участника
                       </button>
+
+                      {/* Лист согласования */}
+                      <button
+                        onClick={() => {
+                          const participants = session.approval_participants ?? []
+                          const statusMap: Record<string, string> = {
+                            approved: '✅ Согласован', rejected: '❌ Отклонён',
+                            pending: '⏳ Ожидает', acknowledged: '👁 Ознакомлен', disabled: '—',
+                          }
+                          const roleMap: Record<string, string> = {
+                            legal_gc: 'Юрист ГК', legal: 'Юрист',
+                            finance_gc: 'Финансист ГК', finance: 'Финансист',
+                            accounting: 'Бухгалтерия', director: 'Ген. директор',
+                            gc_manager: 'Менеджер ГК', other: 'Доп. участник',
+                          }
+                          const rows = participants.map((p: Participant, idx: number) => `
+                            <tr>
+                              <td>${idx + 1}</td>
+                              <td>${roleMap[p.role] ?? roleMap[p.stage] ?? p.role ?? ''}</td>
+                              <td>${p.user_name ?? ''}</td>
+                              <td>${statusMap[p.status] ?? p.status ?? ''}</td>
+                              <td>${p.decided_at ? new Date(p.decided_at).toLocaleString('ru-RU') : '—'}</td>
+                              <td>${p.comment ?? ''}</td>
+                            </tr>`).join('')
+                          const edoBlock = session.edo_requested ? `
+                            <h3>ПОДПИСАНИЕ ЧЕРЕЗ ЭДО</h3>
+                            <table class="info">
+                              <tr><td class="label">Статус:</td><td>${session.edo_director_decision === 'approved' ? '✅ Разрешено' : session.edo_director_decision === 'rejected' ? '❌ Отклонено' : '⏳ На рассмотрении'}</td></tr>
+                              <tr><td class="label">Кем выдано:</td><td>${(session as {edo_director_name?: string}).edo_director_name ?? '—'}</td></tr>
+                              <tr><td class="label">Когда:</td><td>${(session as {edo_director_decided_at?: string}).edo_director_decided_at ? new Date((session as {edo_director_decided_at?: string}).edo_director_decided_at!).toLocaleString('ru-RU') : '—'}</td></tr>
+                            </table>` : ''
+                          const html = `<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8">
+<title>Лист согласования — ${contract.number}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20mm 15mm; color: #000; }
+  h1 { text-align: center; font-size: 16px; margin-bottom: 16px; letter-spacing: 2px; }
+  h3 { font-size: 12px; margin: 16px 0 6px; border-bottom: 1px solid #000; padding-bottom: 4px; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  table.info td { padding: 3px 6px; vertical-align: top; }
+  table.info td.label { font-weight: bold; width: 160px; }
+  table.participants th { background: #222; color: #fff; padding: 5px 6px; text-align: left; font-size: 11px; }
+  table.participants td { padding: 4px 6px; border-bottom: 1px solid #ddd; font-size: 11px; vertical-align: top; }
+  table.participants tr:nth-child(even) { background: #f9f9f9; }
+  .footer { margin-top: 16px; font-size: 10px; color: #555; border-top: 1px solid #ccc; padding-top: 8px; }
+  @media print { body { margin: 10mm; } }
+</style></head><body>
+<h1>ЛИСТ СОГЛАСОВАНИЯ</h1>
+<h3>РЕКВИЗИТЫ ДОКУМЕНТА</h3>
+<table class="info">
+  <tr><td class="label">Компания:</td><td>${contract.company_prefix ?? ''}</td></tr>
+  <tr><td class="label">Номер документа:</td><td>${contract.number ?? ''}</td></tr>
+  <tr><td class="label">Наименование:</td><td>${contract.title ?? ''}</td></tr>
+  <tr><td class="label">Номер контрагента:</td><td>${(contract as {counterparty_contract_number?: string}).counterparty_contract_number ?? '—'}</td></tr>
+  <tr><td class="label">Контрагент:</td><td>${contract.counterparty ?? ''}</td></tr>
+  <tr><td class="label">Инициатор:</td><td>${session.initiated_by_name ?? ''}</td></tr>
+  <tr><td class="label">Дата запуска:</td><td>${new Date(session.created_at).toLocaleDateString('ru-RU')}</td></tr>
+  <tr><td class="label">Дедлайн:</td><td>${new Date(session.deadline).toLocaleDateString('ru-RU')}</td></tr>
+</table>
+<h3>УЧАСТНИКИ СОГЛАСОВАНИЯ</h3>
+<table class="participants">
+  <thead><tr><th>№</th><th>Роль</th><th>ФИО</th><th>Решение</th><th>Дата и время</th><th>Комментарий</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+${edoBlock}
+<div class="footer">
+  Документ согласован в системе ЮрИнтел-Эпотос (https://epotos-ur-intel.vercel.app)<br>
+  Дата формирования: ${new Date().toLocaleString('ru-RU')}<br>
+  ID сессии: ${session.id}
+</div>
+</body></html>`
+                          const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+                          const url = URL.createObjectURL(blob)
+                          window.open(url, '_blank')
+                        }}
+                        className="w-full text-sm font-semibold border-2 border-blue-600 text-blue-700 py-2.5 rounded-lg hover:bg-blue-50 transition-colors tracking-wide">
+                        📄 ЛИСТ СОГЛАСОВАНИЯ
+                      </button>
+                          const info = [
+                            ['Компания:', contract.company_prefix ?? ''],
+                            ['Номер документа:', contract.number ?? ''],
+                            ['Наименование:', contract.title ?? ''],
+                            ['Номер контрагента:', (contract as {counterparty_contract_number?: string}).counterparty_contract_number ?? '—'],
+                            ['Контрагент:', contract.counterparty ?? ''],
+                            ['Инициатор:', session.initiated_by_name ?? ''],
+                            ['Дата запуска:', new Date(session.created_at).toLocaleDateString('ru-RU')],
+                            ['Дедлайн:', new Date(session.deadline).toLocaleDateString('ru-RU')],
+                          ]
+                          info.forEach(([label, value]) => {
+                            doc.setFont('helvetica', 'bold')
+                            doc.text(String(label), 15, y)
+                            doc.setFont('helvetica', 'normal')
+                            doc.text(String(value), 65, y)
+                            y += 6
+                          })
+                          y += 4
+
+                          // Участники
+                          doc.setFont('helvetica', 'bold')
+                          doc.setFontSize(10)
+                          doc.text('УЧАСТНИКИ СОГЛАСОВАНИЯ', 15, y)
+                          y += 6
+
+                          const participants = session.approval_participants ?? []
+                          const rows = participants.map((p: Participant, idx: number) => {
+                            const statusMap: Record<string, string> = {
+                              approved: 'Согласован',
+                              rejected: 'Отклонён',
+                              pending: 'Ожидает',
+                              acknowledged: 'Ознакомлен',
+                              disabled: 'Отключён',
+                            }
+                            const roleMap: Record<string, string> = {
+                              legal_gc: 'Юрист ГК', legal: 'Юрист',
+                              finance_gc: 'Финансист ГК', finance: 'Финансист',
+                              accounting: 'Бухгалтерия', director: 'Ген. директор',
+                              gc_manager: 'Менеджер ГК', other: 'Доп. участник',
+                            }
+                            return [
+                              String(idx + 1),
+                              roleMap[p.role] ?? roleMap[p.stage] ?? p.role ?? '',
+                              p.user_name ?? '',
+                              statusMap[p.status] ?? p.status ?? '',
+                              p.decided_at ? new Date(p.decided_at).toLocaleString('ru-RU') : '—',
+                              p.comment ?? '',
+                            ]
+                          })
+
+                          autoTable(doc, {
+                            startY: y,
+                            head: [['№', 'Роль', 'ФИО', 'Решение', 'Дата и время', 'Комментарий']],
+                            body: rows,
+                            styles: { fontSize: 8, cellPadding: 2 },
+                            headStyles: { fillColor: [40, 40, 40], textColor: 255, fontStyle: 'bold' },
+                            columnStyles: {
+                              0: { cellWidth: 8 },
+                              1: { cellWidth: 30 },
+                              2: { cellWidth: 35 },
+                              3: { cellWidth: 22 },
+                              4: { cellWidth: 35 },
+                              5: { cellWidth: 'auto' },
+                            },
+                            margin: { left: 15, right: 15 },
+                          })
+
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          y = (doc as any).lastAutoTable.finalY + 8
+
+                          // ЭДО
+                          if (session.edo_requested) {
+                            doc.setFont('helvetica', 'bold')
+                            doc.setFontSize(10)
+                            doc.text('ПОДПИСАНИЕ ЧЕРЕЗ ЭДО', 15, y)
+                            y += 6
+                            doc.setFontSize(9)
+                            const edoInfo = [
+                              ['Статус:', session.edo_director_decision === 'approved' ? 'Разрешено' : session.edo_director_decision === 'rejected' ? 'Отклонено' : 'На рассмотрении'],
+                              ['Кем выдано:', session.edo_director_name ?? '—'],
+                              ['Когда:', (session as {edo_director_decided_at?: string}).edo_director_decided_at ? new Date((session as {edo_director_decided_at?: string}).edo_director_decided_at!).toLocaleString('ru-RU') : '—'],
+                            ]
+                            edoInfo.forEach(([label, value]) => {
+                              doc.setFont('helvetica', 'bold')
+                              doc.text(String(label), 15, y)
+                              doc.setFont('helvetica', 'normal')
+                              doc.text(String(value), 65, y)
+                              y += 6
+                            })
+                            y += 4
+                          }
+
+                          // Примечание
+                          doc.setFont('helvetica', 'bold')
+                          doc.setFontSize(10)
+                          doc.text('ПРИМЕЧАНИЕ', 15, y)
+                          y += 6
+                          doc.setFont('helvetica', 'normal')
+                          doc.setFontSize(8)
+                          doc.text('Документ согласован в системе ЮрИнтел-Эпотос (https://epotos-ur-intel.vercel.app)', 15, y)
+                          y += 5
+                          doc.text(`Дата формирования: ${new Date().toLocaleString('ru-RU')}`, 15, y)
+                          y += 5
+                          doc.text(`ID сессии: ${session.id}`, 15, y)
+
+                          
 
                       {/* Прервать */}
                       <CancelApprovalButton
