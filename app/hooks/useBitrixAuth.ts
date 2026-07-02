@@ -82,6 +82,12 @@ export function useBitrixAuth() {
             const verifyData = await verifyRes.json()
             if (verifyData.valid) {
               setUser(storedUser)
+              // Если в URL есть contract_id — редиректим на карточку
+              const contractId = params.get('contract_id')
+              if (contractId && !window.location.pathname.startsWith('/contracts/')) {
+                window.location.replace(`/contracts/${contractId}`)
+                return
+              }
             } else {
               sessionStorage.removeItem('bitrix_user')
               window.location.reload()
@@ -89,6 +95,12 @@ export function useBitrixAuth() {
           } else {
             // Нет auth_id — мобильный Б24, разрешаем
             setUser(storedUser)
+            // Если в URL есть contract_id — редиректим на карточку
+            const contractId = params.get('contract_id')
+            if (contractId && !window.location.pathname.startsWith('/contracts/')) {
+              window.location.replace(`/contracts/${contractId}`)
+              return
+            }
           }
         } else {
           // Нет ни URL параметров ни sessionStorage — редиректим в Б24
