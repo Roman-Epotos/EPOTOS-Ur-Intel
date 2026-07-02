@@ -37,6 +37,15 @@ export function useBitrixAuth() {
         const domain = params.get('domain')
         const memberId = params.get('member_id')
 
+        // Сохраняем contract_id из URL ДО авторизации
+        const contractIdFromUrl = params.get('contract_id')
+        console.log('[BX24 Auth] URL:', window.location.href)
+        console.log('[BX24 Auth] contract_id from URL:', contractIdFromUrl)
+        console.log('[BX24 Auth] all params:', window.location.search)
+        if (contractIdFromUrl) {
+          sessionStorage.setItem('pending_contract_id', contractIdFromUrl)
+        }
+
         if (authId && domain && memberId) {
           const formData = new FormData()
           formData.append('AUTH_ID', authId)
@@ -55,6 +64,8 @@ export function useBitrixAuth() {
               member_id: memberId,
             }))
             const contractId = params.get('contract_id')
+              ?? sessionStorage.getItem('pending_contract_id')
+            sessionStorage.removeItem('pending_contract_id')
             if (contractId) {
               window.location.replace(`/contracts/${contractId}`)
             } else {
