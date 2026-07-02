@@ -22,9 +22,8 @@ interface NotifyOptions {
 }
 
 function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
-  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-  const link = `https://${bitrixPortal}/contracts/${documentId}`
-  const doc = `${documentNumber} — ${documentTitle} [${link}]`
+  const link = `https://epotos-ur-intel.vercel.app/contracts/${documentId}`
+  const doc = `${documentNumber} — ${documentTitle}\n${link}`
   const messages: Record<NotifyType, string> = {
     document_created:    `📄 Создан новый документ: ${doc}`,
     sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
@@ -103,7 +102,7 @@ export async function createBitrixChat(opts: {
       ? `https://epotos-ur-intel.vercel.app/contracts/${opts.contract_id}`
       : null
     const docRef = link
-      ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`
+      ? `${opts.document_number} — ${opts.document_title}\n${link}`
       : `${opts.document_number} — ${opts.document_title}`
     await fetch(`${webhookUrl}im.message.add.json`, {
       method: 'POST',

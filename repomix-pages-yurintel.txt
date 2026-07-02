@@ -61,6 +61,7 @@ app/editor/page.tsx
 app/help/page.tsx
 app/layout.tsx
 app/page.tsx
+app/redirect/page.tsx
 
 ================================================================
 Files
@@ -2328,6 +2329,38 @@ export default function EditorPage() {
 }
 
 ================
+File: app/redirect/page.tsx
+================
+'use client'
+
+import { useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
+
+function RedirectContent() {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const contractId = searchParams.get('contract_id')
+    if (contractId) {
+      localStorage.setItem('redirect_contract_id', contractId)
+    }
+    // Перенаправляем в Б24 для открытия приложения
+    window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/252/')
+  }, [])
+
+  return <div className="flex items-center justify-center h-screen text-gray-500">Перенаправление...</div>
+}
+
+export default function RedirectPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Загрузка...</div>}>
+      <RedirectContent />
+    </Suspense>
+  )
+}
+
+================
 File: app/admin/page.tsx
 ================
 'use client'
@@ -4458,47 +4491,6 @@ export default function HelpPage() {
 }
 
 ================
-File: app/layout.tsx
-================
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "ЮрИнтел-Эпотос",
-  description: "Система управления юридическими документами",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <head>
-        <script src="https://api.bitrix24.com/api/v1/" async></script>
-      </head>
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
-  );
-}
-
-================
 File: app/contracts/new/page.tsx
 ================
 'use client'
@@ -5398,6 +5390,47 @@ export default function NewContractPage() {
       </div>
     </div>
   )
+}
+
+================
+File: app/layout.tsx
+================
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "ЮрИнтел-Эпотос",
+  description: "Система управления юридическими документами",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <head>
+        <script src="https://api.bitrix24.com/api/v1/" async></script>
+      </head>
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
 }
 
 ================
