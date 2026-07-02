@@ -65,7 +65,9 @@ export function useBitrixAuth() {
             }))
             const contractId = params.get('contract_id')
               ?? sessionStorage.getItem('pending_contract_id')
+              ?? localStorage.getItem('redirect_contract_id')
             sessionStorage.removeItem('pending_contract_id')
+            localStorage.removeItem('redirect_contract_id')
             if (contractId) {
               window.location.replace(`/contracts/${contractId}`)
             } else if (!window.location.pathname.startsWith('/contracts/')) {
