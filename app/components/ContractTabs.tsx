@@ -2026,7 +2026,8 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
 <html lang="ru"><head><meta charset="UTF-8">
 <title>Лист согласования — ${contract.number}</title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20mm 15mm; color: #000; }
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; color: #000; }
+  .content { margin: 20mm 15mm; }
   h1 { text-align: center; font-size: 16px; margin-bottom: 16px; letter-spacing: 2px; }
   h3 { font-size: 12px; margin: 16px 0 6px; border-bottom: 1px solid #000; padding-bottom: 4px; letter-spacing: 1px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -2036,8 +2037,20 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   table.participants td { padding: 4px 6px; border-bottom: 1px solid #ddd; font-size: 11px; vertical-align: top; }
   table.participants tr:nth-child(even) { background: #f9f9f9; }
   .footer { margin-top: 16px; font-size: 10px; color: #555; border-top: 1px solid #ccc; padding-top: 8px; }
-  @media print { body { margin: 10mm; } }
+  .toolbar { position: fixed; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 20px; display: flex; gap: 10px; align-items: center; z-index: 999; }
+  .toolbar span { color: #94a3b8; font-size: 13px; flex: 1; }
+  .toolbar button { padding: 7px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-print { background: #3b82f6; color: #fff; }
+  .btn-print:hover { background: #2563eb; }
+  .btn-save { background: #10b981; color: #fff; }
+  .btn-save:hover { background: #059669; }
+  @media print { .toolbar { display: none; } .content { margin: 10mm; } }
 </style></head><body>
+<div class="toolbar">
+  <span>📄 Лист согласования</span>
+  <button class="btn-print" onclick="window.print()">🖨️ Печать / Сохранить PDF</button>
+</div>
+<div class="content">
 <h1>ЛИСТ СОГЛАСОВАНИЯ</h1>
 <h3>РЕКВИЗИТЫ ДОКУМЕНТА</h3>
 <table class="info">
@@ -2061,7 +2074,7 @@ ${edoBlock}
   Дата формирования: ${new Date().toLocaleString('ru-RU')}<br>
   ID сессии: ${session.id}
 </div>
-</body></html>`
+</div></body></html>`
                           const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
                           const url = URL.createObjectURL(blob)
                           window.open(url, '_blank')
