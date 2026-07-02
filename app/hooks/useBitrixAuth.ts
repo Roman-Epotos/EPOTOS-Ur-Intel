@@ -94,7 +94,7 @@ export function useBitrixAuth() {
           // Нет ни URL параметров ни sessionStorage — редиректим в Б24
           if (window.self === window.top) {
             // Открыт не в iframe — прямая ссылка без авторизации
-            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/248/')
+            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/252/')
           }
         }
       } catch (err) {

@@ -23,7 +23,7 @@ interface NotifyOptions {
 
 function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
   const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-  const link = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${documentId}`
+  const link = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${documentId}`
   const doc = `${documentNumber} — ${documentTitle} [${link}]`
   const messages: Record<NotifyType, string> = {
     document_created:    `📄 Создан новый документ: ${doc}`,
@@ -101,7 +101,7 @@ export async function createBitrixChat(opts: {
     const chatId = data.result
     const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
     const link = opts.contract_id
-      ? `https://${bitrixPortal}/marketplace/app/248/?contract_id=${opts.contract_id}`
+      ? `https://${bitrixPortal}/marketplace/app/252/?contract_id=${opts.contract_id}`
       : null
     const docRef = link
       ? `[URL=${link}]${opts.document_number} — ${opts.document_title}[/URL]`

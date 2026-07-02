@@ -2952,7 +2952,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           </div>
           
             <button
-            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/248/', '_blank')}
+            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/252/', '_blank')}
             className="block w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
             Открыть в Битрикс24
           </button>
@@ -3503,7 +3503,7 @@ export function useBitrixAuth() {
           // Нет ни URL параметров ни sessionStorage — редиректим в Б24
           if (window.self === window.top) {
             // Открыт не в iframe — прямая ссылка без авторизации
-            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/248/')
+            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/252/')
           }
         }
       } catch (err) {
@@ -7161,7 +7161,8 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
 <html lang="ru"><head><meta charset="UTF-8">
 <title>Лист согласования — ${contract.number}</title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 12px; margin: 20mm 15mm; color: #000; }
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; color: #000; }
+  .content { margin: 20mm 15mm; }
   h1 { text-align: center; font-size: 16px; margin-bottom: 16px; letter-spacing: 2px; }
   h3 { font-size: 12px; margin: 16px 0 6px; border-bottom: 1px solid #000; padding-bottom: 4px; letter-spacing: 1px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -7171,8 +7172,20 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   table.participants td { padding: 4px 6px; border-bottom: 1px solid #ddd; font-size: 11px; vertical-align: top; }
   table.participants tr:nth-child(even) { background: #f9f9f9; }
   .footer { margin-top: 16px; font-size: 10px; color: #555; border-top: 1px solid #ccc; padding-top: 8px; }
-  @media print { body { margin: 10mm; } }
+  .toolbar { position: fixed; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 20px; display: flex; gap: 10px; align-items: center; z-index: 999; }
+  .toolbar span { color: #94a3b8; font-size: 13px; flex: 1; }
+  .toolbar button { padding: 7px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-print { background: #3b82f6; color: #fff; }
+  .btn-print:hover { background: #2563eb; }
+  .btn-save { background: #10b981; color: #fff; }
+  .btn-save:hover { background: #059669; }
+  @media print { .toolbar { display: none; } .content { margin: 10mm; } }
 </style></head><body>
+<div class="toolbar">
+  <span>📄 Лист согласования</span>
+  <button class="btn-print" onclick="window.print()">🖨️ Печать / Сохранить PDF</button>
+</div>
+<div class="content">
 <h1>ЛИСТ СОГЛАСОВАНИЯ</h1>
 <h3>РЕКВИЗИТЫ ДОКУМЕНТА</h3>
 <table class="info">
@@ -7196,7 +7209,7 @@ ${edoBlock}
   Дата формирования: ${new Date().toLocaleString('ru-RU')}<br>
   ID сессии: ${session.id}
 </div>
-</body></html>`
+</div></body></html>`
                           const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
                           const url = URL.createObjectURL(blob)
                           window.open(url, '_blank')
@@ -7204,114 +7217,7 @@ ${edoBlock}
                         className="w-full text-sm font-semibold border-2 border-blue-600 text-blue-700 py-2.5 rounded-lg hover:bg-blue-50 transition-colors tracking-wide">
                         📄 ЛИСТ СОГЛАСОВАНИЯ
                       </button>
-                          const info = [
-                            ['Компания:', contract.company_prefix ?? ''],
-                            ['Номер документа:', contract.number ?? ''],
-                            ['Наименование:', contract.title ?? ''],
-                            ['Номер контрагента:', (contract as {counterparty_contract_number?: string}).counterparty_contract_number ?? '—'],
-                            ['Контрагент:', contract.counterparty ?? ''],
-                            ['Инициатор:', session.initiated_by_name ?? ''],
-                            ['Дата запуска:', new Date(session.created_at).toLocaleDateString('ru-RU')],
-                            ['Дедлайн:', new Date(session.deadline).toLocaleDateString('ru-RU')],
-                          ]
-                          info.forEach(([label, value]) => {
-                            doc.setFont('helvetica', 'bold')
-                            doc.text(String(label), 15, y)
-                            doc.setFont('helvetica', 'normal')
-                            doc.text(String(value), 65, y)
-                            y += 6
-                          })
-                          y += 4
-
-                          // Участники
-                          doc.setFont('helvetica', 'bold')
-                          doc.setFontSize(10)
-                          doc.text('УЧАСТНИКИ СОГЛАСОВАНИЯ', 15, y)
-                          y += 6
-
-                          const participants = session.approval_participants ?? []
-                          const rows = participants.map((p: Participant, idx: number) => {
-                            const statusMap: Record<string, string> = {
-                              approved: 'Согласован',
-                              rejected: 'Отклонён',
-                              pending: 'Ожидает',
-                              acknowledged: 'Ознакомлен',
-                              disabled: 'Отключён',
-                            }
-                            const roleMap: Record<string, string> = {
-                              legal_gc: 'Юрист ГК', legal: 'Юрист',
-                              finance_gc: 'Финансист ГК', finance: 'Финансист',
-                              accounting: 'Бухгалтерия', director: 'Ген. директор',
-                              gc_manager: 'Менеджер ГК', other: 'Доп. участник',
-                            }
-                            return [
-                              String(idx + 1),
-                              roleMap[p.role] ?? roleMap[p.stage] ?? p.role ?? '',
-                              p.user_name ?? '',
-                              statusMap[p.status] ?? p.status ?? '',
-                              p.decided_at ? new Date(p.decided_at).toLocaleString('ru-RU') : '—',
-                              p.comment ?? '',
-                            ]
-                          })
-
-                          autoTable(doc, {
-                            startY: y,
-                            head: [['№', 'Роль', 'ФИО', 'Решение', 'Дата и время', 'Комментарий']],
-                            body: rows,
-                            styles: { fontSize: 8, cellPadding: 2 },
-                            headStyles: { fillColor: [40, 40, 40], textColor: 255, fontStyle: 'bold' },
-                            columnStyles: {
-                              0: { cellWidth: 8 },
-                              1: { cellWidth: 30 },
-                              2: { cellWidth: 35 },
-                              3: { cellWidth: 22 },
-                              4: { cellWidth: 35 },
-                              5: { cellWidth: 'auto' },
-                            },
-                            margin: { left: 15, right: 15 },
-                          })
-
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          y = (doc as any).lastAutoTable.finalY + 8
-
-                          // ЭДО
-                          if (session.edo_requested) {
-                            doc.setFont('helvetica', 'bold')
-                            doc.setFontSize(10)
-                            doc.text('ПОДПИСАНИЕ ЧЕРЕЗ ЭДО', 15, y)
-                            y += 6
-                            doc.setFontSize(9)
-                            const edoInfo = [
-                              ['Статус:', session.edo_director_decision === 'approved' ? 'Разрешено' : session.edo_director_decision === 'rejected' ? 'Отклонено' : 'На рассмотрении'],
-                              ['Кем выдано:', session.edo_director_name ?? '—'],
-                              ['Когда:', (session as {edo_director_decided_at?: string}).edo_director_decided_at ? new Date((session as {edo_director_decided_at?: string}).edo_director_decided_at!).toLocaleString('ru-RU') : '—'],
-                            ]
-                            edoInfo.forEach(([label, value]) => {
-                              doc.setFont('helvetica', 'bold')
-                              doc.text(String(label), 15, y)
-                              doc.setFont('helvetica', 'normal')
-                              doc.text(String(value), 65, y)
-                              y += 6
-                            })
-                            y += 4
-                          }
-
-                          // Примечание
-                          doc.setFont('helvetica', 'bold')
-                          doc.setFontSize(10)
-                          doc.text('ПРИМЕЧАНИЕ', 15, y)
-                          y += 6
-                          doc.setFont('helvetica', 'normal')
-                          doc.setFontSize(8)
-                          doc.text('Документ согласован в системе ЮрИнтел-Эпотос (https://epotos-ur-intel.vercel.app)', 15, y)
-                          y += 5
-                          doc.text(`Дата формирования: ${new Date().toLocaleString('ru-RU')}`, 15, y)
-                          y += 5
-                          doc.text(`ID сессии: ${session.id}`, 15, y)
-
-                          
-
-                      {/* Прервать */}
+                          {/* Прервать */}
                       <CancelApprovalButton
                         sessionId={session.id}
                         contractId={contract.id}

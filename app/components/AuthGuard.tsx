@@ -35,7 +35,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           </div>
           
             <button
-            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/248/', '_blank')}
+            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/252/', '_blank')}
             className="block w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
             Открыть в Битрикс24
           </button>

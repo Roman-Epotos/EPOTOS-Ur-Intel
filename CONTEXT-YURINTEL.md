@@ -11,7 +11,7 @@
 
 URL: https://epotos-ur-intel.vercel.app
 GitHub: https://github.com/Roman-Epotos/EPOTOS-Ur-Intel
-Битрикс24: https://gkepotos.bitrix24.ru/marketplace/app/248/
+Битрикс24: https://gkepotos.bitrix24.ru/marketplace/app/252/
 Название в Б24: ЮрИнтел-Эпотос
 ВАЖНО: iframe-приложение в Битрикс24. Авторизация через Битрикс24 SSO.
 
@@ -261,7 +261,7 @@ Drag & drop подписанного файла:
 Ссылка в чате согласования Б24:
   app/lib/notify.ts → createBitrixChat({ ..., contract_id?: string })
   Если contract_id передан → первое сообщение содержит:
-    [URL=https://gkepotos.bitrix24.ru/marketplace/app/248/?contract_id=UUID]номер — название[/URL]
+    [URL=https://gkepotos.bitrix24.ru/marketplace/app/252/?contract_id=UUID]номер — название[/URL]
   app/api/approvals/route.ts передаёт contract_id при вызове createBitrixChat
 
 Реестр контрагентов — типы:

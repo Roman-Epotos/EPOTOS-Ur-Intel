@@ -161,7 +161,7 @@ export async function POST(
         .single()
 
       const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-      const contractLink = `https://${bitrixPortal}/marketplace/app/248/?contract_id=${contract_id}`
+      const contractLink = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${contract_id}`
       const chatMsg = decision === 'approved'
         ? `✅ Генеральный директор разрешил подписание через ЭДО\nДокумент: [URL=${contractLink}]${contract_number}[/URL]\nРешение принято: ${user_name}`
         : `❌ Генеральный директор отказал в подписании через ЭДО\nДокумент: [URL=${contractLink}]${contract_number}[/URL]\nРешение принято: ${user_name}`
