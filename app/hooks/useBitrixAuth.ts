@@ -39,6 +39,9 @@ export function useBitrixAuth() {
 
         // Сохраняем contract_id из URL ДО авторизации
         const contractIdFromUrl = params.get('contract_id')
+        console.log('[BX24 Auth] URL:', window.location.href)
+        console.log('[BX24 Auth] contract_id from URL:', contractIdFromUrl)
+        console.log('[BX24 Auth] all params:', window.location.search)
         if (contractIdFromUrl) {
           sessionStorage.setItem('pending_contract_id', contractIdFromUrl)
         }
