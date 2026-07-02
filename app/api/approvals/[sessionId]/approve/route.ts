@@ -83,7 +83,7 @@ export async function POST(
           .single()
         if (sessionInfo?.bitrix_chat_id) {
           const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-          const link = `https://${bitrixPortal}/contracts/${actualContractId}`
+          const link = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${actualContractId}`
           await sendBitrixChatMessage(
             sessionInfo.bitrix_chat_id,
             `❌ Документ отклонён: ${contractData.number} — ${contractData.title} [${link}]${comment ? `\nПричина: ${comment}` : ''}`
@@ -202,7 +202,7 @@ export async function POST(
           .single()
         if (approvedSessionInfo?.bitrix_chat_id) {
           const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-          const link = `https://${bitrixPortal}/contracts/${actualContractId}`
+          const link = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${actualContractId}`
           await sendBitrixChatMessage(
             approvedSessionInfo.bitrix_chat_id,
             `✅ Документ согласован: ${contractData.number} — ${contractData.title} [${link}]`

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       
       // Формируем описание задачи
       const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-      const contractLink = `https://${bitrixPortal}/contracts/${contract_id}`
+      const contractLink = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${contract_id}`
       const contractRef = `📄 Документ: [URL=${contractLink}]${contract_number} — ${contract_title}[/URL]`
       const noDeadlineNote = !deadline 
         ? '\n\n⚠️ Срок не установлен. Необходимо задать срок исполнения!' 

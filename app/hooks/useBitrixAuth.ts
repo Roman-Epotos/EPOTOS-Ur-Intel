@@ -68,7 +68,7 @@ export function useBitrixAuth() {
             sessionStorage.removeItem('pending_contract_id')
             if (contractId) {
               window.location.replace(`/contracts/${contractId}`)
-            } else if (!window.location.pathname.startsWith('/contracts/')) {
+            } else {
               window.history.replaceState({}, '', '/')
             }
           }

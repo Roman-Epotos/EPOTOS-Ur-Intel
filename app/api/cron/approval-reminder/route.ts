@@ -57,7 +57,7 @@ export async function GET() {
       if (!contract) continue
 
       const deadlineStr = session.deadline.slice(0, 10)
-      const link = `https://${bitrixPortal}/contracts/${contract.id}`
+      const link = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${contract.id}`
       const docRef = `[URL=${link}]${contract.number} — ${contract.title}[/URL]`
 
       // Участники, которые ещё не согласовали

@@ -261,7 +261,7 @@ Drag & drop подписанного файла:
 Ссылка в чате согласования Б24:
   app/lib/notify.ts → createBitrixChat({ ..., contract_id?: string })
   Если contract_id передан → первое сообщение содержит:
-    [URL=https://gkepotos.bitrix24.ru/contracts/UUID]номер — название[/URL]
+    [URL=https://gkepotos.bitrix24.ru/marketplace/app/252/?contract_id=UUID]номер — название[/URL]
   app/api/approvals/route.ts передаёт contract_id при вызове createBitrixChat
 
 Реестр контрагентов — типы:
