@@ -311,6 +311,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
       if (!res.ok) { setRevokeError(data.error ?? 'Ошибка'); return }
       setRevokingParticipantId(null)
       setRevokeReason('')
+      if (contractStatus === 'отклонён') setContractStatus('на_согласовании')
       await loadSession()
     } catch { setRevokeError('Ошибка соединения') }
     finally { setRevokeLoading(false) }
@@ -932,6 +933,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
       if (data.success) {
         setShowRejectModal(false)
         setRejectComment('')
+        setContractStatus('отклонён')
         loadSession()
       } else {
         alert('Ошибка: ' + data.error)
