@@ -1898,7 +1898,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                                 {STATUS_LABELS[p.status]}
                               </span>
                               {/* Кнопка удаления участника (только admin, только pending) */}
-                              {ADMIN_IDS.includes(userId) && p.status === 'pending' && (
+                              {ADMIN_IDS.includes(userId) && ['pending', 'observing'].includes(p.status) && (
                                 <button
                                   onClick={async () => {
                                     if (!confirm(`Удалить участника ${p.user_name} из согласования?`)) return
