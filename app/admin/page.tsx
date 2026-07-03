@@ -67,6 +67,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [adminTab, setAdminTab] = useState('approval')
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [customCompanyFilter, setCustomCompanyFilter] = useState<string>('all')
   const [activeStage, setActiveStage] = useState('legal')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -466,11 +467,25 @@ useEffect(() => {
               <h2 className="text-sm font-medium text-gray-700 mb-4">
                 Текущий список — {STAGES.find(s => s.id === activeStage)?.label}
               </h2>
-              {participants.length === 0 ? (
+              {activeStage === 'custom' && (
+                <div className="flex gap-1.5 mb-4 flex-wrap">
+                  <button onClick={() => setCustomCompanyFilter('all')}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${customCompanyFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    Все компании
+                  </button>
+                  {COMPANIES.map(c => (
+                    <button key={c.id} onClick={() => setCustomCompanyFilter(c.id)}
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${customCompanyFilter === c.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {c.id}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {participants.filter(p => activeStage !== 'custom' || customCompanyFilter === 'all' || p.company_prefix === customCompanyFilter).length === 0 ? (
                 <p className="text-sm text-gray-400">Список пуст</p>
               ) : (
                 <div className="space-y-2">
-                  {participants.map(p => (
+                  {participants.filter(p => activeStage !== 'custom' || customCompanyFilter === 'all' || p.company_prefix === customCompanyFilter).map(p => (
                     <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{p.user_name}</p>

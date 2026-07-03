@@ -4972,16 +4972,24 @@ export function renderDocumentTypeOptions() {
 }
 
 ================
-File: app/api/approvals/[sessionId]/participants/route.ts
+File: app/api/approvals/[sessionId]/revoke/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBitrixNotify, addUserToBitrixChat, sendBitrixChatMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SECRET_KEY!
 )
+
+const ADMIN_IDS = [30, 1148]
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
+  })
+}
 
 export async function POST(
   request: NextRequest,
@@ -4989,275 +4997,111 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params
-    const body = await request.json()
-    const { user_name, bitrix_user_id, department, role, stage, added_by_name, contract_id } = body
+    const { participant_id, reason, user_bitrix_id, user_name, contract_id } = await request.json()
 
-    if (!user_name || !role || !stage) {
-      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
+    if (!participant_id || !reason?.trim()) {
+      return NextResponse.json({ error: 'participant_id и причина обязательны' }, { status: 400, headers: CORS })
     }
 
-    // Проверяем что сессия активна
-    const { data: session } = await supabase
-      .from('approval_sessions')
-      .select('id, status')
-      .eq('id', sessionId)
+    const isAdmin = ADMIN_IDS.includes(parseInt(user_bitrix_id))
+
+    // Получаем участника
+    const { data: participant, error: pErr } = await supabase
+      .from('approval_participants')
+      .select('id, status, role, user_name, bitrix_user_id, stage')
+      .eq('id', participant_id)
       .single()
 
-    if (!session || (session.status !== 'active' && session.status !== 'completed')) {
-      return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
+    if (pErr || !participant) {
+      return NextResponse.json({ error: 'Участник не найден' }, { status: 404, headers: CORS })
     }
 
-    // Добавляем участника
-    const { error: insertError } = await supabase
-      .from('approval_participants')
-      .insert({
-        session_id: sessionId,
-        user_name,
-        bitrix_user_id: bitrix_user_id ?? null,
-        department: department ?? null,
-        role,
-        stage,
-        status: role === 'observer' ? 'observing' : 'pending',
-      })
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 400 })
+    // Проверяем права
+    const isOwnVote = parseInt(user_bitrix_id) === participant.bitrix_user_id
+    if (!isAdmin && !isOwnVote) {
+      return NextResponse.json({ error: 'Нет прав для отмены этого голоса' }, { status: 403, headers: CORS })
     }
 
-    const roleLabel = role === 'observer' ? 'Наблюдатель' : role === 'optional' ? 'Для информирования' : 'Обязательный'
-
-    // Сообщение в чат
-    await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: `➕ ${added_by_name} добавил участника: ${user_name} (${roleLabel})`,
-        author_name: 'Система',
-        is_ai: false,
-      })
-
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Добавлен участник согласования',
-        details: `${user_name} — ${roleLabel.toLowerCase()}`,
-        user_name: added_by_name ?? 'Система',
-      })
-
-    // Уведомляем добавленного участника (наблюдателю push «требуется решение» не нужен)
-    if (bitrix_user_id && contract_id && role !== 'observer') {
+    // ГД может отменить только если документ ещё не согласован
+    if (!isAdmin && isOwnVote) {
       const { data: contractData } = await supabase
         .from('contracts')
-        .select('title, number')
+        .select('status')
         .eq('id', contract_id)
         .single()
 
-      if (contractData) {
-        await sendBitrixNotify({
-          recipients: [bitrix_user_id],
-          type: 'approval_required',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-        })
+      if (contractData?.status === 'согласован') {
+        return NextResponse.json({ error: 'Нельзя отменить согласование — документ уже перешёл в статус «Согласован». Обратитесь к администратору.' }, { status: 403, headers: CORS })
       }
     }
 
-    // Добавляем нового участника в чат Битрикс24
-    if (bitrix_user_id) {
-      const { data: sessionWithChat } = await supabase
-        .from('approval_sessions')
-        .select('bitrix_chat_id')
-        .eq('id', sessionId)
-        .single()
+    // Запоминаем, было ли это отклонением — нужно для реактивации сессии
+    const wasRejected = participant.status === 'rejected'
 
-      if (sessionWithChat?.bitrix_chat_id) {
-        await addUserToBitrixChat(sessionWithChat.bitrix_chat_id, bitrix_user_id)
-        await sendBitrixChatMessage(
-          sessionWithChat.bitrix_chat_id,
-          `➕ Добавлен новый участник согласования: ${user_name}`
-        )
-      }
+    // Отменяем голос — возвращаем в pending
+    const { error: updateErr } = await supabase
+      .from('approval_participants')
+      .update({ status: 'pending', comment: null, decided_at: null })
+      .eq('id', participant_id)
+
+    if (updateErr) {
+      return NextResponse.json({ error: updateErr.message }, { status: 400, headers: CORS })
     }
 
-    // Если сессия завершена — возвращаем статусы на активные (наблюдатель согласование НЕ переоткрывает)
-    if (session.status === 'completed' && role !== 'observer') {
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'active' })
-        .eq('id', sessionId)
+    // Если документ был согласован ИЛИ отклонён — возвращаем в на_согласовании
+    const { data: contractData } = await supabase
+      .from('contracts')
+      .select('status, title, number')
+      .eq('id', contract_id)
+      .single()
 
+    if (contractData?.status === 'согласован' || wasRejected) {
       await supabase
         .from('contracts')
         .update({ status: 'на_согласовании' })
         .eq('id', contract_id)
-
-      await supabase
-        .from('contract_logs')
-        .insert({
-          contract_id,
-          action: 'Согласование возобновлено',
-          details: `Добавлен новый участник: ${user_name}. Документ возвращён на согласование.`,
-          user_name: added_by_name ?? 'Система',
-        })
     }
 
-    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
-    const { data: remainingParticipants } = await supabase
-      .from('approval_participants')
-      .select('role, status')
-      .eq('session_id', sessionId)
-
-    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
-    const allDone = required.length > 0 && required.every(p =>
-      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
-    )
-
-    if (allDone) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', contract_id)
-
+    // Если это была отмена отклонения — реактивируем сессию согласования
+    if (wasRejected) {
       await supabase
         .from('approval_sessions')
-        .update({ status: 'completed' })
+        .update({ status: 'active' })
         .eq('id', sessionId)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Согласование завершено',
-        details: 'Все обязательные участники согласовали документ после удаления участника.',
-        user_name: 'Система',
-      })
-
-      return NextResponse.json({ success: true, all_approved: true })
     }
 
-    return NextResponse.json({ success: true, all_approved: false })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
+    // Сообщение в чат согласования
+    const revokeText = isAdmin
+      ? `🔄 Администратор ${user_name} отменил согласование участника ${participant.user_name}.\nПричина: ${reason}`
+      : `🔄 ${user_name} отменил(а) своё согласование.\nПричина: ${reason}`
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params
-    const body = await request.json()
-    const { participant_id, admin_name, admin_bitrix_id, contract_id } = body
+    await supabase.from('approval_messages').insert({
+      session_id: sessionId,
+      author_name: user_name,
+      bitrix_user_id: parseInt(user_bitrix_id),
+      message: revokeText,
+      is_ai: false,
+    })
 
-    if (!participant_id) {
-      return NextResponse.json({ error: 'participant_id обязателен' }, { status: 400 })
-    }
-
-    const ADMIN_IDS = [30, 1148]
-    if (!ADMIN_IDS.includes(parseInt(admin_bitrix_id))) {
-      return NextResponse.json({ error: 'Только администратор может удалять участников' }, { status: 403 })
-    }
-
-    // Получаем участника
-    const { data: participant } = await supabase
-      .from('approval_participants')
-      .select('user_name, role, bitrix_user_id')
-      .eq('id', participant_id)
-      .single()
-
-    if (!participant) {
-      return NextResponse.json({ error: 'Участник не найден' }, { status: 404 })
-    }
-
-    // Удаляем участника
-    const { error } = await supabase
-      .from('approval_participants')
-      .delete()
-      .eq('id', participant_id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    // Уведомляем исключённого участника
-    if (participant.bitrix_user_id && contract_id) {
-      const { data: contractData } = await supabase
-        .from('contracts')
-        .select('title, number')
-        .eq('id', contract_id)
-        .single()
-
-      if (contractData) {
-        await sendBitrixNotify({
-          recipients: [participant.bitrix_user_id],
-          type: 'document_approved',
-          document_id: contract_id,
-          document_title: contractData.title ?? '',
-          document_number: contractData.number ?? '',
-          extra: `ℹ️ Вы исключены из списка согласующих по документу ${contractData.number}. Инициатор: ${admin_name}`,
-        })
-      }
-    }
-
-    // Сообщение в чат
+    // Обновляем last_message_at
     await supabase
-      .from('approval_messages')
-      .insert({
-        session_id: sessionId,
-        message: `❌ ${admin_name} удалил участника: ${participant.user_name} (${participant.role === 'required' ? 'Обязательный' : 'Для информирования'})`,
-        author_name: 'Система',
-        is_ai: false,
-      })
+      .from('contracts')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', contract_id)
 
-    // Записываем в лог
-    await supabase
-      .from('contract_logs')
-      .insert({
-        contract_id,
-        action: 'Удалён участник согласования',
-        details: `${participant.user_name} — ${participant.role === 'required' ? 'обязательный' : 'для информирования'}`,
-        user_name: admin_name ?? 'Система',
-      })
+    // Лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Согласование отменено',
+      details: `${isAdmin ? `Администратор ${user_name} отменил согласование участника ${participant.user_name}` : `${user_name} отменил(а) своё согласование`}. Причина: ${reason}`,
+      user_name,
+    })
 
-    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
-    const { data: remainingParticipants } = await supabase
-      .from('approval_participants')
-      .select('role, status')
-      .eq('session_id', sessionId)
+    return NextResponse.json({ success: true, returned_to_pending: true }, { headers: CORS })
 
-    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
-    const allDone = required.length > 0 && required.every(p =>
-      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
-    )
-
-    if (allDone) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', contract_id)
-
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'completed' })
-        .eq('id', sessionId)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Согласование завершено',
-        details: 'Все обязательные участники согласовали документ после удаления участника.',
-        user_name: 'Система',
-      })
-
-      return NextResponse.json({ success: true, all_approved: true })
-    }
-
-    return NextResponse.json({ success: true, all_approved: false })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
   }
 }
 
@@ -5972,24 +5816,16 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/approvals/[sessionId]/revoke/route.ts
+File: app/api/approvals/[sessionId]/participants/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendBitrixNotify, addUserToBitrixChat, sendBitrixChatMessage } from '@/app/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SECRET_KEY!
 )
-
-const ADMIN_IDS = [30, 1148]
-const CORS = { 'Access-Control-Allow-Origin': '*' }
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  })
-}
 
 export async function POST(
   request: NextRequest,
@@ -5997,111 +5833,277 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params
-    const { participant_id, reason, user_bitrix_id, user_name, contract_id } = await request.json()
+    const body = await request.json()
+    const { user_name, bitrix_user_id, department, role, stage, added_by_name, contract_id } = body
 
-    if (!participant_id || !reason?.trim()) {
-      return NextResponse.json({ error: 'participant_id и причина обязательны' }, { status: 400, headers: CORS })
+    if (!user_name || !role || !stage) {
+      return NextResponse.json({ error: 'Не все поля заполнены' }, { status: 400 })
     }
 
-    const isAdmin = ADMIN_IDS.includes(parseInt(user_bitrix_id))
-
-    // Получаем участника
-    const { data: participant, error: pErr } = await supabase
-      .from('approval_participants')
-      .select('id, status, role, user_name, bitrix_user_id, stage')
-      .eq('id', participant_id)
+    // Проверяем что сессия активна
+    const { data: session } = await supabase
+      .from('approval_sessions')
+      .select('id, status')
+      .eq('id', sessionId)
       .single()
 
-    if (pErr || !participant) {
-      return NextResponse.json({ error: 'Участник не найден' }, { status: 404, headers: CORS })
+    if (!session || (session.status !== 'active' && session.status !== 'completed')) {
+      return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
     }
 
-    // Проверяем права
-    const isOwnVote = parseInt(user_bitrix_id) === participant.bitrix_user_id
-    if (!isAdmin && !isOwnVote) {
-      return NextResponse.json({ error: 'Нет прав для отмены этого голоса' }, { status: 403, headers: CORS })
+    // Добавляем участника
+    const { error: insertError } = await supabase
+      .from('approval_participants')
+      .insert({
+        session_id: sessionId,
+        user_name,
+        bitrix_user_id: bitrix_user_id ?? null,
+        department: department ?? null,
+        role,
+        stage,
+        status: role === 'observer' ? 'observing' : 'pending',
+      })
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 400 })
     }
 
-    // ГД может отменить только если документ ещё не согласован
-    if (!isAdmin && isOwnVote) {
+    const roleLabel = role === 'observer' ? 'Наблюдатель' : role === 'optional' ? 'Для информирования' : 'Обязательный'
+
+    // Сообщение в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `➕ ${added_by_name} добавил участника: ${user_name} (${roleLabel})`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Добавлен участник согласования',
+        details: `${user_name} — ${roleLabel.toLowerCase()}`,
+        user_name: added_by_name ?? 'Система',
+      })
+
+    // Уведомляем добавленного участника (наблюдателю push «требуется решение» не нужен)
+    if (bitrix_user_id && contract_id && role !== 'observer') {
       const { data: contractData } = await supabase
         .from('contracts')
-        .select('status')
+        .select('title, number')
         .eq('id', contract_id)
         .single()
 
-      if (contractData?.status === 'согласован') {
-        return NextResponse.json({ error: 'Нельзя отменить согласование — документ уже перешёл в статус «Согласован». Обратитесь к администратору.' }, { status: 403, headers: CORS })
+      if (contractData) {
+        await sendBitrixNotify({
+          recipients: [bitrix_user_id],
+          type: 'approval_required',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+        })
       }
     }
 
-    // Запоминаем, было ли это отклонением — нужно для реактивации сессии
-    const wasRejected = participant.status === 'rejected'
+    // Добавляем нового участника в чат Битрикс24
+    if (bitrix_user_id) {
+      const { data: sessionWithChat } = await supabase
+        .from('approval_sessions')
+        .select('bitrix_chat_id')
+        .eq('id', sessionId)
+        .single()
 
-    // Отменяем голос — возвращаем в pending
-    const { error: updateErr } = await supabase
-      .from('approval_participants')
-      .update({ status: 'pending', comment: null, decided_at: null })
-      .eq('id', participant_id)
-
-    if (updateErr) {
-      return NextResponse.json({ error: updateErr.message }, { status: 400, headers: CORS })
+      if (sessionWithChat?.bitrix_chat_id) {
+        await addUserToBitrixChat(sessionWithChat.bitrix_chat_id, bitrix_user_id)
+        await sendBitrixChatMessage(
+          sessionWithChat.bitrix_chat_id,
+          `➕ Добавлен новый участник согласования: ${user_name}`
+        )
+      }
     }
 
-    // Если документ был согласован ИЛИ отклонён — возвращаем в на_согласовании
-    const { data: contractData } = await supabase
-      .from('contracts')
-      .select('status, title, number')
-      .eq('id', contract_id)
-      .single()
-
-    if (contractData?.status === 'согласован' || wasRejected) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'на_согласовании' })
-        .eq('id', contract_id)
-    }
-
-    // Если это была отмена отклонения — реактивируем сессию согласования
-    if (wasRejected) {
+    // Если сессия завершена — возвращаем статусы на активные (наблюдатель согласование НЕ переоткрывает)
+    if (session.status === 'completed' && role !== 'observer') {
       await supabase
         .from('approval_sessions')
         .update({ status: 'active' })
         .eq('id', sessionId)
+
+      await supabase
+        .from('contracts')
+        .update({ status: 'на_согласовании' })
+        .eq('id', contract_id)
+
+      await supabase
+        .from('contract_logs')
+        .insert({
+          contract_id,
+          action: 'Согласование возобновлено',
+          details: `Добавлен новый участник: ${user_name}. Документ возвращён на согласование.`,
+          user_name: added_by_name ?? 'Система',
+        })
     }
 
-    // Сообщение в чат согласования
-    const revokeText = isAdmin
-      ? `🔄 Администратор ${user_name} отменил согласование участника ${participant.user_name}.\nПричина: ${reason}`
-      : `🔄 ${user_name} отменил(а) своё согласование.\nПричина: ${reason}`
+    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
+    const { data: remainingParticipants } = await supabase
+      .from('approval_participants')
+      .select('role, status')
+      .eq('session_id', sessionId)
 
-    await supabase.from('approval_messages').insert({
-      session_id: sessionId,
-      author_name: user_name,
-      bitrix_user_id: parseInt(user_bitrix_id),
-      message: revokeText,
-      is_ai: false,
-    })
+    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
+    const allDone = required.length > 0 && required.every(p =>
+      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
+    )
 
-    // Обновляем last_message_at
-    await supabase
-      .from('contracts')
-      .update({ last_message_at: new Date().toISOString() })
-      .eq('id', contract_id)
+    if (allDone) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
 
-    // Лог
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: 'Согласование отменено',
-      details: `${isAdmin ? `Администратор ${user_name} отменил согласование участника ${participant.user_name}` : `${user_name} отменил(а) своё согласование`}. Причина: ${reason}`,
-      user_name,
-    })
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
 
-    return NextResponse.json({ success: true, returned_to_pending: true }, { headers: CORS })
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Согласование завершено',
+        details: 'Все обязательные участники согласовали документ после удаления участника.',
+        user_name: 'Система',
+      })
 
+      return NextResponse.json({ success: true, all_approved: true })
+    }
+
+    return NextResponse.json({ success: true, all_approved: false })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const { sessionId } = await params
+    const body = await request.json()
+    const { participant_id, admin_name, admin_bitrix_id, contract_id } = body
+
+    if (!participant_id) {
+      return NextResponse.json({ error: 'participant_id обязателен' }, { status: 400 })
+    }
+
+    const ADMIN_IDS = [30, 1148]
+    if (!ADMIN_IDS.includes(parseInt(admin_bitrix_id))) {
+      return NextResponse.json({ error: 'Только администратор может удалять участников' }, { status: 403 })
+    }
+
+    // Получаем участника
+    const { data: participant } = await supabase
+      .from('approval_participants')
+      .select('user_name, role, bitrix_user_id')
+      .eq('id', participant_id)
+      .single()
+
+    if (!participant) {
+      return NextResponse.json({ error: 'Участник не найден' }, { status: 404 })
+    }
+
+    // Удаляем участника
+    const { error } = await supabase
+      .from('approval_participants')
+      .delete()
+      .eq('id', participant_id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Уведомляем исключённого участника
+    if (participant.bitrix_user_id && contract_id) {
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('title, number')
+        .eq('id', contract_id)
+        .single()
+
+      if (contractData) {
+        await sendBitrixNotify({
+          recipients: [participant.bitrix_user_id],
+          type: 'document_approved',
+          document_id: contract_id,
+          document_title: contractData.title ?? '',
+          document_number: contractData.number ?? '',
+          extra: `ℹ️ Вы исключены из списка согласующих по документу ${contractData.number}. Инициатор: ${admin_name}`,
+        })
+      }
+    }
+
+    const deletedRoleLabel = participant.role === 'observer' ? 'Наблюдатель' : participant.role === 'optional' ? 'Для информирования' : 'Обязательный'
+
+    // Сообщение в чат
+    await supabase
+      .from('approval_messages')
+      .insert({
+        session_id: sessionId,
+        message: `❌ ${admin_name} удалил участника: ${participant.user_name} (${deletedRoleLabel})`,
+        author_name: 'Система',
+        is_ai: false,
+      })
+
+    // Записываем в лог
+    await supabase
+      .from('contract_logs')
+      .insert({
+        contract_id,
+        action: 'Удалён участник согласования',
+        details: `${participant.user_name} — ${participant.role === 'required' ? 'обязательный' : 'для информирования'}`,
+        user_name: admin_name ?? 'Система',
+      })
+
+    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
+    const { data: remainingParticipants } = await supabase
+      .from('approval_participants')
+      .select('role, status')
+      .eq('session_id', sessionId)
+
+    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
+    const allDone = required.length > 0 && required.every(p =>
+      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
+    )
+
+    if (allDone) {
+      await supabase
+        .from('contracts')
+        .update({ status: 'согласован' })
+        .eq('id', contract_id)
+
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'completed' })
+        .eq('id', sessionId)
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Согласование завершено',
+        details: 'Все обязательные участники согласовали документ после удаления участника.',
+        user_name: 'Система',
+      })
+
+      return NextResponse.json({ success: true, all_approved: true })
+    }
+
+    return NextResponse.json({ success: true, all_approved: false })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
