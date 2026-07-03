@@ -1878,12 +1878,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Участники</h3>
                       <div className="space-y-2">
                         {session.approval_participants.map(p => (
-                          <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
+                          <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'observer' ? 'bg-indigo-50' : p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
                             <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
-                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                  {p.role === 'optional' ? 'ознакамл.' : 'согласует'}
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'observer' ? 'bg-indigo-100 text-indigo-700' : p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                  {p.role === 'observer' ? 'наблюдает' : p.role === 'optional' ? 'ознакамл.' : 'согласует'}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>

@@ -41,19 +41,21 @@ export async function POST(
         department: department ?? null,
         role,
         stage,
-        status: 'pending',
+        status: role === 'observer' ? 'observing' : 'pending',
       })
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 400 })
     }
 
+    const roleLabel = role === 'observer' ? 'Наблюдатель' : role === 'optional' ? 'Для информирования' : 'Обязательный'
+
     // Сообщение в чат
     await supabase
       .from('approval_messages')
       .insert({
         session_id: sessionId,
-        message: `➕ ${added_by_name} добавил участника: ${user_name} (${role === 'required' ? 'Обязательный' : 'Для информирования'})`,
+        message: `➕ ${added_by_name} добавил участника: ${user_name} (${roleLabel})`,
         author_name: 'Система',
         is_ai: false,
       })
@@ -64,12 +66,12 @@ export async function POST(
       .insert({
         contract_id,
         action: 'Добавлен участник согласования',
-        details: `${user_name} — ${role === 'required' ? 'обязательный' : 'для информирования'}`,
+        details: `${user_name} — ${roleLabel.toLowerCase()}`,
         user_name: added_by_name ?? 'Система',
       })
 
-    // Уведомляем добавленного участника
-    if (bitrix_user_id && contract_id) {
+    // Уведомляем добавленного участника (наблюдателю push «требуется решение» не нужен)
+    if (bitrix_user_id && contract_id && role !== 'observer') {
       const { data: contractData } = await supabase
         .from('contracts')
         .select('title, number')
@@ -104,8 +106,8 @@ export async function POST(
       }
     }
 
-    // Если сессия завершена — возвращаем статусы на активные
-    if (session.status === 'completed') {
+    // Если сессия завершена — возвращаем статусы на активные (наблюдатель согласование НЕ переоткрывает)
+    if (session.status === 'completed' && role !== 'observer') {
       await supabase
         .from('approval_sessions')
         .update({ status: 'active' })
