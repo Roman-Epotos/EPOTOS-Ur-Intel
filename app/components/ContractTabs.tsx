@@ -969,7 +969,8 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     }
   }
 
-  const hasActiveSession = session && (session.status === 'active' || session.status === 'completed')
+  const hasActiveSession = session && ['active', 'completed', 'cancelled'].includes(session.status)
+  const isSessionActive = session?.status === 'active'
   const allRequired = session?.approval_participants.filter(p => p.role === 'required') ?? []
   const allApproved = allRequired.every(p => ['approved', 'disabled', 'completed_by_initiator'].includes(p.status))
   const daysLeft = session ? Math.ceil((new Date(session.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0
@@ -1965,7 +1966,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       </div>
 
                       {/* Моё действие */}
-                      {myParticipant?.status === 'pending' && myParticipant?.role === 'required' && (
+                      {!isSessionActive && session?.status === 'cancelled' && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                          <p className="text-sm font-medium text-red-800">❌ Документ отклонён</p>
+                          <p className="text-xs text-red-600 mt-1">Согласование остановлено. Отклонивший участник может отменить своё решение кнопкой «↩ Отменить» ниже — это вернёт документ в работу.</p>
+                        </div>
+                      )}
+                      {isSessionActive && myParticipant?.status === 'pending' && myParticipant?.role === 'required' && (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                           <p className="text-sm font-medium text-blue-900 mb-3">Требуется ваше решение</p>
                           <button onClick={() => { setApprovingId(myParticipant.id); setShowApproveModal(true) }}
@@ -1978,7 +1985,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           </button>
                         </div>
                       )}
-                      {myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
+                      {isSessionActive && myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                           <p className="text-sm font-medium text-gray-700 mb-3">Вы добавлены для ознакомления</p>
                           <button onClick={() => { setApprovingId(myParticipant.id); setShowAcknowledgeModal(true) }}
