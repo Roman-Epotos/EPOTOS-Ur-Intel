@@ -59,6 +59,9 @@ export async function POST(
       }
     }
 
+    // Запоминаем, было ли это отклонением — нужно для реактивации сессии
+    const wasRejected = participant.status === 'rejected'
+
     // Отменяем голос — возвращаем в pending
     const { error: updateErr } = await supabase
       .from('approval_participants')
@@ -69,18 +72,26 @@ export async function POST(
       return NextResponse.json({ error: updateErr.message }, { status: 400, headers: CORS })
     }
 
-    // Если документ был согласован — возвращаем в на_согласовании
+    // Если документ был согласован ИЛИ отклонён — возвращаем в на_согласовании
     const { data: contractData } = await supabase
       .from('contracts')
       .select('status, title, number')
       .eq('id', contract_id)
       .single()
 
-    if (contractData?.status === 'согласован') {
+    if (contractData?.status === 'согласован' || wasRejected) {
       await supabase
         .from('contracts')
         .update({ status: 'на_согласовании' })
         .eq('id', contract_id)
+    }
+
+    // Если это была отмена отклонения — реактивируем сессию согласования
+    if (wasRejected) {
+      await supabase
+        .from('approval_sessions')
+        .update({ status: 'active' })
+        .eq('id', sessionId)
     }
 
     // Сообщение в чат согласования
