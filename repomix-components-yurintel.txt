@@ -6957,7 +6957,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           fd.append('user_bitrix_id', user?.id ?? '')
                           fd.append('confirm_all', 'true')
                           fd.append('status_only', 'true')
-                          await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', { method: 'POST', body: fd })
+                          const res = await fetch('https://epotos-ur-intel.vercel.app/api/signed-documents', { method: 'POST', body: fd })
+                          const data = await res.json()
+                          if (!res.ok || data.error) {
+                            alert('Ошибка: ' + (data.error ?? 'не удалось обновить статус'))
+                            return
+                          }
                           setShowConfirmAllModal(false)
                           window.location.reload()
                         }}

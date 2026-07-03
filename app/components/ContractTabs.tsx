@@ -172,6 +172,7 @@ const STATUS_LABELS: Record<string, string> = {
   acknowledged: 'Ознакомлен',
   disabled: 'Отключён',
   completed_by_initiator: 'Завершён',
+  observing: '👁 Наблюдает',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -180,6 +181,7 @@ const STATUS_COLORS: Record<string, string> = {
   acknowledged: 'bg-purple-100 text-purple-800',
   disabled: 'bg-gray-100 text-gray-500',
   completed_by_initiator: 'bg-gray-200 text-gray-600',
+  observing: 'bg-indigo-100 text-indigo-700',
 }
 
 export default function ContractTabs({ contract, versions, logs, userRole, userCompanies }: Props & { userRole?: string, userCompanies?: string[] }) {
@@ -463,7 +465,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     return diffMin <= 5
   }
   const [newParticipantName, setNewParticipantName] = useState('')
-  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
+  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional' | 'observer'>('required')
   const [addingParticipant, setAddingParticipant] = useState(false)
   const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -2421,10 +2423,11 @@ ${edoBlock}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
                 <select value={newParticipantRole}
-                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional')}
+                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional' | 'observer')}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                   <option value="required">Обязательный</option>
                   <option value="optional">Для информирования</option>
+                  <option value="observer">Наблюдатель</option>
                 </select>
               </div>
             </div>
