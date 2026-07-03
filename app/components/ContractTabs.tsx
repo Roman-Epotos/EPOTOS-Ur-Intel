@@ -1506,10 +1506,22 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               if (file) handleFileUpload(file)
                               e.target.value = ''
                             }} />
-                          <input value={message} onChange={e => setMessage(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                          <textarea value={message}
+                            onChange={e => {
+                              setMessage(e.target.value)
+                              e.target.style.height = 'auto'
+                              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault()
+                                handleSendMessage()
+                              }
+                            }}
                             placeholder="Написать сообщение..."
-                            className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white" />
+                            rows={1}
+                            className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 bg-white resize-none overflow-y-auto"
+                            style={{ minHeight: '40px', maxHeight: '120px' }} />
                           <button onClick={handleSendMessage} disabled={sendingMessage || !message.trim()}
                             className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-700 disabled:opacity-50">
                             {sendingMessage ? '...' : '➤'}

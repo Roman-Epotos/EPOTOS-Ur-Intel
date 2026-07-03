@@ -65,9 +65,12 @@ export default function DelegateApproveCheckbox({
           className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
         />
         <label htmlFor="delegate-approve" className="text-xs text-gray-600 cursor-pointer">
-          Разрешить другим сотрудникам запускать согласование
+          Разрешить запуск согласования другим сотрудникам ГК
         </label>
       </div>
+      <p className="text-xs text-gray-400 mt-0.5 ml-6">
+        Документ и так виден коллегам в общем реестре — эта галочка разрешает им самим нажать «Запустить согласование», если вы недоступны
+      </p>
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
