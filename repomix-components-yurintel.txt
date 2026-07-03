@@ -5330,6 +5330,7 @@ const STATUS_LABELS: Record<string, string> = {
   acknowledged: 'Ознакомлен',
   disabled: 'Отключён',
   completed_by_initiator: 'Завершён',
+  observing: '👁 Наблюдает',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -5338,6 +5339,7 @@ const STATUS_COLORS: Record<string, string> = {
   acknowledged: 'bg-purple-100 text-purple-800',
   disabled: 'bg-gray-100 text-gray-500',
   completed_by_initiator: 'bg-gray-200 text-gray-600',
+  observing: 'bg-indigo-100 text-indigo-700',
 }
 
 export default function ContractTabs({ contract, versions, logs, userRole, userCompanies }: Props & { userRole?: string, userCompanies?: string[] }) {
@@ -5621,7 +5623,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     return diffMin <= 5
   }
   const [newParticipantName, setNewParticipantName] = useState('')
-  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional'>('required')
+  const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional' | 'observer'>('required')
   const [addingParticipant, setAddingParticipant] = useState(false)
   const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -7034,12 +7036,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Участники</h3>
                       <div className="space-y-2">
                         {session.approval_participants.map(p => (
-                          <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
+                          <div key={p.id} className={`flex items-start justify-between p-2 rounded-lg ${p.role === 'observer' ? 'bg-indigo-50' : p.role === 'optional' ? 'bg-blue-50' : 'bg-green-50'}`}>
                             <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <p className="text-sm font-medium text-gray-900">{p.user_name}</p>
-                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                  {p.role === 'optional' ? 'ознакамл.' : 'согласует'}
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${p.role === 'observer' ? 'bg-indigo-100 text-indigo-700' : p.role === 'optional' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                  {p.role === 'observer' ? 'наблюдает' : p.role === 'optional' ? 'ознакамл.' : 'согласует'}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500">{STAGE_LABELS[p.stage] ?? p.stage}</p>
@@ -7579,10 +7581,11 @@ ${edoBlock}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
                 <select value={newParticipantRole}
-                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional')}
+                  onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional' | 'observer')}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                   <option value="required">Обязательный</option>
                   <option value="optional">Для информирования</option>
+                  <option value="observer">Наблюдатель</option>
                 </select>
               </div>
             </div>

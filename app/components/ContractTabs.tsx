@@ -735,11 +735,16 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
       }),
     })
     const addData = await addRes.json()
+    setAddingParticipant(false)
+
+    if (!addRes.ok || addData.error) {
+      alert('Ошибка: ' + (addData.error ?? 'не удалось добавить участника'))
+      return
+    }
 
     setShowAddParticipantModal(false)
     setNewParticipantName('')
     setNewParticipantRole('required')
-    setAddingParticipant(false)
     await loadSession()
     if (addData.success) {
       setContractStatus('на_согласовании')
