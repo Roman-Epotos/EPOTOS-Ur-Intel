@@ -333,6 +333,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messageInputRef = useRef<HTMLTextAreaElement>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState('')
   const [replyTo, setReplyTo] = useState<{ id: string; author_name: string; message: string } | null>(null)
@@ -895,6 +896,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     setMessage('')
     setReplyTo(null)
     setSendingMessage(false)
+    if (messageInputRef.current) messageInputRef.current.style.height = '40px'
   }
 
   const handleApprove = async () => {
@@ -1506,7 +1508,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                               if (file) handleFileUpload(file)
                               e.target.value = ''
                             }} />
-                          <textarea value={message}
+                          <textarea ref={messageInputRef} value={message}
                             onChange={e => {
                               setMessage(e.target.value)
                               e.target.style.height = 'auto'
