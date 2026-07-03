@@ -226,12 +226,14 @@ export async function DELETE(
       }
     }
 
+    const deletedRoleLabel = participant.role === 'observer' ? 'Наблюдатель' : participant.role === 'optional' ? 'Для информирования' : 'Обязательный'
+
     // Сообщение в чат
     await supabase
       .from('approval_messages')
       .insert({
         session_id: sessionId,
-        message: `❌ ${admin_name} удалил участника: ${participant.user_name} (${participant.role === 'required' ? 'Обязательный' : 'Для информирования'})`,
+        message: `❌ ${admin_name} удалил участника: ${participant.user_name} (${deletedRoleLabel})`,
         author_name: 'Система',
         is_ai: false,
       })
