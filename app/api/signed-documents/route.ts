@@ -203,8 +203,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Документ не найден: ${contractError?.message ?? 'нет данных'}` }, { status: 404 })
     }
 
-    // Извлекаем префикс компании из номера документа (ТХ-ДОГ-2026/... → ТХ)
-    const companyPrefix = contract.number?.split('-')[0] ?? ''
+    // Извлекаем префикс компании из номера документа (ТХ-ДОГ-2026/... → ТХ; Э-К — двойной дефис)
+    const companyPrefix = contract.number?.startsWith('Э-К') ? 'Э-К' : (contract.number?.split('-')[0] ?? '')
 
     // Получаем инициатора согласования
     const { data: session } = await supabase
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
 
     // Если только обновление статуса без загрузки файла — делаем это сразу
     if (status_only && confirm_all) {
-      await supabase
+      const { error: statusUpdateError } = await supabase
         .from('contracts')
         .update({
           status: 'подписан',
@@ -233,6 +233,10 @@ export async function POST(request: NextRequest) {
           signed_by_bitrix_id: userId,
         })
         .eq('id', contract_id)
+
+      if (statusUpdateError) {
+        return NextResponse.json({ error: 'Не удалось обновить статус: ' + statusUpdateError.message }, { status: 400 })
+      }
 
       await supabase.from('contract_logs').insert({
         contract_id,
