@@ -25,6 +25,7 @@ import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import dynamic from 'next/dynamic'
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { useDocumentContext } from '@/app/context/DocumentContext'
 import { proxyUrl } from '@/app/utils/proxyUrl'
 import { uploadFileDirect } from '@/app/utils/uploadFile'
 import { createClient } from '@supabase/supabase-js'
@@ -186,6 +187,19 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ContractTabs({ contract, versions, logs, userRole, userCompanies }: Props & { userRole?: string, userCompanies?: string[] }) {
   const { user } = useBitrixAuth()
+  const { setCurrentDocument } = useDocumentContext()
+
+  useEffect(() => {
+    setCurrentDocument({
+      id: contract.id,
+      number: contract.number ?? '',
+      title: contract.title ?? '',
+      status: contract.status ?? '',
+      companyPrefix: contract.company_prefix ?? undefined,
+    })
+    return () => setCurrentDocument(null)
+  }, [contract.id, contract.status])
+
   const ADMIN_IDS = [30, 1148]
   const GC_MANAGER_IDS = [1, 246, 504]
   const userId = parseInt(user?.id ?? '0')

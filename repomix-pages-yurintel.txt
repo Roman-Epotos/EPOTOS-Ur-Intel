@@ -6668,49 +6668,6 @@ export default function CounterpartiesPage() {
 }
 
 ================
-File: app/layout.tsx
-================
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { DocumentContextProvider } from "@/app/context/DocumentContext";
-import FloatingAssistant from "@/app/components/FloatingAssistant";
-
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "ЮрИнтел-Эпотос",
-  description: "Система управления юридическими документами",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <head>
-        <script src="https://api.bitrix24.com/api/v1/" async></script>
-      </head>
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
-  );
-}
-
-================
 File: app/page.tsx
 ================
 'use client'
@@ -6776,6 +6733,54 @@ export default function HomePage() {
       </div>
     </div>
   )
+}
+
+================
+File: app/layout.tsx
+================
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { DocumentContextProvider } from "@/app/context/DocumentContext";
+import FloatingAssistant from "@/app/components/FloatingAssistant";
+
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "ЮрИнтел-Эпотос",
+  description: "Система управления юридическими документами",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <head>
+        <script src="https://api.bitrix24.com/api/v1/" async></script>
+      </head>
+      <body className="min-h-full flex flex-col">
+        <DocumentContextProvider>
+          {children}
+          <FloatingAssistant />
+        </DocumentContextProvider>
+      </body>
+    </html>
+  );
 }
 
 
