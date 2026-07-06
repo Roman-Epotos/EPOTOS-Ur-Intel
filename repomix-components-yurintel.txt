@@ -1164,6 +1164,154 @@ export default function DeleteContractButton({
 }
 
 ================
+File: app/components/Header.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+  const [helpUnread, setHelpUnread] = useState(0)
+
+  const checkUnread = async (userId: string) => {
+    const baseUrl = 'https://epotos-ur-intel.vercel.app'
+    const isAdminUser = [30, 1148].includes(parseInt(userId))
+    const url = isAdminUser
+      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
+      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
+    const r = await fetch(url)
+    const d = await r.json()
+    const reqs = d.requests ?? []
+    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
+      if (req.status === 'resolved') return false
+      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
+      if (!lastSeen) return true
+      const msgs = req.support_messages ?? []
+      if (msgs.length === 0) return false
+      const lastMsgAt = msgs[msgs.length - 1].created_at
+      return new Date(lastMsgAt) > new Date(lastSeen)
+    }).length
+    setHelpUnread(unread)
+  }
+
+  useEffect(() => {
+    if (!user) return
+    checkUnread(user.id)
+
+    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
+    const channel = supabaseClient
+      .channel('header_support_unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_messages',
+      }, (payload) => {
+        const msg = payload.new as { author_bitrix_id: number }
+        // Показываем только если сообщение от другого пользователя
+        if (msg.author_bitrix_id !== parseInt(user.id)) {
+          checkUnread(user.id)
+        }
+      })
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [user])
+
+  return (
+    <div className="flex items-center justify-between mb-4 md:mb-8">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">ЮрИнтел-Эпотос</h1>
+        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
+        <Link
+          href="/contracts/new"
+          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+        >
+          <span className="hidden md:inline">+ Новый документ</span>
+          <span className="md:hidden">+ Новый</span>
+        </Link>
+        <Link
+          href="/dashboard"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          <span className="hidden md:inline">🖥️ Рабочий стол</span>
+          <span className="md:hidden">🖥️</span>
+        </Link>
+        <Link
+          href="/counterparties"
+          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+        >
+          <span className="hidden md:inline">🏢 Контрагенты</span>
+          <span className="md:hidden">🏢</span>
+        </Link>
+
+        {/* Профиль пользователя */}
+        <Link href="/help"
+          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+          ❓
+          <span className="hidden md:inline"> Помощь</span>
+          {helpUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+              {helpUnread}
+            </span>
+          )}
+        </Link>
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-1 md:gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="hidden md:block text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+================
 File: app/components/RelatedDocuments.tsx
 ================
 'use client'
@@ -2174,154 +2322,6 @@ export default function FloatingAssistant() {
         </div>
       )}
     </>
-  )
-}
-
-================
-File: app/components/Header.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import Link from 'next/link'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-)
-
-export default function Header() {
-  const { user, loading } = useBitrixAuth()
-  const [helpUnread, setHelpUnread] = useState(0)
-
-  const checkUnread = async (userId: string) => {
-    const baseUrl = 'https://epotos-ur-intel.vercel.app'
-    const isAdminUser = [30, 1148].includes(parseInt(userId))
-    const url = isAdminUser
-      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
-      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
-    const r = await fetch(url)
-    const d = await r.json()
-    const reqs = d.requests ?? []
-    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
-      if (req.status === 'resolved') return false
-      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
-      if (!lastSeen) return true
-      const msgs = req.support_messages ?? []
-      if (msgs.length === 0) return false
-      const lastMsgAt = msgs[msgs.length - 1].created_at
-      return new Date(lastMsgAt) > new Date(lastSeen)
-    }).length
-    setHelpUnread(unread)
-  }
-
-  useEffect(() => {
-    if (!user) return
-    checkUnread(user.id)
-
-    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
-    const channel = supabaseClient
-      .channel('header_support_unread')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'support_messages',
-      }, (payload) => {
-        const msg = payload.new as { author_bitrix_id: number }
-        // Показываем только если сообщение от другого пользователя
-        if (msg.author_bitrix_id !== parseInt(user.id)) {
-          checkUnread(user.id)
-        }
-      })
-      .subscribe()
-
-    return () => { supabaseClient.removeChannel(channel) }
-  }, [user])
-
-  return (
-    <div className="flex items-center justify-between mb-4 md:mb-8">
-      <div className="min-w-0 flex-1">
-        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">ЮрИнтел-Эпотос</h1>
-        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
-      </div>
-
-      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
-        >
-          <span className="hidden md:inline">+ Новый документ</span>
-          <span className="md:hidden">+ Новый</span>
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🖥️ Рабочий стол</span>
-          <span className="md:hidden">🖥️</span>
-        </Link>
-        <Link
-          href="/counterparties"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🏢 Контрагенты</span>
-          <span className="md:hidden">🏢</span>
-        </Link>
-
-        {/* Профиль пользователя */}
-        <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
-          ❓
-          <span className="hidden md:inline"> Помощь</span>
-          {helpUnread > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-              {helpUnread}
-            </span>
-          )}
-        </Link>
-        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
-          <Link href="/admin"
-            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            Настройки
-          </Link>
-        )}
-        {!loading && (
-          <div className="flex items-center gap-1 md:gap-3">
-            {user ? (
-              <div className="flex items-center gap-2">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="hidden md:block text-right">
-                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                  ?
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Гость</p>
-                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
   )
 }
 
@@ -5537,6 +5537,7 @@ import CancelApprovalButton from '@/app/components/CancelApprovalButton'
 import dynamic from 'next/dynamic'
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { useDocumentContext } from '@/app/context/DocumentContext'
 import { proxyUrl } from '@/app/utils/proxyUrl'
 import { uploadFileDirect } from '@/app/utils/uploadFile'
 import { createClient } from '@supabase/supabase-js'
@@ -5698,6 +5699,19 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ContractTabs({ contract, versions, logs, userRole, userCompanies }: Props & { userRole?: string, userCompanies?: string[] }) {
   const { user } = useBitrixAuth()
+  const { setCurrentDocument } = useDocumentContext()
+
+  useEffect(() => {
+    setCurrentDocument({
+      id: contract.id,
+      number: contract.number ?? '',
+      title: contract.title ?? '',
+      status: contract.status ?? '',
+      companyPrefix: contract.company_prefix ?? undefined,
+    })
+    return () => setCurrentDocument(null)
+  }, [contract.id, contract.status])
+
   const ADMIN_IDS = [30, 1148]
   const GC_MANAGER_IDS = [1, 246, 504]
   const userId = parseInt(user?.id ?? '0')
