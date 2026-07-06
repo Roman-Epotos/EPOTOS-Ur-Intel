@@ -66,6 +66,7 @@ app/api/bitrix-users/route.ts
 app/api/bitrix/auth/route.ts
 app/api/bitrix/callback/route.ts
 app/api/bitrix/install/route.ts
+app/api/bitrix/refresh/route.ts
 app/api/bitrix/verify/route.ts
 app/api/company-directors/route.ts
 app/api/company-requisites/route.ts
@@ -1880,6 +1881,57 @@ export async function GET() {
 }
 
 ================
+File: app/api/bitrix/refresh/route.ts
+================
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  try {
+    const { refresh_id } = await request.json()
+
+    if (!refresh_id) {
+      return NextResponse.json({ error: 'refresh_id обязателен' }, { status: 400 })
+    }
+
+    const clientId = process.env.BITRIX_CLIENT_ID
+    const clientSecret = process.env.BITRIX_CLIENT_SECRET
+
+    if (!clientId || !clientSecret) {
+      return NextResponse.json({ error: 'BITRIX_CLIENT_ID/SECRET не заданы на сервере' }, { status: 500 })
+    }
+
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refresh_id,
+    })
+
+    const res = await fetch(`https://oauth.bitrix24.tech/oauth/token/?${params.toString()}`)
+    const data = await res.json()
+
+    if (!res.ok || data.error) {
+      return NextResponse.json(
+        { error: data.error_description ?? data.error ?? 'Не удалось обновить токен' },
+        { status: 400 }
+      )
+    }
+
+    // Bitrix24 при рефреше выдаёт НОВУЮ пару auth_id/refresh_id (старая инвалидируется)
+    return NextResponse.json({
+      success: true,
+      auth_id: data.access_token,
+      refresh_id: data.refresh_token,
+      member_id: data.member_id,
+      domain: data.domain,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/bitrix/verify/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -2747,6 +2799,164 @@ export async function PATCH(
 }
 
 ================
+File: app/api/counterparties/[id]/documents/route.ts
+================
+export const maxDuration = 60
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const { data, error } = await supabase
+      .from('counterparty_documents')
+      .select('*')
+      .eq('counterparty_id', id)
+      .order('created_at', { ascending: false })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ documents: data ?? [] })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const contentType = request.headers.get('content-type') ?? ''
+
+    // JSON режим — файл уже загружен напрямую в Storage
+    if (contentType.includes('application/json')) {
+      const { category, file_name, file_url, file_type, uploaded_by_id, uploaded_by_name } = await request.json()
+      const { data, error } = await supabase
+        .from('counterparty_documents')
+        .insert({
+          counterparty_id: id,
+          category: category ?? 'other',
+          file_name,
+          file_url,
+          file_type: file_type ?? '',
+          uploaded_by_id: uploaded_by_id ? parseInt(uploaded_by_id) : null,
+          uploaded_by_name: uploaded_by_name ?? null,
+        })
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, document: data })
+    }
+
+    // FormData режим — старый способ (файл маленький)
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const category = formData.get('category') as string ?? 'other'
+
+    if (!file) return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
+
+    const fileExt = file.name.split('.').pop()
+    const safeName = file.name
+      .replace(/[а-яёА-ЯЁ]/g, (c: string) => {
+        const map: Record<string, string> = {
+          'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
+          'й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
+          'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
+          'э':'e','ю':'yu','я':'ya','А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo',
+          'Ж':'Zh','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P',
+          'Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh',
+          'Щ':'Sch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya'
+        }
+        return map[c] ?? c
+      })
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+    const fileName = `${id}/${category}/${Date.now()}_${safeName}`
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = new Uint8Array(arrayBuffer)
+
+    const { error: uploadError } = await supabase.storage
+      .from('counterparty-docs')
+      .upload(fileName, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      })
+
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
+
+    const { data: urlData } = supabase.storage
+      .from('counterparty-docs')
+      .getPublicUrl(fileName)
+
+    const { data, error } = await supabase
+      .from('counterparty_documents')
+      .insert({
+        counterparty_id: id,
+        category,
+        file_name: file.name,
+        file_url: urlData.publicUrl,
+        file_type: fileExt ?? '',
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true, document: data })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await params
+    const docId = request.nextUrl.searchParams.get('doc_id')
+    if (!docId) return NextResponse.json({ error: 'doc_id не указан' }, { status: 400 })
+
+    // Получаем запись чтобы удалить файл из Storage
+    const { data: doc } = await supabase
+      .from('counterparty_documents')
+      .select('file_url')
+      .eq('id', docId)
+      .single()
+
+    if (doc?.file_url) {
+      // Извлекаем путь из URL
+      const url = new URL(doc.file_url)
+      const path = url.pathname.split('/counterparty-docs/')[1]
+      if (path) {
+        await supabase.storage.from('counterparty-docs').remove([path])
+      }
+    }
+
+    const { error } = await supabase
+      .from('counterparty_documents')
+      .delete()
+      .eq('id', docId)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+================
 File: app/api/counterparties/check-cache/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -3036,6 +3246,63 @@ export async function POST(request: NextRequest) {
       .single()
 
     return NextResponse.json({ ...(saved ?? {}), from_cache: false }, { headers: CORS })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
+  }
+}
+
+================
+File: app/api/counterparties/upload-url/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
+  })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { bucket, path } = await request.json()
+    if (!bucket || !path) {
+      return NextResponse.json({ error: 'bucket и path обязательны' }, { status: 400, headers: CORS })
+    }
+
+    const allowedBuckets = ['counterparty-docs', 'contracts']
+    if (!allowedBuckets.includes(bucket)) {
+      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
+    }
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUploadUrl(path)
+
+    if (error || !data) {
+      return NextResponse.json({ error: error?.message ?? 'Ошибка получения URL' }, { status: 500, headers: CORS })
+    }
+
+    // Также возвращаем публичный URL файла после загрузки
+    const { data: publicData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+
+    return NextResponse.json({
+      signed_url: data.signedUrl,
+      token: data.token,
+      path: data.path,
+      public_url: publicData.publicUrl,
+    }, { headers: CORS })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Ошибка'
@@ -5290,164 +5557,6 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/counterparties/[id]/documents/route.ts
-================
-export const maxDuration = 60
-
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const { data, error } = await supabase
-      .from('counterparty_documents')
-      .select('*')
-      .eq('counterparty_id', id)
-      .order('created_at', { ascending: false })
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ documents: data ?? [] })
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const contentType = request.headers.get('content-type') ?? ''
-
-    // JSON режим — файл уже загружен напрямую в Storage
-    if (contentType.includes('application/json')) {
-      const { category, file_name, file_url, file_type, uploaded_by_id, uploaded_by_name } = await request.json()
-      const { data, error } = await supabase
-        .from('counterparty_documents')
-        .insert({
-          counterparty_id: id,
-          category: category ?? 'other',
-          file_name,
-          file_url,
-          file_type: file_type ?? '',
-          uploaded_by_id: uploaded_by_id ? parseInt(uploaded_by_id) : null,
-          uploaded_by_name: uploaded_by_name ?? null,
-        })
-        .select()
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ success: true, document: data })
-    }
-
-    // FormData режим — старый способ (файл маленький)
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const category = formData.get('category') as string ?? 'other'
-
-    if (!file) return NextResponse.json({ error: 'Файл не передан' }, { status: 400 })
-
-    const fileExt = file.name.split('.').pop()
-    const safeName = file.name
-      .replace(/[а-яёА-ЯЁ]/g, (c: string) => {
-        const map: Record<string, string> = {
-          'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i',
-          'й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t',
-          'у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'',
-          'э':'e','ю':'yu','я':'ya','А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo',
-          'Ж':'Zh','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P',
-          'Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh',
-          'Щ':'Sch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya'
-        }
-        return map[c] ?? c
-      })
-      .replace(/\s+/g, '_')
-      .replace(/[^a-zA-Z0-9._-]/g, '')
-    const fileName = `${id}/${category}/${Date.now()}_${safeName}`
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from('counterparty-docs')
-      .upload(fileName, buffer, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: false,
-      })
-
-    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
-
-    const { data: urlData } = supabase.storage
-      .from('counterparty-docs')
-      .getPublicUrl(fileName)
-
-    const { data, error } = await supabase
-      .from('counterparty_documents')
-      .insert({
-        counterparty_id: id,
-        category,
-        file_name: file.name,
-        file_url: urlData.publicUrl,
-        file_type: fileExt ?? '',
-      })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true, document: data })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    await params
-    const docId = request.nextUrl.searchParams.get('doc_id')
-    if (!docId) return NextResponse.json({ error: 'doc_id не указан' }, { status: 400 })
-
-    // Получаем запись чтобы удалить файл из Storage
-    const { data: doc } = await supabase
-      .from('counterparty_documents')
-      .select('file_url')
-      .eq('id', docId)
-      .single()
-
-    if (doc?.file_url) {
-      // Извлекаем путь из URL
-      const url = new URL(doc.file_url)
-      const path = url.pathname.split('/counterparty-docs/')[1]
-      if (path) {
-        await supabase.storage.from('counterparty-docs').remove([path])
-      }
-    }
-
-    const { error } = await supabase
-      .from('counterparty_documents')
-      .delete()
-      .eq('id', docId)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-================
 File: app/api/counterparties/check-inn-individual/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -5501,63 +5610,6 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ found: false, message })
-  }
-}
-
-================
-File: app/api/counterparties/upload-url/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-const CORS = { 'Access-Control-Allow-Origin': '*' }
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { bucket, path } = await request.json()
-    if (!bucket || !path) {
-      return NextResponse.json({ error: 'bucket и path обязательны' }, { status: 400, headers: CORS })
-    }
-
-    const allowedBuckets = ['counterparty-docs', 'contracts']
-    if (!allowedBuckets.includes(bucket)) {
-      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
-    }
-
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUploadUrl(path)
-
-    if (error || !data) {
-      return NextResponse.json({ error: error?.message ?? 'Ошибка получения URL' }, { status: 500, headers: CORS })
-    }
-
-    // Также возвращаем публичный URL файла после загрузки
-    const { data: publicData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(path)
-
-    return NextResponse.json({
-      signed_url: data.signedUrl,
-      token: data.token,
-      path: data.path,
-      public_url: publicData.publicUrl,
-    }, { headers: CORS })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
   }
 }
 

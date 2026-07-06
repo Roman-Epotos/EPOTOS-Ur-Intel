@@ -99,6 +99,31 @@ export function useBitrixAuth() {
                 window.location.replace(`/contracts/${contractId}`)
                 return
               }
+            } else if (storedUser.refresh_id) {
+              // Токен протух — пробуем тихо обновить через refresh_id, без сброса страницы
+              try {
+                const refreshRes = await fetch('/api/bitrix/refresh', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ refresh_id: storedUser.refresh_id }),
+                })
+                const refreshData = await refreshRes.json()
+                if (refreshData.success) {
+                  const updatedUser = {
+                    ...storedUser,
+                    auth_id: refreshData.auth_id,
+                    refresh_id: refreshData.refresh_id,
+                  }
+                  sessionStorage.setItem('bitrix_user', JSON.stringify(updatedUser))
+                  setUser(updatedUser)
+                } else {
+                  sessionStorage.removeItem('bitrix_user')
+                  window.location.reload()
+                }
+              } catch {
+                sessionStorage.removeItem('bitrix_user')
+                window.location.reload()
+              }
             } else {
               sessionStorage.removeItem('bitrix_user')
               window.location.reload()
