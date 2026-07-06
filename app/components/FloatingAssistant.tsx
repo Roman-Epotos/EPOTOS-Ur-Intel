@@ -86,9 +86,16 @@ export default function FloatingAssistant() {
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
-              <p className="text-sm text-gray-400 text-center mt-8">
-                Задайте вопрос об ЮрИнтел{currentDocument ? ' или об этом документе' : ''} — я постараюсь помочь
-              </p>
+              <div className="text-center mt-8 px-2">
+                <p className="text-sm text-gray-400">
+                  Задайте вопрос об ЮрИнтел{currentDocument ? ' или об этом документе' : ''} — я постараюсь помочь
+                </p>
+                {currentDocument && (
+                  <p className="text-xs text-gray-300 mt-3">
+                    💡 Чтобы спросить про содержание самого договора (пункты, условия, суммы) — используйте вкладку <b>EpotosGPT → Чат с AI</b> в карточке документа
+                  </p>
+                )}
+              </div>
             )}
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
