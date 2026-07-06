@@ -69,6 +69,12 @@ const CAT_LABELS: Record<string, string> = {
   other:      '📋 Прочее',
 }
 
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  'аванс': 'Аванс',
+  'частичная_оплата': 'Частичная оплата',
+  'окончательный_расчет': 'Окончательный расчёт',
+}
+
 export default function ExecutionControl({
   contractId, contractStatus, contractNumber, contractTitle, companyPrefix,
   authorBitrixId,
@@ -648,6 +654,104 @@ export default function ExecutionControl({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Оплаты по договору */}
+      <div className="border border-gray-200 rounded-xl mb-4 overflow-hidden">
+        <button onClick={() => setPaymentsOpen(p => !p)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+          <span className="text-sm font-medium text-gray-900">💳 Оплаты по договору</span>
+          <div className="flex items-center gap-3">
+            {paymentsSummary && (
+              <span className="text-xs text-gray-500">
+                Оплачено {paymentsSummary.paid_total.toLocaleString('ru-RU')} из {paymentsSummary.contract_amount.toLocaleString('ru-RU')} ₽
+                {paymentsSummary.remaining > 0 && (
+                  <span className="text-orange-600 font-medium"> · остаток {paymentsSummary.remaining.toLocaleString('ru-RU')} ₽</span>
+                )}
+              </span>
+            )}
+            <span className="text-gray-400">{paymentsOpen ? '▲' : '▼'}</span>
+          </div>
+        </button>
+
+        {paymentsOpen && (
+          <div className="p-4 border-t border-gray-200">
+            {!showAddPayment ? (
+              <button onClick={() => setShowAddPayment(true)}
+                className="text-xs font-medium bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 mb-4">
+                + Добавить оплату
+              </button>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 space-y-3">
+                {paymentError && <p className="text-sm text-red-600">{paymentError}</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Сумма, ₽</label>
+                    <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)}
+                      placeholder="500000"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Дата операции</label>
+                    <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Тип операции</label>
+                  <select value={paymentType} onChange={e => setPaymentType(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                    <option value="аванс">Аванс</option>
+                    <option value="частичная_оплата">Частичная оплата</option>
+                    <option value="окончательный_расчет">Окончательный расчёт</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Комментарий (необязательно)</label>
+                  <input value={paymentComment} onChange={e => setPaymentComment(e.target.value)}
+                    placeholder="Номер платёжного поручения и т.п."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleAddPayment} disabled={paymentSaving}
+                    className="flex-1 bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                    {paymentSaving ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                  <button onClick={() => { setShowAddPayment(false); setPaymentError('') }}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {payments.length === 0 ? (
+              <p className="text-sm text-gray-400">Оплаты пока не внесены</p>
+            ) : (
+              <div className="space-y-2">
+                {payments.map(p => (
+                  <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {Number(p.amount).toLocaleString('ru-RU')} ₽ <span className="text-gray-400 font-normal">— {PAYMENT_TYPE_LABELS[p.payment_type] ?? p.payment_type}</span>
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(p.payment_date).toLocaleDateString('ru-RU')} · {p.created_by_name ?? 'Система'}
+                        {p.comment && ` · ${p.comment}`}
+                      </p>
+                    </div>
+                    {(userId === p.created_by_bitrix_id || [30, 1148].includes(userId ?? 0)) && (
+                      <button onClick={() => handleDeletePayment(p.id)}
+                        className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded flex-shrink-0">
+                        Удалить
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Прогресс-бар */}
