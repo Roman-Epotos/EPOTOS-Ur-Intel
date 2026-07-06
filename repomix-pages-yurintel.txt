@@ -6673,6 +6673,8 @@ File: app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { DocumentContextProvider } from "@/app/context/DocumentContext";
+import FloatingAssistant from "@/app/components/FloatingAssistant";
 
 
 const geistSans = Geist({

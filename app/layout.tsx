@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { DocumentContextProvider } from "@/app/context/DocumentContext";
+import FloatingAssistant from "@/app/components/FloatingAssistant";
 
 
 const geistSans = Geist({
@@ -31,7 +33,12 @@ export default function RootLayout({
       <head>
         <script src="https://api.bitrix24.com/api/v1/" async></script>
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <DocumentContextProvider>
+          {children}
+          <FloatingAssistant />
+        </DocumentContextProvider>
+      </body>
     </html>
   );
 }
