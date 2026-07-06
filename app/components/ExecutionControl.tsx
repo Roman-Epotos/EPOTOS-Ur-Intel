@@ -92,6 +92,21 @@ export default function ExecutionControl({
 
   const [hasArchive, setHasArchive] = useState(false)
 
+  // Оплаты по договору
+  const [payments, setPayments] = useState<{
+    id: string; amount: number; payment_date: string; payment_type: string;
+    comment: string | null; created_by_name: string | null; created_by_bitrix_id: number | null
+  }[]>([])
+  const [paymentsSummary, setPaymentsSummary] = useState<{ contract_amount: number; paid_total: number; remaining: number } | null>(null)
+  const [paymentsOpen, setPaymentsOpen] = useState(false)
+  const [showAddPayment, setShowAddPayment] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentDate, setPaymentDate] = useState('')
+  const [paymentType, setPaymentType] = useState('частичная_оплата')
+  const [paymentComment, setPaymentComment] = useState('')
+  const [paymentSaving, setPaymentSaving] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
+
   // Модальное окно редактирования пункта
   const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -137,7 +152,70 @@ export default function ExecutionControl({
 
   useEffect(() => {
     loadItems()
+    loadPayments()
   }, [contractId])
+
+  const loadPayments = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-payments?contract_id=${contractId}`)
+      const data = await res.json()
+      setPayments(data.payments ?? [])
+      setPaymentsSummary(data.summary ?? null)
+    } catch {
+      // тихо игнорируем — блок оплат не критичен для остального интерфейса
+    }
+  }
+
+  const handleAddPayment = async () => {
+    if (!paymentAmount.trim() || !paymentDate) {
+      setPaymentError('Укажите сумму и дату')
+      return
+    }
+    setPaymentSaving(true)
+    setPaymentError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/contract-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          amount: parseFloat(paymentAmount),
+          payment_date: paymentDate,
+          payment_type: paymentType,
+          comment: paymentComment.trim() || null,
+          user_name: userName ?? 'Система',
+          user_bitrix_id: userId,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setPaymentError(data.error ?? 'Ошибка сохранения')
+        return
+      }
+      setShowAddPayment(false)
+      setPaymentAmount('')
+      setPaymentDate('')
+      setPaymentComment('')
+      setPaymentType('частичная_оплата')
+      await loadPayments()
+    } catch {
+      setPaymentError('Ошибка соединения')
+    } finally {
+      setPaymentSaving(false)
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm('Удалить эту запись об оплате?')) return
+    try {
+      await fetch(`${baseUrl}/api/contract-payments?id=${paymentId}&user_bitrix_id=${userId}&user_name=${encodeURIComponent(userName ?? '')}`, {
+        method: 'DELETE',
+      })
+      await loadPayments()
+    } catch {
+      alert('Ошибка удаления')
+    }
+  }
 
   const loadItems = async () => {
     setLoading(true)

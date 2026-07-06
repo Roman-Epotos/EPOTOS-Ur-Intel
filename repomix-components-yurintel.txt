@@ -4417,6 +4417,15 @@ const EXTRA_FIELDS: Record<string, { key: string; label: string; placeholder?: s
     { key: 'subject_snils', label: 'СНИЛС', placeholder: '123-456-789 00' },
     { key: 'pd_consent_date', label: 'Согласие действует до', placeholder: '31.12.2029', type: 'date' },
   ],
+  'персданные_эк': [
+    { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
+    { key: 'passport_series', label: 'Серия паспорта', placeholder: '4510' },
+    { key: 'passport_number', label: 'Номер паспорта', placeholder: '123456' },
+    { key: 'passport_issued_date', label: 'Дата выдачи паспорта', placeholder: '15 декабря 2020 г.' },
+    { key: 'passport_issued_by', label: 'Кем выдан', placeholder: 'ОУФМС России' },
+    { key: 'subject_address', label: 'Адрес регистрации', placeholder: 'г. Москва, ул. ...' },
+    { key: 'pd_consent_date', label: 'Согласие действует до', placeholder: '31.12.2035', type: 'date' },
+  ],
   'pd_consent': [
     { key: 'subject_full_name', label: 'ФИО физлица', placeholder: 'Иванов Иван Иванович' },
     { key: 'subject_birth_year', label: 'Дата рождения (дд.мм.гггг)', placeholder: '01.01.1985' },
