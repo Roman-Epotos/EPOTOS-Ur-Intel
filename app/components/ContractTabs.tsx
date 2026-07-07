@@ -1811,11 +1811,14 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       </div>
                     ))}
                     {canUploadSigned && contractStatus !== 'подписан' && contractStatus !== 'на_исполнении' && (
-                      <button
-                        onClick={() => setShowConfirmAllModal(true)}
-                        className="mt-2 text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                        ✅ Подтвердить — все документы загружены
-                      </button>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <button
+                          onClick={() => setShowConfirmAllModal(true)}
+                          className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                          ✅ Подтвердить — все документы загружены
+                        </button>
+                        <Tooltip text="Нажмите, когда все нужные подписанные экземпляры уже загружены выше. Документ перейдёт в статус «Подписан», после чего станет доступна генерация чек-листа контроля исполнения." />
+                      </div>
                     )}
                   </div>
                 )}
@@ -2469,7 +2472,10 @@ ${edoBlock}
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                  Роль
+                  <Tooltip text="Обязательный — должен согласовать или отклонить, без этого документ не пройдёт согласование. Для информирования — должен ознакомиться (кнопка «Ознакомлен»), не блокирует итог. Наблюдатель — просто видит документ и чаты, от него ничего не требуется." />
+                </label>
                 <select value={newParticipantRole}
                   onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional' | 'observer')}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
