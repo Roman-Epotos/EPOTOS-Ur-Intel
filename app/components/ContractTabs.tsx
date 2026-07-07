@@ -3,6 +3,7 @@ import { buildChatHtml } from '@/utils/chatPrint'
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import Tooltip from '@/app/components/Tooltip'
 import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'

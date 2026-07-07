@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState, useEffect } from 'react'
+import Tooltip from '@/app/components/Tooltip'
 
 interface ChecklistItem {
   id: string
@@ -698,7 +699,10 @@ export default function ExecutionControl({
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Тип операции</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                    Тип операции
+                    <Tooltip text="Аванс — предоплата до начала работ. Частичная оплата — любой промежуточный платёж. Окончательный расчёт — последний платёж, закрывающий сумму договора." />
+                  </label>
                   <select value={paymentType} onChange={e => setPaymentType(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                     <option value="аванс">Аванс</option>
