@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Tooltip from '@/app/components/Tooltip'
 
 interface DashboardData {
   my_approvals: {
@@ -116,9 +117,11 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/" className="text-sm text-gray-500 hover:text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg">
-                📄 Все документы
-              </Link>
+              <Tooltip text="Вернуться на главную страницу со списком всех документов, доступных вам по роли" position="bottom">
+                <Link href="/" className="text-sm text-gray-500 hover:text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg">
+                  📄 Все документы
+                </Link>
+              </Tooltip>
               {user && [30, 1148].includes(parseInt(user.id)) && (
                 <Link href="/admin" className="text-sm text-gray-500 hover:text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg">
                   ⚙️ Настройки
@@ -282,16 +285,20 @@ export default function DashboardPage() {
               <h2 className="text-sm font-semibold text-gray-900 mb-3">📊 Аналитика</h2>
               <div className="flex flex-wrap gap-2">
                 {data.legal_dashboard_access && (
-                  <Link href="/dashboard-legal"
-                    className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                    Юридический дашборд →
-                  </Link>
+                  <Tooltip text="Обзор документов с юридической точки зрения: статусы согласования, риски, сроки" position="bottom">
+                    <Link href="/dashboard-legal"
+                      className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                      Юридический дашборд →
+                    </Link>
+                  </Tooltip>
                 )}
                 {data.finance_dashboard_access && (
-                  <Link href="/dashboard-finance"
-                    className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                    Финансовый дашборд →
-                  </Link>
+                  <Tooltip text="Суммы договоров, оплаты и дебиторская задолженность по компаниям" position="bottom">
+                    <Link href="/dashboard-finance"
+                      className="text-sm text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                      Финансовый дашборд →
+                    </Link>
+                  </Tooltip>
                 )}
               </div>
             </div>
