@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
+import Tooltip from '@/app/components/Tooltip'
 
 const supabaseClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,39 +67,47 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
-        >
-          <span className="hidden md:inline">+ Новый документ</span>
-          <span className="md:hidden">+ Новый</span>
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🖥️ Рабочий стол</span>
-          <span className="md:hidden">🖥️</span>
-        </Link>
-        <Link
-          href="/counterparties"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🏢 Контрагенты</span>
-          <span className="md:hidden">🏢</span>
-        </Link>
+        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента">
+          <Link
+            href="/contracts/new"
+            className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+          >
+            <span className="hidden md:inline">+ Новый документ</span>
+            <span className="md:hidden">+ Новый</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор">
+          <Link
+            href="/dashboard"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🖥️ Рабочий стол</span>
+            <span className="md:hidden">🖥️</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности">
+          <Link
+            href="/counterparties"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🏢 Контрагенты</span>
+            <span className="md:hidden">🏢</span>
+          </Link>
+        </Tooltip>
 
         {/* Профиль пользователя */}
-        <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
-          ❓
-          <span className="hidden md:inline"> Помощь</span>
-          {helpUnread > 0 && (
+        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом">
+          <Link href="/help"
+            className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+            ❓
+            <span className="hidden md:inline"> Помощь</span>
+            {helpUnread > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
               {helpUnread}
             </span>
           )}
         </Link>
+        </Tooltip>
         {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
           <Link href="/admin"
             className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">

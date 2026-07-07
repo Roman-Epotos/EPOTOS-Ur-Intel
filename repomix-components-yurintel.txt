@@ -63,6 +63,7 @@ app/components/MyDocuments.tsx
 app/components/PersonalStats.tsx
 app/components/RelatedDocuments.tsx
 app/components/SignedDocumentUploadModal.tsx
+app/components/Tooltip.tsx
 app/hooks/useBitrixAuth.ts
 
 ================================================================
@@ -1620,6 +1621,7 @@ import { useState, useEffect } from 'react'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
+import Tooltip from '@/app/components/Tooltip'
 
 const supabaseClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1682,34 +1684,41 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
-        <Link
-          href="/contracts/new"
-          className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
-        >
-          <span className="hidden md:inline">+ Новый документ</span>
-          <span className="md:hidden">+ Новый</span>
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🖥️ Рабочий стол</span>
-          <span className="md:hidden">🖥️</span>
-        </Link>
-        <Link
-          href="/counterparties"
-          className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span className="hidden md:inline">🏢 Контрагенты</span>
-          <span className="md:hidden">🏢</span>
-        </Link>
+        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента">
+          <Link
+            href="/contracts/new"
+            className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+          >
+            <span className="hidden md:inline">+ Новый документ</span>
+            <span className="md:hidden">+ Новый</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор">
+          <Link
+            href="/dashboard"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🖥️ Рабочий стол</span>
+            <span className="md:hidden">🖥️</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности">
+          <Link
+            href="/counterparties"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🏢 Контрагенты</span>
+            <span className="md:hidden">🏢</span>
+          </Link>
+        </Tooltip>
 
         {/* Профиль пользователя */}
-        <Link href="/help"
-          className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
-          ❓
-          <span className="hidden md:inline"> Помощь</span>
-          {helpUnread > 0 && (
+        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом">
+          <Link href="/help"
+            className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+            ❓
+            <span className="hidden md:inline"> Помощь</span>
+            {helpUnread > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
               {helpUnread}
             </span>
@@ -2543,6 +2552,49 @@ export default function SignedDocumentUploadModal({
 }
 
 ================
+File: app/components/Tooltip.tsx
+================
+'use client'
+
+import { useState, ReactNode } from 'react'
+
+interface TooltipProps {
+  text: string
+  children?: ReactNode
+  position?: 'top' | 'bottom' | 'left' | 'right'
+}
+
+export default function Tooltip({ text, children, position = 'top' }: TooltipProps) {
+  const [show, setShow] = useState(false)
+
+  const positionClasses = {
+    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
+    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
+    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
+    right: 'left-full top-1/2 -translate-y-1/2 ml-2',
+  }
+
+  return (
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children ?? (
+        <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center cursor-help hover:bg-gray-300 flex-shrink-0">
+          ?
+        </span>
+      )}
+      {show && (
+        <span className={`absolute z-50 ${positionClasses[position]} w-56 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none leading-snug`}>
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
+================
 File: app/components/FloatingAssistant.tsx
 ================
 'use client'
@@ -2830,6 +2882,7 @@ File: app/components/ExecutionControl.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
+import Tooltip from '@/app/components/Tooltip'
 
 interface ChecklistItem {
   id: string
@@ -3527,7 +3580,10 @@ export default function ExecutionControl({
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Тип операции</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                    Тип операции
+                    <Tooltip text="Аванс — предоплата до начала работ. Частичная оплата — любой промежуточный платёж. Окончательный расчёт — последний платёж, закрывающий сумму договора." />
+                  </label>
                   <select value={paymentType} onChange={e => setPaymentType(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                     <option value="аванс">Аванс</option>
@@ -5522,6 +5578,7 @@ import { buildChatHtml } from '@/utils/chatPrint'
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import Tooltip from '@/app/components/Tooltip'
 import ApproveButton from '@/app/components/ApproveButton'
 import DelegateApproveCheckbox from '@/app/components/DelegateApproveCheckbox'
 import DeleteContractButton from '@/app/components/DeleteContractButton'
@@ -7329,11 +7386,14 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                       </div>
                     ))}
                     {canUploadSigned && contractStatus !== 'подписан' && contractStatus !== 'на_исполнении' && (
-                      <button
-                        onClick={() => setShowConfirmAllModal(true)}
-                        className="mt-2 text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                        ✅ Подтвердить — все документы загружены
-                      </button>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <button
+                          onClick={() => setShowConfirmAllModal(true)}
+                          className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                          ✅ Подтвердить — все документы загружены
+                        </button>
+                        <Tooltip text="Нажмите, когда все нужные подписанные экземпляры уже загружены выше. Документ перейдёт в статус «Подписан», после чего станет доступна генерация чек-листа контроля исполнения." />
+                      </div>
                     )}
                   </div>
                 )}
@@ -7987,7 +8047,10 @@ ${edoBlock}
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Роль</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                  Роль
+                  <Tooltip text="Обязательный — должен согласовать или отклонить, без этого документ не пройдёт согласование. Для информирования — должен ознакомиться (кнопка «Ознакомлен»), не блокирует итог. Наблюдатель — просто видит документ и чаты, от него ничего не требуется." />
+                </label>
                 <select value={newParticipantRole}
                   onChange={e => setNewParticipantRole(e.target.value as 'required' | 'optional' | 'observer')}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
