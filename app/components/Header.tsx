@@ -67,7 +67,7 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
-        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента">
+        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента" position="bottom">
           <Link
             href="/contracts/new"
             className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
@@ -76,7 +76,7 @@ export default function Header() {
             <span className="md:hidden">+ Новый</span>
           </Link>
         </Tooltip>
-        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор">
+        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор" position="bottom">
           <Link
             href="/dashboard"
             className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
@@ -85,7 +85,7 @@ export default function Header() {
             <span className="md:hidden">🖥️</span>
           </Link>
         </Tooltip>
-        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности">
+        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности" position="bottom">
           <Link
             href="/counterparties"
             className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
@@ -96,7 +96,7 @@ export default function Header() {
         </Tooltip>
 
         {/* Профиль пользователя */}
-        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом">
+        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом" position="bottom">
           <Link href="/help"
             className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
             ❓
