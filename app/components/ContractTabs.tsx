@@ -11,6 +11,7 @@ import RelatedDocuments from '@/app/components/RelatedDocuments'
 import SignedDocumentUploadModal from '@/app/components/SignedDocumentUploadModal'
 import AIAnalysis from '@/app/components/AIAnalysis'
 import ExecutionControl from '@/app/components/ExecutionControl'
+import StorageConfirm from '@/app/components/StorageConfirm'
 
 const ATTACHMENT_TYPES = [
   'Спецификация',
@@ -72,6 +73,8 @@ interface Contract {
   company_prefix?: string | null
   signed_at?: string | null
   signed_by_name?: string | null
+  storage_confirmed_at?: string | null
+  storage_confirmed_by_name?: string | null
   signed_by_bitrix_id?: number | null
   signed_file_url?: string | null
   signed_file_name?: string | null
@@ -1007,6 +1010,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
     { id: 'approval', label: 'Согласование', icon: '✅' },
     { id: 'ai', label: 'EpotosGPT', icon: '🤖' },
     { id: 'execution', label: 'Контроль исполнения', icon: '📋' },
+    { id: 'storage', label: 'Хранение', icon: '📦' },
     { id: 'related', label: 'Связанные документы', icon: '🔗' },
     { id: 'history', label: 'История', icon: '📜' },
   ]
@@ -2316,6 +2320,17 @@ ${edoBlock}
                   .filter((id): id is number => id != null) ?? []
               }
               onStatusChange={(newStatus) => setContractStatus(newStatus)}
+            />
+          )}
+
+          {activeTab === 'storage' && (
+            <StorageConfirm
+              contractId={contract.id}
+              contractStatus={contractStatus}
+              storageConfirmedAt={contract.storage_confirmed_at ?? null}
+              storageConfirmedByName={contract.storage_confirmed_by_name ?? null}
+              userName={user?.name}
+              userId={user?.id ? parseInt(user.id) : undefined}
             />
           )}
 
