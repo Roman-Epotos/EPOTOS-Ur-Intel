@@ -23,6 +23,7 @@ export default function ApproveButton({ contractId, contractStatus, authorBitrix
   return (
     <Link
       href={`/contracts/${contractId}/approve`}
+      data-tour="start-approval-btn"
       className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
     >
       Отправить на согласование

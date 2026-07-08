@@ -108,6 +108,7 @@ app/api/user-role/route.ts
 app/api/versions/route.ts
 app/lib/documentTypes.ts
 app/lib/notify.ts
+app/lib/tours.ts
 
 ================================================================
 Files
@@ -5374,6 +5375,69 @@ export function renderDocumentTypeOptions() {
 }
 
 ================
+File: app/lib/tours.ts
+================
+export interface TourStep {
+  route: string
+  selector: string
+  title: string
+  description: string
+  popoverSide?: 'top' | 'bottom' | 'left' | 'right'
+  // Шаг завершается сменой страницы на заранее неизвестный URL
+  // (например, отправка формы создания документа → страница нового
+  // договора с только что сгенерированным ID)
+  advanceOnRouteChange?: boolean
+}
+
+export interface Tour {
+  id: string
+  title: string
+  description: string
+  icon: string
+  steps: TourStep[]
+}
+
+export const TOURS: Tour[] = [
+  {
+    id: 'create-and-approve',
+    title: 'Создать и запустить согласование',
+    description: 'Как создать новый документ и отправить его на согласование',
+    icon: '📄',
+    steps: [
+      {
+        route: '/',
+        selector: '[data-tour="new-doc-btn"]',
+        title: 'Создание документа',
+        description: 'Нажмите сюда, чтобы создать новый документ',
+        popoverSide: 'bottom',
+      },
+      {
+        route: '/contracts/new',
+        selector: '[data-tour="submit-new-doc-btn"]',
+        title: 'Заполните форму',
+        description: 'Укажите компанию, контрагента и остальные поля формы, затем нажмите эту кнопку',
+        popoverSide: 'top',
+        advanceOnRouteChange: true,
+      },
+      {
+        route: '/contracts/*',
+        selector: '[data-tour="tab-approval"]',
+        title: 'Вкладка «Согласование»',
+        description: 'Документ создан. Перейдите на эту вкладку, чтобы запустить согласование',
+        popoverSide: 'bottom',
+      },
+      {
+        route: '/contracts/*',
+        selector: '[data-tour="start-approval-btn"]',
+        title: 'Запуск согласования',
+        description: 'Нажмите эту кнопку, чтобы отправить документ на согласование',
+        popoverSide: 'top',
+      },
+    ],
+  },
+]
+
+================
 File: app/api/approvals/[sessionId]/revoke/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -6237,6 +6301,76 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/api/upload-proxy/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+// Отключаем встроенный body parser Next.js для больших файлов
+export const fetchCache = 'force-no-store'
+
+const CORS = { 'Access-Control-Allow-Origin': '*' }
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
+  })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const bucket = formData.get('bucket') as string | null
+    const path = formData.get('path') as string | null
+
+    if (!file || !bucket || !path) {
+      return NextResponse.json({ error: 'file, bucket и path обязательны' }, { status: 400, headers: CORS })
+    }
+
+    const allowedBuckets = ['counterparty-docs', 'contracts']
+    if (!allowedBuckets.includes(bucket)) {
+      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
+    }
+
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = new Uint8Array(arrayBuffer)
+
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true,
+      })
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500, headers: CORS })
+    }
+
+    const { data: publicData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+
+    return NextResponse.json({
+      success: true,
+      public_url: publicData.publicUrl,
+    }, { headers: CORS })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
   }
 }
 
@@ -7376,76 +7510,6 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
-File: app/api/upload-proxy/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export const maxDuration = 60
-export const dynamic = 'force-dynamic'
-
-// Отключаем встроенный body parser Next.js для больших файлов
-export const fetchCache = 'force-no-store'
-
-const CORS = { 'Access-Control-Allow-Origin': '*' }
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
-  })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const bucket = formData.get('bucket') as string | null
-    const path = formData.get('path') as string | null
-
-    if (!file || !bucket || !path) {
-      return NextResponse.json({ error: 'file, bucket и path обязательны' }, { status: 400, headers: CORS })
-    }
-
-    const allowedBuckets = ['counterparty-docs', 'contracts']
-    if (!allowedBuckets.includes(bucket)) {
-      return NextResponse.json({ error: 'Недопустимый bucket' }, { status: 403, headers: CORS })
-    }
-
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = new Uint8Array(arrayBuffer)
-
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(path, buffer, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: true,
-      })
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500, headers: CORS })
-    }
-
-    const { data: publicData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(path)
-
-    return NextResponse.json({
-      success: true,
-      public_url: publicData.publicUrl,
-    }, { headers: CORS })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS })
   }
 }
 

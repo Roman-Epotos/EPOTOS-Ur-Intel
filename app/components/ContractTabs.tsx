@@ -1042,7 +1042,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         {/* Вкладки */}
         <div className="flex gap-0 mb-0 flex-wrap">
           {TABS.map((tab, index) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} data-tour={`tab-${tab.id}`}
               className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium rounded-t-xl border border-b-0 transition-all ${
                 activeTab === tab.id
                   ? 'bg-white border-gray-200 text-gray-900 z-10 relative shadow-sm'

@@ -65,6 +65,7 @@ app/components/RelatedDocuments.tsx
 app/components/SignedDocumentUploadModal.tsx
 app/components/StorageConfirm.tsx
 app/components/Tooltip.tsx
+app/components/TourManager.tsx
 app/hooks/useBitrixAuth.ts
 
 ================================================================
@@ -894,6 +895,7 @@ export default function ApproveButton({ contractId, contractStatus, authorBitrix
   return (
     <Link
       href={`/contracts/${contractId}/approve`}
+      data-tour="start-approval-btn"
       className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
     >
       Отправить на согласование
@@ -1937,6 +1939,164 @@ export default function RelatedDocuments({
 }
 
 ================
+File: app/components/TourManager.tsx
+================
+'use client'
+
+import { useEffect, useRef } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
+import { driver, Driver } from 'driver.js'
+import 'driver.js/dist/driver.css'
+import { TOURS } from '@/app/lib/tours'
+
+const STORAGE_KEY = 'epotos_active_tour'
+
+interface ActiveTourState {
+  tourId: string
+  stepIndex: number
+}
+
+// advanceOnRouteChange: true — для шагов, где переход на следующий шаг
+// происходит НЕ по клику на подсвеченный элемент (например — отправка
+// формы, после которой открывается страница с заранее неизвестным ID).
+// Как только пользователь уходит со route этого шага — считаем шаг
+// пройденным и сразу переключаемся на следующий.
+
+export function startTour(tourId: string) {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tourId, stepIndex: 0 }))
+  window.dispatchEvent(new Event('epotos-tour-updated'))
+}
+
+function getState(): ActiveTourState | null {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  return raw ? JSON.parse(raw) : null
+}
+
+function saveState(state: ActiveTourState | null) {
+  if (state) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  else sessionStorage.removeItem(STORAGE_KEY)
+}
+
+// route вида '/contracts/*' означает "любая страница, начинающаяся с /contracts/"
+function matchesRoute(stepRoute: string, currentPath: string): boolean {
+  if (stepRoute === currentPath) return true
+  if (stepRoute.endsWith('/*')) return currentPath.startsWith(stepRoute.slice(0, -2))
+  return false
+}
+
+function waitForElement(selector: string, timeout = 4000): Promise<Element | null> {
+  return new Promise(resolve => {
+    const found = document.querySelector(selector)
+    if (found) { resolve(found); return }
+    const start = Date.now()
+    const interval = setInterval(() => {
+      const el = document.querySelector(selector)
+      if (el || Date.now() - start > timeout) {
+        clearInterval(interval)
+        resolve(el)
+      }
+    }, 100)
+  })
+}
+
+export default function TourManager() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const driverRef = useRef<Driver | null>(null)
+  const isNavigatingRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let cleanupClick: (() => void) | null = null
+
+    const runStep = async () => {
+      const state = getState()
+      if (!state) return
+
+      const tour = TOURS.find(t => t.id === state.tourId)
+      if (!tour) { saveState(null); return }
+
+      let stepIndex = state.stepIndex
+      let step = tour.steps[stepIndex]
+      if (!step) { saveState(null); return }
+
+      // Шаг завершается сменой страницы на заранее неизвестный URL
+      // (например, отправка формы) — если мы уже ушли с его route,
+      // считаем шаг пройденным и сразу берём следующий
+      if (step.advanceOnRouteChange && !matchesRoute(step.route, pathname)) {
+        const next = tour.steps[stepIndex + 1]
+        if (!next) { saveState(null); return }
+        stepIndex += 1
+        step = next
+        saveState({ tourId: state.tourId, stepIndex })
+      }
+
+      // Этот шаг относится к другой странице — ждём, пока туда перейдут
+      if (!matchesRoute(step.route, pathname)) return
+
+      const el = await waitForElement(step.selector)
+      if (cancelled || !el) return
+
+      const isLast = stepIndex === tour.steps.length - 1
+
+      // Клик по САМОМУ подсвеченному элементу продвигает тур дальше —
+      // элемент при этом выполняет и свою обычную работу (переход по
+      // ссылке, переключение вкладки, отправка формы)
+      const handleElementClick = () => {
+        isNavigatingRef.current = true
+        if (isLast) {
+          saveState(null)
+        } else {
+          saveState({ tourId: state.tourId, stepIndex: stepIndex + 1 })
+        }
+        driverRef.current?.destroy()
+        window.dispatchEvent(new Event('epotos-tour-updated'))
+        isNavigatingRef.current = false
+      }
+      el.addEventListener('click', handleElementClick, { once: true })
+      cleanupClick = () => el.removeEventListener('click', handleElementClick)
+
+      driverRef.current?.destroy()
+      driverRef.current = driver({
+        onDestroyStarted: () => {
+          if (!isNavigatingRef.current) {
+            saveState(null)
+            driverRef.current?.destroy()
+          }
+        },
+        onCloseClick: () => {
+          saveState(null)
+          driverRef.current?.destroy()
+        },
+        steps: [{
+          element: step.selector,
+          popover: {
+            title: step.title,
+            description: step.description,
+            side: step.popoverSide ?? 'bottom',
+            showButtons: ['close'],
+          },
+        }],
+      })
+      driverRef.current.drive()
+    }
+
+    runStep()
+
+    const handler = () => runStep()
+    window.addEventListener('epotos-tour-updated', handler)
+
+    return () => {
+      cancelled = true
+      cleanupClick?.()
+      window.removeEventListener('epotos-tour-updated', handler)
+    }
+  }, [pathname])
+
+  return null
+}
+
+================
 File: app/components/AuthGuard.tsx
 ================
 'use client'
@@ -2828,6 +2988,7 @@ export default function Header() {
         <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента" position="bottom">
           <Link
             href="/contracts/new"
+            data-tour="new-doc-btn"
             className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
           >
             <span className="hidden md:inline">+ Новый документ</span>
@@ -6737,7 +6898,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         {/* Вкладки */}
         <div className="flex gap-0 mb-0 flex-wrap">
           {TABS.map((tab, index) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} data-tour={`tab-${tab.id}`}
               className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium rounded-t-xl border border-b-0 transition-all ${
                 activeTab === tab.id
                   ? 'bg-white border-gray-200 text-gray-900 z-10 relative shadow-sm'

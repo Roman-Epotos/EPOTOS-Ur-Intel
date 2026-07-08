@@ -70,6 +70,7 @@ export default function Header() {
         <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента" position="bottom">
           <Link
             href="/contracts/new"
+            data-tour="new-doc-btn"
             className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
           >
             <span className="hidden md:inline">+ Новый документ</span>
