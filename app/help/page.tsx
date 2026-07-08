@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter, usePathname } from 'next/navigation'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 import { createClient } from '@supabase/supabase-js'
+import { startTour } from '@/app/components/TourManager'
+import { TOURS } from '@/app/lib/tours'
 
 const supabaseClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -270,7 +273,9 @@ function ChatWindow({ request, currentUserId, currentUserName, isAdmin, onStatus
 
 export default function HelpPage() {
   const { user, loading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant'>('assistant')
+  const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant' | 'tours'>('assistant')
+  const router = useRouter()
+  const pathname = usePathname()
 
   // ЭПОТОС-Ассистент
   const coreUrl = 'https://epotos-core.vercel.app'
@@ -441,6 +446,10 @@ export default function HelpPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assistant' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             🤖 ЭПОТОС-Ассистент
           </button>
+          <button onClick={() => setActiveTab('tours')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'tours' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            🎓 Обучение
+          </button>
           <button onClick={() => setActiveTab('faq')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'faq' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             ❓ Частые вопросы
@@ -470,6 +479,28 @@ export default function HelpPage() {
             </button>
           )}
         </div>
+
+        {/* Обучение */}
+        {activeTab === 'tours' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {TOURS.map(tour => (
+              <div key={tour.id} className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-2xl mb-2">{tour.icon}</div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">{tour.title}</h3>
+                <p className="text-xs text-gray-500 mb-4">{tour.description}</p>
+                <button
+                  onClick={() => {
+                    startTour(tour.id)
+                    const firstRoute = tour.steps[0].route.replace('/*', '')
+                    if (pathname !== firstRoute) router.push(firstRoute)
+                  }}
+                  className="text-xs font-medium bg-gray-900 text-white px-3 py-2 rounded-lg hover:bg-gray-700">
+                  ▶ Запустить
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* FAQ */}
         {activeTab === 'faq' && (
