@@ -65,7 +65,6 @@ app/components/RelatedDocuments.tsx
 app/components/SignedDocumentUploadModal.tsx
 app/components/StorageConfirm.tsx
 app/components/Tooltip.tsx
-app/components/TourManager.tsx
 app/hooks/useBitrixAuth.ts
 
 ================================================================
@@ -1903,42 +1902,6 @@ export default function RelatedDocuments({
 }
 
 ================
-File: app/components/ApproveButton.tsx
-================
-'use client'
-
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Props {
-  contractId: string
-  contractStatus: string
-  authorBitrixId: number | null
-  allowOthers: boolean
-}
-
-export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
-  const { user } = useBitrixAuth()
-
-  const adminIds = [30, 1148]
-  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
-  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
-
-  if (contractStatus !== 'черновик') return null
-  if (!isAdmin && !isAuthor && !allowOthers) return null
-
-  return (
-    <Link
-      href={`/contracts/${contractId}/approve`}
-      data-tour="start-approval-btn"
-      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
-    >
-      Отправить на согласование
-    </Link>
-  )
-}
-
-================
 File: app/components/AuthGuard.tsx
 ================
 'use client'
@@ -2615,6 +2578,41 @@ export default function Tooltip({ text, children, position = 'top' }: TooltipPro
 }
 
 ================
+File: app/components/ApproveButton.tsx
+================
+'use client'
+
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  contractId: string
+  contractStatus: string
+  authorBitrixId: number | null
+  allowOthers: boolean
+}
+
+export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
+  const { user } = useBitrixAuth()
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
+
+  if (contractStatus !== 'черновик') return null
+  if (!isAdmin && !isAuthor && !allowOthers) return null
+
+  return (
+    <Link
+      href={`/contracts/${contractId}/approve`}
+      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
+    >
+      Отправить на согласование
+    </Link>
+  )
+}
+
+================
 File: app/components/FloatingAssistant.tsx
 ================
 'use client'
@@ -2837,164 +2835,6 @@ export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
           <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
         </div>
       ))}
-    </div>
-  )
-}
-
-================
-File: app/components/Header.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import Link from 'next/link'
-import { createClient } from '@supabase/supabase-js'
-import Tooltip from '@/app/components/Tooltip'
-
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-)
-
-export default function Header() {
-  const { user, loading } = useBitrixAuth()
-  const [helpUnread, setHelpUnread] = useState(0)
-
-  const checkUnread = async (userId: string) => {
-    const baseUrl = 'https://epotos-ur-intel.vercel.app'
-    const isAdminUser = [30, 1148].includes(parseInt(userId))
-    const url = isAdminUser
-      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
-      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
-    const r = await fetch(url)
-    const d = await r.json()
-    const reqs = d.requests ?? []
-    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
-      if (req.status === 'resolved') return false
-      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
-      if (!lastSeen) return true
-      const msgs = req.support_messages ?? []
-      if (msgs.length === 0) return false
-      const lastMsgAt = msgs[msgs.length - 1].created_at
-      return new Date(lastMsgAt) > new Date(lastSeen)
-    }).length
-    setHelpUnread(unread)
-  }
-
-  useEffect(() => {
-    if (!user) return
-    checkUnread(user.id)
-
-    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
-    const channel = supabaseClient
-      .channel('header_support_unread')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'support_messages',
-      }, (payload) => {
-        const msg = payload.new as { author_bitrix_id: number }
-        // Показываем только если сообщение от другого пользователя
-        if (msg.author_bitrix_id !== parseInt(user.id)) {
-          checkUnread(user.id)
-        }
-      })
-      .subscribe()
-
-    return () => { supabaseClient.removeChannel(channel) }
-  }, [user])
-
-  return (
-    <div className="flex items-center justify-between mb-4 md:mb-8">
-      <div className="min-w-0 flex-1">
-        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">ЮрИнтел-Эпотос</h1>
-        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
-      </div>
-
-      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
-        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента" position="bottom">
-          <Link
-            href="/contracts/new"
-            data-tour="new-doc-btn"
-            className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
-          >
-            <span className="hidden md:inline">+ Новый документ</span>
-            <span className="md:hidden">+ Новый</span>
-          </Link>
-        </Tooltip>
-        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор" position="bottom">
-          <Link
-            href="/dashboard"
-            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-          >
-            <span className="hidden md:inline">🖥️ Рабочий стол</span>
-            <span className="md:hidden">🖥️</span>
-          </Link>
-        </Tooltip>
-        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности" position="bottom">
-          <Link
-            href="/counterparties"
-            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-          >
-            <span className="hidden md:inline">🏢 Контрагенты</span>
-            <span className="md:hidden">🏢</span>
-          </Link>
-        </Tooltip>
-
-        {/* Профиль пользователя */}
-        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом" position="bottom">
-          <Link href="/help"
-            className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
-            ❓
-            <span className="hidden md:inline"> Помощь</span>
-            {helpUnread > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-              {helpUnread}
-            </span>
-          )}
-        </Link>
-        </Tooltip>
-        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
-          <Link href="/admin"
-            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            Настройки
-          </Link>
-        )}
-        {!loading && (
-          <div className="flex items-center gap-1 md:gap-3">
-            {user ? (
-              <div className="flex items-center gap-2">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="hidden md:block text-right">
-                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
-                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                  ?
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Гость</p>
-                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -4359,6 +4199,163 @@ function HistorySection({ contractId }: { contractId: string }) {
 }
 
 ================
+File: app/components/Header.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
+import Tooltip from '@/app/components/Tooltip'
+
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+)
+
+export default function Header() {
+  const { user, loading } = useBitrixAuth()
+  const [helpUnread, setHelpUnread] = useState(0)
+
+  const checkUnread = async (userId: string) => {
+    const baseUrl = 'https://epotos-ur-intel.vercel.app'
+    const isAdminUser = [30, 1148].includes(parseInt(userId))
+    const url = isAdminUser
+      ? `${baseUrl}/api/support-requests?bitrix_user_id=${userId}`
+      : `${baseUrl}/api/support-requests?bitrix_user_id=${userId}&my_requests=true`
+    const r = await fetch(url)
+    const d = await r.json()
+    const reqs = d.requests ?? []
+    const unread = reqs.filter((req: { id: string; status: string; support_messages?: { created_at: string }[] }) => {
+      if (req.status === 'resolved') return false
+      const lastSeen = localStorage.getItem(`support_seen_${req.id}`)
+      if (!lastSeen) return true
+      const msgs = req.support_messages ?? []
+      if (msgs.length === 0) return false
+      const lastMsgAt = msgs[msgs.length - 1].created_at
+      return new Date(lastMsgAt) > new Date(lastSeen)
+    }).length
+    setHelpUnread(unread)
+  }
+
+  useEffect(() => {
+    if (!user) return
+    checkUnread(user.id)
+
+    // Realtime — обновляем счётчик при новом сообщении от другого пользователя
+    const channel = supabaseClient
+      .channel('header_support_unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_messages',
+      }, (payload) => {
+        const msg = payload.new as { author_bitrix_id: number }
+        // Показываем только если сообщение от другого пользователя
+        if (msg.author_bitrix_id !== parseInt(user.id)) {
+          checkUnread(user.id)
+        }
+      })
+      .subscribe()
+
+    return () => { supabaseClient.removeChannel(channel) }
+  }, [user])
+
+  return (
+    <div className="flex items-center justify-between mb-4 md:mb-8">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-lg md:text-2xl font-semibold text-gray-900 truncate">ЮрИнтел-Эпотос</h1>
+        <p className="hidden md:block text-sm text-gray-500 mt-1">Система управления юридическими документами</p>
+      </div>
+
+      <div className="flex items-center gap-1.5 md:gap-4 ml-2 flex-shrink-0">
+        <Tooltip text="Создать новый документ — договор, доп. соглашение и т.д. Начните с выбора компании и контрагента" position="bottom">
+          <Link
+            href="/contracts/new"
+            className="bg-gray-900 text-white px-2 py-2 md:px-4 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+          >
+            <span className="hidden md:inline">+ Новый документ</span>
+            <span className="md:hidden">+ Новый</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Дашборды: список всех договоров компании, статусы, юридический и финансовый обзор" position="bottom">
+          <Link
+            href="/dashboard"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🖥️ Рабочий стол</span>
+            <span className="md:hidden">🖥️</span>
+          </Link>
+        </Tooltip>
+        <Tooltip text="Реестр контрагентов — российские и иностранные компании, физлица, с проверкой надёжности" position="bottom">
+          <Link
+            href="/counterparties"
+            className="text-xs md:text-sm text-gray-600 border border-gray-200 px-2 py-2 md:px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="hidden md:inline">🏢 Контрагенты</span>
+            <span className="md:hidden">🏢</span>
+          </Link>
+        </Tooltip>
+
+        {/* Профиль пользователя */}
+        <Tooltip text="Инструкция по работе с системой, частые вопросы и чат с ЭПОТОС-Ассистентом" position="bottom">
+          <Link href="/help"
+            className="relative text-xs text-gray-500 border border-gray-200 px-2 py-2 md:px-3 md:py-1.5 rounded-lg hover:bg-gray-50">
+            ❓
+            <span className="hidden md:inline"> Помощь</span>
+            {helpUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
+              {helpUnread}
+            </span>
+          )}
+        </Link>
+        </Tooltip>
+        {!loading && user && [30, 1148].includes(parseInt(user.id)) && (
+          <Link href="/admin"
+            className="hidden md:block text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            Настройки
+          </Link>
+        )}
+        {!loading && (
+          <div className="flex items-center gap-1 md:gap-3">
+            {user ? (
+              <div className="flex items-center gap-2">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs md:text-sm font-medium">
+                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="hidden md:block text-right">
+                  <p className="text-sm font-medium text-gray-900 leading-tight">{user.name}</p>
+                  <p className="text-xs text-gray-500 leading-tight">{user.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
+                  ?
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Гость</p>
+                  <p className="text-xs text-gray-400">Войдите через Битрикс24</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+================
 File: app/components/MyDocuments.tsx
 ================
 'use client'
@@ -4680,186 +4677,6 @@ export default function MyDocuments({ data, loading, onReload }: MyDocumentsProp
       </div>
     </div>
   )
-}
-
-================
-File: app/components/TourManager.tsx
-================
-'use client'
-
-import { useEffect, useRef } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { driver, Driver } from 'driver.js'
-import 'driver.js/dist/driver.css'
-import { TOURS } from '@/app/lib/tours'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-const STORAGE_KEY = 'epotos_active_tour'
-
-interface ActiveTourState {
-  tourId: string
-  stepIndex: number
-}
-
-// advanceOnRouteChange: true — для шагов, где переход на следующий шаг
-// происходит НЕ по клику на подсвеченный элемент (например — отправка
-// формы, после которой открывается страница с заранее неизвестным ID).
-// Как только пользователь уходит со route этого шага — считаем шаг
-// пройденным и сразу переключаемся на следующий.
-
-export function startTour(tourId: string) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tourId, stepIndex: 0 }))
-  window.dispatchEvent(new Event('epotos-tour-updated'))
-}
-
-function getState(): ActiveTourState | null {
-  const raw = sessionStorage.getItem(STORAGE_KEY)
-  return raw ? JSON.parse(raw) : null
-}
-
-function saveState(state: ActiveTourState | null) {
-  if (state) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  else sessionStorage.removeItem(STORAGE_KEY)
-}
-
-// route вида '/contracts/*' означает "любая страница, начинающаяся с /contracts/"
-function matchesRoute(stepRoute: string, currentPath: string): boolean {
-  if (stepRoute === currentPath) return true
-  if (stepRoute.endsWith('/*')) return currentPath.startsWith(stepRoute.slice(0, -2))
-  return false
-}
-
-function waitForElement(selector: string, timeout = 4000): Promise<Element | null> {
-  return new Promise(resolve => {
-    const found = document.querySelector(selector)
-    if (found) { resolve(found); return }
-    const start = Date.now()
-    const interval = setInterval(() => {
-      const el = document.querySelector(selector)
-      if (el || Date.now() - start > timeout) {
-        clearInterval(interval)
-        resolve(el)
-      }
-    }, 100)
-  })
-}
-
-
-
-export default function TourManager() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const { loading: authLoading } = useBitrixAuth()
-  const driverRef = useRef<Driver | null>(null)
-  const isNavigatingRef = useRef(false)
-
-  useEffect(() => {
-    let cancelled = false
-    let cleanupClick: (() => void) | null = null
-
-    const runStep = async () => {
-      const state = getState()
-      if (!state) return
-
-      const tour = TOURS.find(t => t.id === state.tourId)
-      if (!tour) { saveState(null); return }
-
-      let stepIndex = state.stepIndex
-      let step = tour.steps[stepIndex]
-      if (!step) { saveState(null); return }
-
-      // Шаг завершается сменой страницы на заранее неизвестный URL
-      // (например, отправка формы) — если мы уже ушли с его route,
-      // считаем шаг пройденным и сразу берём следующий
-      if (step.advanceOnRouteChange && !matchesRoute(step.route, pathname)) {
-        const next = tour.steps[stepIndex + 1]
-        if (!next) { saveState(null); return }
-        stepIndex += 1
-        step = next
-        saveState({ tourId: state.tourId, stepIndex })
-      }
-
-      // Этот шаг относится к другой странице — ждём, пока туда перейдут
-      if (!matchesRoute(step.route, pathname)) return
-
-      // Пока не разрешилась проверка авторизации/роли — не ищем элемент
-      // вообще: именно от неё зависит, появится ли доп. кнопка в шапке
-      // (например, «Настройки» у админа), а значит и итоговая вёрстка
-      if (authLoading) return
-
-      const el = await waitForElement(step.selector)
-      if (cancelled || !el) return
-
-      const isLast = stepIndex === tour.steps.length - 1
-
-      // Клик по САМОМУ подсвеченному элементу продвигает тур дальше —
-      // элемент при этом выполняет и свою обычную работу (переход по
-      // ссылке, переключение вкладки, отправка формы)
-      const handleElementClick = () => {
-        isNavigatingRef.current = true
-        if (isLast) {
-          saveState(null)
-        } else {
-          saveState({ tourId: state.tourId, stepIndex: stepIndex + 1 })
-        }
-        driverRef.current?.destroy()
-        window.dispatchEvent(new Event('epotos-tour-updated'))
-        isNavigatingRef.current = false
-      }
-      el.addEventListener('click', handleElementClick, { once: true })
-
-      // Страница могла ещё не закончить асинхронную подгрузку контента
-      // (виджеты «Мои документы»/статистика) в момент запуска подсветки —
-      // из-за этого вёрстка сдвигается уже ПОСЛЕ того, как driver.js
-      // вычислил позицию. Следим за изменением размеров и пересчитываем.
-      const resizeObserver = new ResizeObserver(() => {
-        driverRef.current?.refresh()
-      })
-      resizeObserver.observe(document.body)
-
-      cleanupClick = () => {
-        el.removeEventListener('click', handleElementClick)
-        resizeObserver.disconnect()
-      }
-
-      driverRef.current?.destroy()
-      driverRef.current = driver({
-        onDestroyStarted: () => {
-          if (!isNavigatingRef.current) {
-            saveState(null)
-            driverRef.current?.destroy()
-          }
-        },
-        onCloseClick: () => {
-          saveState(null)
-          driverRef.current?.destroy()
-        },
-        steps: [{
-          element: step.selector,
-          popover: {
-            title: step.title,
-            description: step.description,
-            side: step.popoverSide ?? 'bottom',
-            showButtons: ['close'],
-          },
-        }],
-      })
-      driverRef.current.drive()
-    }
-
-    runStep()
-
-    const handler = () => runStep()
-    window.addEventListener('epotos-tour-updated', handler)
-
-    return () => {
-      cancelled = true
-      cleanupClick?.()
-      window.removeEventListener('epotos-tour-updated', handler)
-    }
-  }, [pathname, authLoading])
-
-  return null
 }
 
 ================
@@ -6920,7 +6737,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
         {/* Вкладки */}
         <div className="flex gap-0 mb-0 flex-wrap">
           {TABS.map((tab, index) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} data-tour={`tab-${tab.id}`}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium rounded-t-xl border border-b-0 transition-all ${
                 activeTab === tab.id
                   ? 'bg-white border-gray-200 text-gray-900 z-10 relative shadow-sm'

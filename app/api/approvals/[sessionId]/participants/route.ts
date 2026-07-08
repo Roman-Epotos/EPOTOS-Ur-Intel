@@ -23,12 +23,39 @@ export async function POST(
     // Проверяем что сессия активна
     const { data: session } = await supabase
       .from('approval_sessions')
-      .select('id, status')
+      .select('id, status, initiated_by_bitrix_id')
       .eq('id', sessionId)
       .single()
 
     if (!session || (session.status !== 'active' && session.status !== 'completed')) {
       return NextResponse.json({ error: 'Сессия согласования не активна' }, { status: 400 })
+    }
+
+    // Запрещаем добавлять инициатора документа как участника согласования
+    let authorBitrixId: number | null = null
+    if (contract_id) {
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('author_bitrix_id')
+        .eq('id', contract_id)
+        .single()
+      authorBitrixId = contractData?.author_bitrix_id ?? null
+    }
+    if (bitrix_user_id && (bitrix_user_id === session.initiated_by_bitrix_id || bitrix_user_id === authorBitrixId)) {
+      return NextResponse.json({ error: 'Нельзя добавить инициатора документа как участника согласования' }, { status: 400 })
+    }
+
+    // Запрещаем добавлять уже существующего участника
+    if (bitrix_user_id) {
+      const { data: existing } = await supabase
+        .from('approval_participants')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('bitrix_user_id', bitrix_user_id)
+        .limit(1)
+      if (existing && existing.length > 0) {
+        return NextResponse.json({ error: 'Этот сотрудник уже добавлен в согласование' }, { status: 400 })
+      }
     }
 
     // Добавляем участника
