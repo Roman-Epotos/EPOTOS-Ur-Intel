@@ -880,7 +880,7 @@ export default function NewContractPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={loading || !finalNumber} data-tour="submit-new-doc-btn"
+              <button type="submit" disabled={loading || !finalNumber}
                 className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
                 {loading ? 'Сохранение...' : 'Создать документ'}
               </button>

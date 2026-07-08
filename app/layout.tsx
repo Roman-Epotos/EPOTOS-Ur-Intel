@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { DocumentContextProvider } from "@/app/context/DocumentContext";
 import FloatingAssistant from "@/app/components/FloatingAssistant";
-import TourManager from "@/app/components/TourManager";
 
 
 const geistSans = Geist({
@@ -38,7 +37,6 @@ export default function RootLayout({
         <DocumentContextProvider>
           {children}
           <FloatingAssistant />
-          <TourManager />
         </DocumentContextProvider>
       </body>
     </html>
