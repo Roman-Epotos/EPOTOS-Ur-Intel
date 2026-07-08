@@ -111,7 +111,20 @@ export default function TourManager() {
         isNavigatingRef.current = false
       }
       el.addEventListener('click', handleElementClick, { once: true })
-      cleanupClick = () => el.removeEventListener('click', handleElementClick)
+
+      // Страница могла ещё не закончить асинхронную подгрузку контента
+      // (виджеты «Мои документы»/статистика) в момент запуска подсветки —
+      // из-за этого вёрстка сдвигается уже ПОСЛЕ того, как driver.js
+      // вычислил позицию. Следим за изменением размеров и пересчитываем.
+      const resizeObserver = new ResizeObserver(() => {
+        driverRef.current?.refresh()
+      })
+      resizeObserver.observe(document.body)
+
+      cleanupClick = () => {
+        el.removeEventListener('click', handleElementClick)
+        resizeObserver.disconnect()
+      }
 
       driverRef.current?.destroy()
       driverRef.current = driver({
