@@ -56,6 +56,33 @@ function waitForElement(selector: string, timeout = 4000): Promise<Element | nul
   })
 }
 
+// Ждём, пока позиция элемента не перестанет меняться (например, из-за
+// асинхронной подгрузки роли пользователя — появление кнопки «Настройки»
+// у админа сдвигает весь ряд кнопок в шапке). Считаем позицию стабильной
+// после 3 проверок подряд без изменений.
+function waitForStablePosition(el: Element, requiredStableChecks = 3, intervalMs = 150, maxWaitMs = 3000): Promise<void> {
+  return new Promise(resolve => {
+    let lastRect = el.getBoundingClientRect()
+    let stableCount = 0
+    const start = Date.now()
+    const check = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.x === lastRect.x && rect.y === lastRect.y) {
+        stableCount++
+      } else {
+        stableCount = 0
+        lastRect = rect
+      }
+      if (stableCount >= requiredStableChecks || Date.now() - start > maxWaitMs) {
+        resolve()
+      } else {
+        setTimeout(check, intervalMs)
+      }
+    }
+    setTimeout(check, intervalMs)
+  })
+}
+
 export default function TourManager() {
   const router = useRouter()
   const pathname = usePathname()
@@ -93,6 +120,9 @@ export default function TourManager() {
 
       const el = await waitForElement(step.selector)
       if (cancelled || !el) return
+
+      await waitForStablePosition(el)
+      if (cancelled) return
 
       const isLast = stepIndex === tour.steps.length - 1
 
