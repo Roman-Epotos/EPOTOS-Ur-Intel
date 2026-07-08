@@ -868,42 +868,6 @@ export default function AIGenerate({ contractId, onGenerated }: Props) {
 }
 
 ================
-File: app/components/ApproveButton.tsx
-================
-'use client'
-
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Props {
-  contractId: string
-  contractStatus: string
-  authorBitrixId: number | null
-  allowOthers: boolean
-}
-
-export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
-  const { user } = useBitrixAuth()
-
-  const adminIds = [30, 1148]
-  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
-  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
-
-  if (contractStatus !== 'черновик') return null
-  if (!isAdmin && !isAuthor && !allowOthers) return null
-
-  return (
-    <Link
-      href={`/contracts/${contractId}/approve`}
-      data-tour="start-approval-btn"
-      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
-    >
-      Отправить на согласование
-    </Link>
-  )
-}
-
-================
 File: app/components/CancelApprovalButton.tsx
 ================
 'use client'
@@ -1939,161 +1903,39 @@ export default function RelatedDocuments({
 }
 
 ================
-File: app/components/TourManager.tsx
+File: app/components/ApproveButton.tsx
 ================
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { driver, Driver } from 'driver.js'
-import 'driver.js/dist/driver.css'
-import { TOURS } from '@/app/lib/tours'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
-const STORAGE_KEY = 'epotos_active_tour'
-
-interface ActiveTourState {
-  tourId: string
-  stepIndex: number
+interface Props {
+  contractId: string
+  contractStatus: string
+  authorBitrixId: number | null
+  allowOthers: boolean
 }
 
-// advanceOnRouteChange: true — для шагов, где переход на следующий шаг
-// происходит НЕ по клику на подсвеченный элемент (например — отправка
-// формы, после которой открывается страница с заранее неизвестным ID).
-// Как только пользователь уходит со route этого шага — считаем шаг
-// пройденным и сразу переключаемся на следующий.
+export default function ApproveButton({ contractId, contractStatus, authorBitrixId, allowOthers }: Props) {
+  const { user } = useBitrixAuth()
 
-export function startTour(tourId: string) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tourId, stepIndex: 0 }))
-  window.dispatchEvent(new Event('epotos-tour-updated'))
-}
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
 
-function getState(): ActiveTourState | null {
-  const raw = sessionStorage.getItem(STORAGE_KEY)
-  return raw ? JSON.parse(raw) : null
-}
+  if (contractStatus !== 'черновик') return null
+  if (!isAdmin && !isAuthor && !allowOthers) return null
 
-function saveState(state: ActiveTourState | null) {
-  if (state) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  else sessionStorage.removeItem(STORAGE_KEY)
-}
-
-// route вида '/contracts/*' означает "любая страница, начинающаяся с /contracts/"
-function matchesRoute(stepRoute: string, currentPath: string): boolean {
-  if (stepRoute === currentPath) return true
-  if (stepRoute.endsWith('/*')) return currentPath.startsWith(stepRoute.slice(0, -2))
-  return false
-}
-
-function waitForElement(selector: string, timeout = 4000): Promise<Element | null> {
-  return new Promise(resolve => {
-    const found = document.querySelector(selector)
-    if (found) { resolve(found); return }
-    const start = Date.now()
-    const interval = setInterval(() => {
-      const el = document.querySelector(selector)
-      if (el || Date.now() - start > timeout) {
-        clearInterval(interval)
-        resolve(el)
-      }
-    }, 100)
-  })
-}
-
-export default function TourManager() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const driverRef = useRef<Driver | null>(null)
-  const isNavigatingRef = useRef(false)
-
-  useEffect(() => {
-    let cancelled = false
-    let cleanupClick: (() => void) | null = null
-
-    const runStep = async () => {
-      const state = getState()
-      if (!state) return
-
-      const tour = TOURS.find(t => t.id === state.tourId)
-      if (!tour) { saveState(null); return }
-
-      let stepIndex = state.stepIndex
-      let step = tour.steps[stepIndex]
-      if (!step) { saveState(null); return }
-
-      // Шаг завершается сменой страницы на заранее неизвестный URL
-      // (например, отправка формы) — если мы уже ушли с его route,
-      // считаем шаг пройденным и сразу берём следующий
-      if (step.advanceOnRouteChange && !matchesRoute(step.route, pathname)) {
-        const next = tour.steps[stepIndex + 1]
-        if (!next) { saveState(null); return }
-        stepIndex += 1
-        step = next
-        saveState({ tourId: state.tourId, stepIndex })
-      }
-
-      // Этот шаг относится к другой странице — ждём, пока туда перейдут
-      if (!matchesRoute(step.route, pathname)) return
-
-      const el = await waitForElement(step.selector)
-      if (cancelled || !el) return
-
-      const isLast = stepIndex === tour.steps.length - 1
-
-      // Клик по САМОМУ подсвеченному элементу продвигает тур дальше —
-      // элемент при этом выполняет и свою обычную работу (переход по
-      // ссылке, переключение вкладки, отправка формы)
-      const handleElementClick = () => {
-        isNavigatingRef.current = true
-        if (isLast) {
-          saveState(null)
-        } else {
-          saveState({ tourId: state.tourId, stepIndex: stepIndex + 1 })
-        }
-        driverRef.current?.destroy()
-        window.dispatchEvent(new Event('epotos-tour-updated'))
-        isNavigatingRef.current = false
-      }
-      el.addEventListener('click', handleElementClick, { once: true })
-      cleanupClick = () => el.removeEventListener('click', handleElementClick)
-
-      driverRef.current?.destroy()
-      driverRef.current = driver({
-        onDestroyStarted: () => {
-          if (!isNavigatingRef.current) {
-            saveState(null)
-            driverRef.current?.destroy()
-          }
-        },
-        onCloseClick: () => {
-          saveState(null)
-          driverRef.current?.destroy()
-        },
-        steps: [{
-          element: step.selector,
-          popover: {
-            title: step.title,
-            description: step.description,
-            side: step.popoverSide ?? 'bottom',
-            showButtons: ['close'],
-          },
-        }],
-      })
-      driverRef.current.drive()
-    }
-
-    runStep()
-
-    const handler = () => runStep()
-    window.addEventListener('epotos-tour-updated', handler)
-
-    return () => {
-      cancelled = true
-      cleanupClick?.()
-      window.removeEventListener('epotos-tour-updated', handler)
-    }
-  }, [pathname])
-
-  return null
+  return (
+    <Link
+      href={`/contracts/${contractId}/approve`}
+      data-tour="start-approval-btn"
+      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700"
+    >
+      Отправить на согласование
+    </Link>
+  )
 }
 
 ================
@@ -2773,6 +2615,164 @@ export default function Tooltip({ text, children, position = 'top' }: TooltipPro
 }
 
 ================
+File: app/components/TourManager.tsx
+================
+'use client'
+
+import { useEffect, useRef } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
+import { driver, Driver } from 'driver.js'
+import 'driver.js/dist/driver.css'
+import { TOURS } from '@/app/lib/tours'
+
+const STORAGE_KEY = 'epotos_active_tour'
+
+interface ActiveTourState {
+  tourId: string
+  stepIndex: number
+}
+
+// advanceOnRouteChange: true — для шагов, где переход на следующий шаг
+// происходит НЕ по клику на подсвеченный элемент (например — отправка
+// формы, после которой открывается страница с заранее неизвестным ID).
+// Как только пользователь уходит со route этого шага — считаем шаг
+// пройденным и сразу переключаемся на следующий.
+
+export function startTour(tourId: string) {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tourId, stepIndex: 0 }))
+  window.dispatchEvent(new Event('epotos-tour-updated'))
+}
+
+function getState(): ActiveTourState | null {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  return raw ? JSON.parse(raw) : null
+}
+
+function saveState(state: ActiveTourState | null) {
+  if (state) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  else sessionStorage.removeItem(STORAGE_KEY)
+}
+
+// route вида '/contracts/*' означает "любая страница, начинающаяся с /contracts/"
+function matchesRoute(stepRoute: string, currentPath: string): boolean {
+  if (stepRoute === currentPath) return true
+  if (stepRoute.endsWith('/*')) return currentPath.startsWith(stepRoute.slice(0, -2))
+  return false
+}
+
+function waitForElement(selector: string, timeout = 4000): Promise<Element | null> {
+  return new Promise(resolve => {
+    const found = document.querySelector(selector)
+    if (found) { resolve(found); return }
+    const start = Date.now()
+    const interval = setInterval(() => {
+      const el = document.querySelector(selector)
+      if (el || Date.now() - start > timeout) {
+        clearInterval(interval)
+        resolve(el)
+      }
+    }, 100)
+  })
+}
+
+export default function TourManager() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const driverRef = useRef<Driver | null>(null)
+  const isNavigatingRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let cleanupClick: (() => void) | null = null
+
+    const runStep = async () => {
+      const state = getState()
+      if (!state) return
+
+      const tour = TOURS.find(t => t.id === state.tourId)
+      if (!tour) { saveState(null); return }
+
+      let stepIndex = state.stepIndex
+      let step = tour.steps[stepIndex]
+      if (!step) { saveState(null); return }
+
+      // Шаг завершается сменой страницы на заранее неизвестный URL
+      // (например, отправка формы) — если мы уже ушли с его route,
+      // считаем шаг пройденным и сразу берём следующий
+      if (step.advanceOnRouteChange && !matchesRoute(step.route, pathname)) {
+        const next = tour.steps[stepIndex + 1]
+        if (!next) { saveState(null); return }
+        stepIndex += 1
+        step = next
+        saveState({ tourId: state.tourId, stepIndex })
+      }
+
+      // Этот шаг относится к другой странице — ждём, пока туда перейдут
+      if (!matchesRoute(step.route, pathname)) return
+
+      const el = await waitForElement(step.selector)
+      if (cancelled || !el) return
+
+      const isLast = stepIndex === tour.steps.length - 1
+
+      // Клик по САМОМУ подсвеченному элементу продвигает тур дальше —
+      // элемент при этом выполняет и свою обычную работу (переход по
+      // ссылке, переключение вкладки, отправка формы)
+      const handleElementClick = () => {
+        isNavigatingRef.current = true
+        if (isLast) {
+          saveState(null)
+        } else {
+          saveState({ tourId: state.tourId, stepIndex: stepIndex + 1 })
+        }
+        driverRef.current?.destroy()
+        window.dispatchEvent(new Event('epotos-tour-updated'))
+        isNavigatingRef.current = false
+      }
+      el.addEventListener('click', handleElementClick, { once: true })
+      cleanupClick = () => el.removeEventListener('click', handleElementClick)
+
+      driverRef.current?.destroy()
+      driverRef.current = driver({
+        onDestroyStarted: () => {
+          if (!isNavigatingRef.current) {
+            saveState(null)
+            driverRef.current?.destroy()
+          }
+        },
+        onCloseClick: () => {
+          saveState(null)
+          driverRef.current?.destroy()
+        },
+        steps: [{
+          element: step.selector,
+          popover: {
+            title: step.title,
+            description: step.description,
+            side: step.popoverSide ?? 'bottom',
+            showButtons: ['close'],
+          },
+        }],
+      })
+      driverRef.current.drive()
+    }
+
+    runStep()
+
+    const handler = () => runStep()
+    window.addEventListener('epotos-tour-updated', handler)
+
+    return () => {
+      cancelled = true
+      cleanupClick?.()
+      window.removeEventListener('epotos-tour-updated', handler)
+    }
+  }, [pathname])
+
+  return null
+}
+
+================
 File: app/components/FloatingAssistant.tsx
 ================
 'use client'
@@ -2910,6 +2910,92 @@ export default function FloatingAssistant() {
         </div>
       )}
     </>
+  )
+}
+
+================
+File: app/components/PersonalStats.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import type { MyDocsData } from '@/app/components/MyDocuments'
+
+interface Stats {
+  total: number
+  on_approval: number
+  edo: number
+  signed: number
+  drafts: number
+  pending_my_action: number
+}
+
+interface PersonalStatsProps {
+  myDocsData: MyDocsData | null
+}
+
+export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
+        const contractsData = await contractsRes.json()
+        const contracts = contractsData.contracts ?? []
+        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
+          (myDocsData?.optional_approvals?.length ?? 0)
+
+        setStats({
+          total: contracts.length,
+          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
+          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
+          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
+          pending_my_action: pendingActions,
+        })
+      } catch {
+        console.error('Ошибка загрузки статистики')
+      }
+    }
+
+    load()
+  }, [user?.id, myDocsData])
+
+  if (authLoading || !stats) return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
+          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const items = [
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
+    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
+    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
+    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {items.map(stat => (
+        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+          <p className="text-sm text-gray-500">{stat.label}</p>
+          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -3067,92 +3153,6 @@ export default function Header() {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-================
-File: app/components/PersonalStats.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import type { MyDocsData } from '@/app/components/MyDocuments'
-
-interface Stats {
-  total: number
-  on_approval: number
-  edo: number
-  signed: number
-  drafts: number
-  pending_my_action: number
-}
-
-interface PersonalStatsProps {
-  myDocsData: MyDocsData | null
-}
-
-export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [stats, setStats] = useState<Stats | null>(null)
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    const load = async () => {
-      try {
-        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
-        const contractsData = await contractsRes.json()
-        const contracts = contractsData.contracts ?? []
-        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
-          (myDocsData?.optional_approvals?.length ?? 0)
-
-        setStats({
-          total: contracts.length,
-          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
-          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
-          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
-          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
-          pending_my_action: pendingActions,
-        })
-      } catch {
-        console.error('Ошибка загрузки статистики')
-      }
-    }
-
-    load()
-  }, [user?.id, myDocsData])
-
-  if (authLoading || !stats) return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
-          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
-        </div>
-      ))}
-    </div>
-  )
-
-  const items = [
-    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
-    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
-    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
-    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
-    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
-  ]
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {items.map(stat => (
-        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
-          <p className="text-sm text-gray-500">{stat.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
-        </div>
-      ))}
     </div>
   )
 }
