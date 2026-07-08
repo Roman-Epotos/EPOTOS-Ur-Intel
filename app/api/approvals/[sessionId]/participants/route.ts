@@ -155,39 +155,14 @@ export async function POST(
         })
     }
 
-    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
-    const { data: remainingParticipants } = await supabase
-      .from('approval_participants')
-      .select('role, status')
-      .eq('session_id', sessionId)
+    // Добавление участника НИКОГДА не должно само завершать согласование —
+    // это может произойти только при реальном голосовании (route approve).
+    // Раньше здесь был ошибочно скопирован блок из обработчика удаления
+    // участника — он немедленно закрывал документ обратно, если новый
+    // участник был не обязательным (его статус не входит в проверку по
+    // обязательным, а старые обязательные уже были согласованы).
 
-    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
-    const allDone = required.length > 0 && required.every(p =>
-      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
-    )
-
-    if (allDone) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', contract_id)
-
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'completed' })
-        .eq('id', sessionId)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Согласование завершено',
-        details: 'Все обязательные участники согласовали документ после удаления участника.',
-        user_name: 'Система',
-      })
-
-      return NextResponse.json({ success: true, all_approved: true })
-    }
-
-    return NextResponse.json({ success: true, all_approved: false })
+    return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -275,39 +250,14 @@ export async function DELETE(
         user_name: admin_name ?? 'Система',
       })
 
-    // Проверяем — если все оставшиеся обязательные согласовали, завершаем согласование
-    const { data: remainingParticipants } = await supabase
-      .from('approval_participants')
-      .select('role, status')
-      .eq('session_id', sessionId)
+    // Добавление участника НИКОГДА не должно само завершать согласование —
+    // это может произойти только при реальном голосовании (route approve).
+    // Раньше здесь был ошибочно скопирован блок из обработчика удаления
+    // участника — он немедленно закрывал документ обратно, если новый
+    // участник был не обязательным (его статус не входит в проверку по
+    // обязательным, а старые обязательные уже были согласованы).
 
-    const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
-    const allDone = required.length > 0 && required.every(p =>
-      ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
-    )
-
-    if (allDone) {
-      await supabase
-        .from('contracts')
-        .update({ status: 'согласован' })
-        .eq('id', contract_id)
-
-      await supabase
-        .from('approval_sessions')
-        .update({ status: 'completed' })
-        .eq('id', sessionId)
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Согласование завершено',
-        details: 'Все обязательные участники согласовали документ после удаления участника.',
-        user_name: 'Система',
-      })
-
-      return NextResponse.json({ success: true, all_approved: true })
-    }
-
-    return NextResponse.json({ success: true, all_approved: false })
+    return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
