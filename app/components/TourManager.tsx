@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { driver, Driver } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import { TOURS } from '@/app/lib/tours'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
 
 const STORAGE_KEY = 'epotos_active_tour'
 
@@ -56,36 +57,12 @@ function waitForElement(selector: string, timeout = 4000): Promise<Element | nul
   })
 }
 
-// Ждём, пока позиция элемента не перестанет меняться (например, из-за
-// асинхронной подгрузки роли пользователя — появление кнопки «Настройки»
-// у админа сдвигает весь ряд кнопок в шапке). Считаем позицию стабильной
-// после 3 проверок подряд без изменений.
-function waitForStablePosition(el: Element, requiredStableChecks = 3, intervalMs = 150, maxWaitMs = 3000): Promise<void> {
-  return new Promise(resolve => {
-    let lastRect = el.getBoundingClientRect()
-    let stableCount = 0
-    const start = Date.now()
-    const check = () => {
-      const rect = el.getBoundingClientRect()
-      if (rect.x === lastRect.x && rect.y === lastRect.y) {
-        stableCount++
-      } else {
-        stableCount = 0
-        lastRect = rect
-      }
-      if (stableCount >= requiredStableChecks || Date.now() - start > maxWaitMs) {
-        resolve()
-      } else {
-        setTimeout(check, intervalMs)
-      }
-    }
-    setTimeout(check, intervalMs)
-  })
-}
+
 
 export default function TourManager() {
   const router = useRouter()
   const pathname = usePathname()
+  const { loading: authLoading } = useBitrixAuth()
   const driverRef = useRef<Driver | null>(null)
   const isNavigatingRef = useRef(false)
 
@@ -118,11 +95,13 @@ export default function TourManager() {
       // Этот шаг относится к другой странице — ждём, пока туда перейдут
       if (!matchesRoute(step.route, pathname)) return
 
+      // Пока не разрешилась проверка авторизации/роли — не ищем элемент
+      // вообще: именно от неё зависит, появится ли доп. кнопка в шапке
+      // (например, «Настройки» у админа), а значит и итоговая вёрстка
+      if (authLoading) return
+
       const el = await waitForElement(step.selector)
       if (cancelled || !el) return
-
-      await waitForStablePosition(el)
-      if (cancelled) return
 
       const isLast = stepIndex === tour.steps.length - 1
 
@@ -191,7 +170,7 @@ export default function TourManager() {
       cleanupClick?.()
       window.removeEventListener('epotos-tour-updated', handler)
     }
-  }, [pathname])
+  }, [pathname, authLoading])
 
   return null
 }
