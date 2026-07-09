@@ -15,7 +15,7 @@ interface LegalDashData {
     contracts: { id: string; number: string; title: string; counterparty: string; status: string }
   }[]
   unsigned_contracts: {
-    id: string; number: string; title: string; counterparty: string; created_at: string
+    id: string; number: string; title: string; counterparty: string; created_at: string; author_name?: string
   }[]
   overdue_checklist: {
     id: string; title: string; due_date: string; contract_id: string
@@ -257,6 +257,9 @@ export default function LegalDashboardPage() {
                         className="cursor-pointer hover:bg-orange-50 rounded-lg p-3 border border-orange-100 transition-colors">
                         <p className="text-sm font-medium text-gray-900">{c.number}</p>
                         <p className="text-xs text-gray-500 truncate">{c.counterparty}</p>
+                        {c.author_name && (
+                          <p className="text-xs text-gray-400">Инициатор: {c.author_name}</p>
+                        )}
                         <p className="text-xs text-gray-400">
                           Согласован {new Date(c.created_at).toLocaleDateString('ru-RU')}
                         </p>
