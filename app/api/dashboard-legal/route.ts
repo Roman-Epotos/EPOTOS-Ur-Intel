@@ -6,6 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY!
 )
 
+const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
+
 export async function GET(request: NextRequest) {
   try {
     const period = request.nextUrl.searchParams.get('period') ?? '30'
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
       .from('approval_sessions')
       .select(`
         id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
+        contracts!inner ( id, number, title, counterparty, status, author_bitrix_id )
       `)
       .eq('status', 'active')
       .lt('deadline', new Date().toISOString())
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
     // 3. Согласованы но без подписанных экземпляров
     let unsignedQuery = supabase
       .from('contracts')
-      .select('id, number, title, counterparty, created_at')
+      .select('id, number, title, counterparty, created_at, author_bitrix_id')
       .eq('status', 'согласован')
       .order('created_at', { ascending: true })
       .limit(10)
@@ -81,7 +83,7 @@ export async function GET(request: NextRequest) {
       .from('contract_checklist')
       .select(`
         id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
+        contracts!inner ( id, number, title, author_bitrix_id )
       `)
       .eq('is_done', false)
       .is('bitrix_task_id', null)
@@ -122,12 +124,61 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Обогащаем карточки именами инициаторов — один пакетный запрос к Bitrix
+    // ВАЖНО: Supabase типизирует contracts!inner как массив, хотя по факту
+    // там один объект (foreign-key связь 1:1) — берём первый элемент
+    const authorIds = new Set<number>()
+    ;(overdueApprovals ?? []).forEach((a: { contracts?: { author_bitrix_id?: number }[] }) => {
+      const id = a.contracts?.[0]?.author_bitrix_id
+      if (id) authorIds.add(id)
+    })
+    ;(unsignedContracts ?? []).forEach((c: { author_bitrix_id?: number }) => {
+      if (c.author_bitrix_id) authorIds.add(c.author_bitrix_id)
+    })
+    ;(overdueChecklist ?? []).forEach((item: { contracts?: { author_bitrix_id?: number }[] }) => {
+      const id = item.contracts?.[0]?.author_bitrix_id
+      if (id) authorIds.add(id)
+    })
+
+    const authorNames: Record<number, string> = {}
+    if (authorIds.size > 0) {
+      try {
+        const resp = await fetch(`${WEBHOOK}user.get.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filter: { ID: Array.from(authorIds) },
+            select: ['ID', 'NAME', 'LAST_NAME'],
+          }),
+        })
+        const userData = await resp.json()
+        ;(userData.result ?? []).forEach((u: { ID: string; NAME: string; LAST_NAME: string }) => {
+          authorNames[parseInt(u.ID)] = `${u.LAST_NAME} ${u.NAME}`.trim()
+        })
+      } catch {
+        // молча игнорируем — карточки просто останутся без имени инициатора
+      }
+    }
+
+    const enrichedApprovals = (overdueApprovals ?? []).map((a: { contracts?: { author_bitrix_id?: number }[] }) => ({
+      ...a,
+      contracts: a.contracts?.[0] ? [{ ...a.contracts[0], author_name: authorNames[a.contracts[0].author_bitrix_id ?? 0] ?? null }] : a.contracts,
+    }))
+    const enrichedUnsigned = (unsignedContracts ?? []).map((c: { author_bitrix_id?: number }) => ({
+      ...c,
+      author_name: authorNames[c.author_bitrix_id ?? 0] ?? null,
+    }))
+    const enrichedChecklist = (overdueChecklist ?? []).map((item: { contracts?: { author_bitrix_id?: number }[] }) => ({
+      ...item,
+      contracts: item.contracts?.[0] ? [{ ...item.contracts[0], author_name: authorNames[item.contracts[0].author_bitrix_id ?? 0] ?? null }] : item.contracts,
+    }))
+
     return NextResponse.json({
       status_stats: statusStats,
       company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
+      overdue_approvals: enrichedApprovals,
+      unsigned_contracts: enrichedUnsigned,
+      overdue_checklist: enrichedChecklist,
       weekly_dynamics: weeklyMap,
       company_period_stats: companyPeriodStats,
       total_period: recentContracts?.length ?? 0,

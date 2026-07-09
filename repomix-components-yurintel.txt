@@ -6181,6 +6181,13 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   const [newParticipantName, setNewParticipantName] = useState('')
   const [newParticipantRole, setNewParticipantRole] = useState<'required' | 'optional' | 'observer'>('required')
   const [participantFilter, setParticipantFilter] = useState<'all' | 'required' | 'optional' | 'observer'>('all')
+
+  const [showChangeNumberModal, setShowChangeNumberModal] = useState(false)
+  const [newDocNumber, setNewDocNumber] = useState('')
+  const [changeNumberComment, setChangeNumberComment] = useState('')
+  const [changeNumberSaving, setChangeNumberSaving] = useState(false)
+  const [changeNumberError, setChangeNumberError] = useState('')
+  const [canChangeNumber, setCanChangeNumber] = useState(false)
   const [addingParticipant, setAddingParticipant] = useState(false)
   const [addParticipantOptions, setAddParticipantOptions] = useState<{id: string, user_name: string, bitrix_user_id: number, department: string | null}[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -6221,6 +6228,50 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
   }
 
   const LOCKED_STATUSES = ['согласован', 'на_подписи_в_эдо', 'загружен_частично', 'подписан', 'на_исполнении']
+
+  useEffect(() => {
+    if (!user?.id) { setCanChangeNumber(false); return }
+    const uid = parseInt(user.id)
+    if (ADMIN_IDS.includes(uid)) { setCanChangeNumber(true); return }
+    if (LOCKED_STATUSES.includes(contractStatus)) { setCanChangeNumber(false); return }
+    if (contract.author_bitrix_id === uid) { setCanChangeNumber(true); return }
+    if (session?.initiated_by_bitrix_id === uid) { setCanChangeNumber(true); return }
+    const isLegalParticipant = session?.approval_participants?.some(
+      p => p.bitrix_user_id === uid && ['legal', 'legal_gc'].includes(p.stage)
+    )
+    setCanChangeNumber(!!isLegalParticipant)
+  }, [user?.id, contractStatus, session, contract.author_bitrix_id])
+
+  const handleChangeNumber = async () => {
+    if (!newDocNumber.trim() || !changeNumberComment.trim()) {
+      setChangeNumberError('Укажите новый номер и причину изменения')
+      return
+    }
+    setChangeNumberSaving(true)
+    setChangeNumberError('')
+    try {
+      const res = await fetch(`${baseUrl}/api/contracts/${contract.id}/change-number`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          new_number: newDocNumber,
+          comment: changeNumberComment,
+          user_name: user?.name ?? 'Система',
+          user_bitrix_id: user?.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setChangeNumberError(data.error ?? 'Ошибка сохранения')
+        return
+      }
+      window.location.reload()
+    } catch {
+      setChangeNumberError('Ошибка соединения')
+    } finally {
+      setChangeNumberSaving(false)
+    }
+  }
   const isLocked = LOCKED_STATUSES.includes(contractStatus)
   const CAN_EDIT_ROLES = ['admin', 'developer', 'gc_manager', 'legal_gc', 'legal']
   const canEditDetails = !isLocked && (
@@ -6720,6 +6771,12 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
             <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">← Назад</Link>
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-semibold text-gray-900">{contract.number}</h1>
+            {canChangeNumber && (
+              <button onClick={() => { setNewDocNumber(contract.number); setShowChangeNumberModal(true) }}
+                className="text-gray-300 hover:text-gray-600 text-sm" title="Изменить номер документа">
+                ✏️
+              </button>
+            )}
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[contractStatus] ?? 'bg-gray-100 text-gray-700'}`}>
               {statusLabel[contractStatus] ?? contractStatus}
             </span>
@@ -8147,6 +8204,41 @@ ${edoBlock}
               <button onClick={() => { setRevokingParticipantId(null); setRevokeReason(''); setRevokeError('') }}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal изменения номера документа */}
+      {showChangeNumberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Изменить номер документа</h3>
+            {changeNumberError && <p className="text-sm text-red-600 mb-3">{changeNumberError}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Новый номер</label>
+                <input value={newDocNumber} onChange={e => setNewDocNumber(e.target.value)}
+                  placeholder="ТХ-ДОГ-2026/07/1"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Причина изменения <span className="text-red-500">*</span></label>
+                <textarea value={changeNumberComment} onChange={e => setChangeNumberComment(e.target.value)}
+                  placeholder="Например: опечатка в номере при создании"
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={handleChangeNumber} disabled={changeNumberSaving}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                {changeNumberSaving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+              <button onClick={() => { setShowChangeNumberModal(false); setChangeNumberError('') }}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
+                Отмена
               </button>
             </div>
           </div>
