@@ -125,18 +125,20 @@ export async function GET(request: NextRequest) {
     })
 
     // Обогащаем карточки именами инициаторов — один пакетный запрос к Bitrix
-    // ВАЖНО: Supabase типизирует contracts!inner как массив, хотя по факту
-    // там один объект (foreign-key связь 1:1) — берём первый элемент
+    // ВАЖНО: TypeScript типизирует contracts!inner как массив, но реально
+    // Supabase отдаёт один объект (подтверждено — фронтенд уже читает
+    // a.contracts.number напрямую) — приводим тип, а не подстраиваем логику
+    type WithAuthor = { contracts?: { author_bitrix_id?: number } }
     const authorIds = new Set<number>()
-    ;(overdueApprovals ?? []).forEach((a: { contracts?: { author_bitrix_id?: number }[] }) => {
-      const id = a.contracts?.[0]?.author_bitrix_id
+    ;(overdueApprovals ?? []).forEach((a) => {
+      const id = (a as unknown as WithAuthor).contracts?.author_bitrix_id
       if (id) authorIds.add(id)
     })
     ;(unsignedContracts ?? []).forEach((c: { author_bitrix_id?: number }) => {
       if (c.author_bitrix_id) authorIds.add(c.author_bitrix_id)
     })
-    ;(overdueChecklist ?? []).forEach((item: { contracts?: { author_bitrix_id?: number }[] }) => {
-      const id = item.contracts?.[0]?.author_bitrix_id
+    ;(overdueChecklist ?? []).forEach((item) => {
+      const id = (item as unknown as WithAuthor).contracts?.author_bitrix_id
       if (id) authorIds.add(id)
     })
 
@@ -160,18 +162,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const enrichedApprovals = (overdueApprovals ?? []).map((a: { contracts?: { author_bitrix_id?: number }[] }) => ({
-      ...a,
-      contracts: a.contracts?.[0] ? [{ ...a.contracts[0], author_name: authorNames[a.contracts[0].author_bitrix_id ?? 0] ?? null }] : a.contracts,
-    }))
+    const enrichedApprovals = (overdueApprovals ?? []).map((a) => {
+      const contracts = (a as unknown as WithAuthor).contracts
+      return {
+        ...a,
+        contracts: contracts ? { ...contracts, author_name: authorNames[contracts.author_bitrix_id ?? 0] ?? null } : contracts,
+      }
+    })
     const enrichedUnsigned = (unsignedContracts ?? []).map((c: { author_bitrix_id?: number }) => ({
       ...c,
       author_name: authorNames[c.author_bitrix_id ?? 0] ?? null,
     }))
-    const enrichedChecklist = (overdueChecklist ?? []).map((item: { contracts?: { author_bitrix_id?: number }[] }) => ({
-      ...item,
-      contracts: item.contracts?.[0] ? [{ ...item.contracts[0], author_name: authorNames[item.contracts[0].author_bitrix_id ?? 0] ?? null }] : item.contracts,
-    }))
+    const enrichedChecklist = (overdueChecklist ?? []).map((item) => {
+      const contracts = (item as unknown as WithAuthor).contracts
+      return {
+        ...item,
+        contracts: contracts ? { ...contracts, author_name: authorNames[contracts.author_bitrix_id ?? 0] ?? null } : contracts,
+      }
+    })
 
     return NextResponse.json({
       status_stats: statusStats,

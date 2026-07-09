@@ -1312,6 +1312,193 @@ export async function PATCH(
 }
 
 ================
+File: app/api/attachments/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 60
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+export async function GET(request: NextRequest) {
+  const contract_id = request.nextUrl.searchParams.get('contract_id')
+  if (!contract_id) {
+    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('document_attachments')
+    .select('*')
+    .eq('contract_id', contract_id)
+    .order('attachment_type')
+    .order('number')
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  return NextResponse.json({ attachments: data ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const contentType = request.headers.get('content-type') ?? ''
+
+    // JSON режим — файл уже загружен напрямую в Storage
+    if (contentType.includes('application/json')) {
+      const { file_url, file_name, file_type, contract_id, attachment_type, title, comment, user_name, user_bitrix_id } = await request.json()
+
+      if (!file_url || !contract_id || !attachment_type) {
+        return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+      }
+
+      const { count } = await supabase
+        .from('document_attachments')
+        .select('*', { count: 'exact', head: true })
+        .eq('contract_id', contract_id)
+        .eq('attachment_type', attachment_type)
+
+      const nextNumber = (count ?? 0) + 1
+
+      const { error: dbError } = await supabase.from('document_attachments').insert({
+        contract_id,
+        attachment_type,
+        number: nextNumber,
+        title: title || null,
+        file_url,
+        file_name,
+        comment: comment || null,
+        uploaded_by_name: user_name || 'Система',
+        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
+      })
+
+      if (dbError) return NextResponse.json({ error: dbError.message }, { status: 400 })
+
+      await supabase.from('contract_logs').insert({
+        contract_id,
+        action: 'Добавлен дополнительный материал',
+        details: `Тип: ${attachment_type}, файл: ${file_name}`,
+        user_name: user_name || 'Система',
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // FormData режим — старый способ (файл маленький)
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+    const contract_id = formData.get('contract_id') as string
+    const attachment_type = formData.get('attachment_type') as string
+    const title = formData.get('title') as string
+    const comment = formData.get('comment') as string
+    const user_name = formData.get('user_name') as string
+    const user_bitrix_id = formData.get('user_bitrix_id') as string
+
+    if (!file || !contract_id || !attachment_type) {
+      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
+    }
+
+    const { count } = await supabase
+      .from('document_attachments')
+      .select('*', { count: 'exact', head: true })
+      .eq('contract_id', contract_id)
+      .eq('attachment_type', attachment_type)
+
+    const nextNumber = (count ?? 0) + 1
+
+    const safeFileName = file.name
+      .replace(/[а-яёА-ЯЁ]/g, (c) => ({ 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya','А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I','Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya' }[c] ?? c))
+      .replace(/[^a-zA-Z0-9._\-]/g, '_')
+
+    const filePath = `attachments/${contract_id}/${attachment_type}_${nextNumber}_${Date.now()}_${safeFileName}`
+    const arrayBuffer = await file.arrayBuffer()
+
+    const { error: uploadError } = await supabase.storage
+      .from('contracts')
+      .upload(filePath, new Uint8Array(arrayBuffer), { contentType: file.type, upsert: false })
+
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
+
+    const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath)
+
+    const { error: dbError } = await supabase
+      .from('document_attachments')
+      .insert({
+        contract_id,
+        attachment_type,
+        number: nextNumber,
+        title: title || null,
+        file_url: urlData.publicUrl,
+        file_name: file.name,
+        comment: comment || null,
+        uploaded_by_name: user_name || null,
+        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
+      })
+
+    if (dbError) {
+      return NextResponse.json({ error: dbError.message }, { status: 400 })
+    }
+
+    // Записываем в лог
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: `Загружено: ${attachment_type} №${nextNumber}`,
+      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, file_url, contract_id, user_name } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+    }
+
+    // Удаляем файл из Storage
+    if (file_url) {
+      const filePath = file_url.split('/contracts/')[1]
+      if (filePath) {
+        await supabase.storage.from('contracts').remove([filePath])
+      }
+    }
+
+    const { error } = await supabase
+      .from('document_attachments')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    await supabase.from('contract_logs').insert({
+      contract_id,
+      action: 'Дополнительный материал удалён',
+      details: `Файл удалён`,
+      user_name: user_name || 'Система',
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
 File: app/api/backup/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -3763,151 +3950,6 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/dashboard-legal/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  try {
-    const period = request.nextUrl.searchParams.get('period') ?? '30'
-    const days = parseInt(period)
-    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
-    const fromDate = new Date()
-    fromDate.setDate(fromDate.getDate() - days)
-    const fromDateStr = fromDate.toISOString()
-
-    // Вспомогательная функция фильтра по префиксу компании
-    const prefixFilter = (prefix: string) =>
-      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
-
-    // ID договоров нужной компании (используем везде)
-    let companyContractIds: string[] | null = null
-    if (companyPrefix) {
-      const { data: filtered } = await supabase
-        .from('contracts')
-        .select('id')
-        .or(prefixFilter(companyPrefix))
-      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
-    }
-
-    // 1. Статистика по статусам
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('status, company_prefix')
-      .neq('status', 'архив')
-    if (companyPrefix) {
-      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: allContracts } = await contractsQuery
-
-    const statusStats: Record<string, number> = {}
-    const companyStats: Record<string, number> = {}
-    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
-      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
-      if (c.company_prefix) {
-        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    // 2. Просроченные согласования
-    let overdueApprovalsQuery = supabase
-      .from('approval_sessions')
-      .select(`
-        id, deadline, initiated_by_name,
-        contracts!inner ( id, number, title, counterparty, status )
-      `)
-      .eq('status', 'active')
-      .lt('deadline', new Date().toISOString())
-      .order('deadline', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueApprovals } = await overdueApprovalsQuery
-
-    // 3. Согласованы но без подписанных экземпляров
-    let unsignedQuery = supabase
-      .from('contracts')
-      .select('id, number, title, counterparty, created_at')
-      .eq('status', 'согласован')
-      .order('created_at', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      unsignedQuery = unsignedQuery.in('id', companyContractIds)
-    }
-    const { data: unsignedContracts } = await unsignedQuery
-
-    // 4. Просроченные пункты чек-листа (без задачи Б24)
-    let overdueChecklistQuery = supabase
-      .from('contract_checklist')
-      .select(`
-        id, title, due_date, contract_id,
-        contracts!inner ( id, number, title )
-      `)
-      .eq('is_done', false)
-      .is('bitrix_task_id', null)
-      .lt('due_date', new Date().toISOString().slice(0, 10))
-      .order('due_date', { ascending: true })
-      .limit(10)
-    if (companyContractIds) {
-      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
-    }
-    const { data: overdueChecklist } = await overdueChecklistQuery
-
-    // 5. Динамика создания документов за период
-    let recentContractsQuery = supabase
-      .from('contracts')
-      .select('created_at, company_prefix, status')
-      .gte('created_at', fromDateStr)
-      .order('created_at', { ascending: true })
-    if (companyPrefix) {
-      recentContractsQuery = recentContractsQuery.or(prefixFilter(companyPrefix))
-    }
-    const { data: recentContracts } = await recentContractsQuery
-
-    // Группируем по неделям
-    const weeklyMap: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
-      const date = new Date(c.created_at)
-      const weekStart = new Date(date)
-      weekStart.setDate(date.getDate() - date.getDay())
-      const key = weekStart.toISOString().slice(0, 10)
-      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
-    })
-
-    // Группируем по компаниям за период
-    const companyPeriodStats: Record<string, number> = {}
-    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
-      if (c.company_prefix) {
-        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
-      }
-    })
-
-    return NextResponse.json({
-      status_stats: statusStats,
-      company_stats: companyStats,
-      overdue_approvals: overdueApprovals ?? [],
-      unsigned_contracts: unsignedContracts ?? [],
-      overdue_checklist: overdueChecklist ?? [],
-      weekly_dynamics: weeklyMap,
-      company_period_stats: companyPeriodStats,
-      total_period: recentContracts?.length ?? 0,
-      period_days: days,
-    })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/deleted-contracts/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -5613,193 +5655,6 @@ export async function POST(
 }
 
 ================
-File: app/api/attachments/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-export const maxDuration = 60
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-export async function GET(request: NextRequest) {
-  const contract_id = request.nextUrl.searchParams.get('contract_id')
-  if (!contract_id) {
-    return NextResponse.json({ error: 'contract_id обязателен' }, { status: 400 })
-  }
-
-  const { data, error } = await supabase
-    .from('document_attachments')
-    .select('*')
-    .eq('contract_id', contract_id)
-    .order('attachment_type')
-    .order('number')
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
-  }
-
-  return NextResponse.json({ attachments: data ?? [] })
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const contentType = request.headers.get('content-type') ?? ''
-
-    // JSON режим — файл уже загружен напрямую в Storage
-    if (contentType.includes('application/json')) {
-      const { file_url, file_name, file_type, contract_id, attachment_type, title, comment, user_name, user_bitrix_id } = await request.json()
-
-      if (!file_url || !contract_id || !attachment_type) {
-        return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-      }
-
-      const { count } = await supabase
-        .from('document_attachments')
-        .select('*', { count: 'exact', head: true })
-        .eq('contract_id', contract_id)
-        .eq('attachment_type', attachment_type)
-
-      const nextNumber = (count ?? 0) + 1
-
-      const { error: dbError } = await supabase.from('document_attachments').insert({
-        contract_id,
-        attachment_type,
-        number: nextNumber,
-        title: title || null,
-        file_url,
-        file_name,
-        comment: comment || null,
-        uploaded_by_name: user_name || 'Система',
-        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
-      })
-
-      if (dbError) return NextResponse.json({ error: dbError.message }, { status: 400 })
-
-      await supabase.from('contract_logs').insert({
-        contract_id,
-        action: 'Добавлен дополнительный материал',
-        details: `Тип: ${attachment_type}, файл: ${file_name}`,
-        user_name: user_name || 'Система',
-      })
-
-      return NextResponse.json({ success: true })
-    }
-
-    // FormData режим — старый способ (файл маленький)
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const contract_id = formData.get('contract_id') as string
-    const attachment_type = formData.get('attachment_type') as string
-    const title = formData.get('title') as string
-    const comment = formData.get('comment') as string
-    const user_name = formData.get('user_name') as string
-    const user_bitrix_id = formData.get('user_bitrix_id') as string
-
-    if (!file || !contract_id || !attachment_type) {
-      return NextResponse.json({ error: 'Не все параметры переданы' }, { status: 400 })
-    }
-
-    const { count } = await supabase
-      .from('document_attachments')
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contract_id)
-      .eq('attachment_type', attachment_type)
-
-    const nextNumber = (count ?? 0) + 1
-
-    const safeFileName = file.name
-      .replace(/[а-яёА-ЯЁ]/g, (c) => ({ 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya','А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I','Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'H','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya' }[c] ?? c))
-      .replace(/[^a-zA-Z0-9._\-]/g, '_')
-
-    const filePath = `attachments/${contract_id}/${attachment_type}_${nextNumber}_${Date.now()}_${safeFileName}`
-    const arrayBuffer = await file.arrayBuffer()
-
-    const { error: uploadError } = await supabase.storage
-      .from('contracts')
-      .upload(filePath, new Uint8Array(arrayBuffer), { contentType: file.type, upsert: false })
-
-    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 })
-
-    const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath)
-
-    const { error: dbError } = await supabase
-      .from('document_attachments')
-      .insert({
-        contract_id,
-        attachment_type,
-        number: nextNumber,
-        title: title || null,
-        file_url: urlData.publicUrl,
-        file_name: file.name,
-        comment: comment || null,
-        uploaded_by_name: user_name || null,
-        uploaded_by_bitrix_id: user_bitrix_id ? parseInt(user_bitrix_id) : null,
-      })
-
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 400 })
-    }
-
-    // Записываем в лог
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: `Загружено: ${attachment_type} №${nextNumber}`,
-      details: `Файл: ${file.name}${comment ? '. ' + comment : ''}`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, file_url, contract_id, user_name } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-    }
-
-    // Удаляем файл из Storage
-    if (file_url) {
-      const filePath = file_url.split('/contracts/')[1]
-      if (filePath) {
-        await supabase.storage.from('contracts').remove([filePath])
-      }
-    }
-
-    const { error } = await supabase
-      .from('document_attachments')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    await supabase.from('contract_logs').insert({
-      contract_id,
-      action: 'Дополнительный материал удалён',
-      details: `Файл удалён`,
-      user_name: user_name || 'Система',
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
-
-================
 File: app/api/bitrix/refresh/route.ts
 ================
 import { NextRequest, NextResponse } from 'next/server'
@@ -6416,6 +6271,202 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ found: false, message })
+  }
+}
+
+================
+File: app/api/dashboard-legal/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+const WEBHOOK = process.env.BITRIX_WEBHOOK_URL!
+
+export async function GET(request: NextRequest) {
+  try {
+    const period = request.nextUrl.searchParams.get('period') ?? '30'
+    const days = parseInt(period)
+    const companyPrefix = request.nextUrl.searchParams.get('company_prefix')
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    const fromDateStr = fromDate.toISOString()
+
+    // Вспомогательная функция фильтра по префиксу компании
+    const prefixFilter = (prefix: string) =>
+      prefix.split(',').map(p => `number.like.${p}-%`).join(',')
+
+    // ID договоров нужной компании (используем везде)
+    let companyContractIds: string[] | null = null
+    if (companyPrefix) {
+      const { data: filtered } = await supabase
+        .from('contracts')
+        .select('id')
+        .or(prefixFilter(companyPrefix))
+      companyContractIds = (filtered ?? []).map((c: { id: string }) => c.id)
+    }
+
+    // 1. Статистика по статусам
+    let contractsQuery = supabase
+      .from('contracts')
+      .select('status, company_prefix')
+      .neq('status', 'архив')
+    if (companyPrefix) {
+      contractsQuery = contractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: allContracts } = await contractsQuery
+
+    const statusStats: Record<string, number> = {}
+    const companyStats: Record<string, number> = {}
+    ;(allContracts ?? []).forEach((c: { status: string; company_prefix?: string }) => {
+      statusStats[c.status] = (statusStats[c.status] ?? 0) + 1
+      if (c.company_prefix) {
+        companyStats[c.company_prefix] = (companyStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // 2. Просроченные согласования
+    let overdueApprovalsQuery = supabase
+      .from('approval_sessions')
+      .select(`
+        id, deadline, initiated_by_name,
+        contracts!inner ( id, number, title, counterparty, status, author_bitrix_id )
+      `)
+      .eq('status', 'active')
+      .lt('deadline', new Date().toISOString())
+      .order('deadline', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueApprovalsQuery = overdueApprovalsQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueApprovals } = await overdueApprovalsQuery
+
+    // 3. Согласованы но без подписанных экземпляров
+    let unsignedQuery = supabase
+      .from('contracts')
+      .select('id, number, title, counterparty, created_at, author_bitrix_id')
+      .eq('status', 'согласован')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      unsignedQuery = unsignedQuery.in('id', companyContractIds)
+    }
+    const { data: unsignedContracts } = await unsignedQuery
+
+    // 4. Просроченные пункты чек-листа (без задачи Б24)
+    let overdueChecklistQuery = supabase
+      .from('contract_checklist')
+      .select(`
+        id, title, due_date, contract_id,
+        contracts!inner ( id, number, title, author_bitrix_id )
+      `)
+      .eq('is_done', false)
+      .is('bitrix_task_id', null)
+      .lt('due_date', new Date().toISOString().slice(0, 10))
+      .order('due_date', { ascending: true })
+      .limit(10)
+    if (companyContractIds) {
+      overdueChecklistQuery = overdueChecklistQuery.in('contract_id', companyContractIds)
+    }
+    const { data: overdueChecklist } = await overdueChecklistQuery
+
+    // 5. Динамика создания документов за период
+    let recentContractsQuery = supabase
+      .from('contracts')
+      .select('created_at, company_prefix, status')
+      .gte('created_at', fromDateStr)
+      .order('created_at', { ascending: true })
+    if (companyPrefix) {
+      recentContractsQuery = recentContractsQuery.or(prefixFilter(companyPrefix))
+    }
+    const { data: recentContracts } = await recentContractsQuery
+
+    // Группируем по неделям
+    const weeklyMap: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { created_at: string }) => {
+      const date = new Date(c.created_at)
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      const key = weekStart.toISOString().slice(0, 10)
+      weeklyMap[key] = (weeklyMap[key] ?? 0) + 1
+    })
+
+    // Группируем по компаниям за период
+    const companyPeriodStats: Record<string, number> = {}
+    ;(recentContracts ?? []).forEach((c: { company_prefix?: string }) => {
+      if (c.company_prefix) {
+        companyPeriodStats[c.company_prefix] = (companyPeriodStats[c.company_prefix] ?? 0) + 1
+      }
+    })
+
+    // Обогащаем карточки именами инициаторов — один пакетный запрос к Bitrix
+    // ВАЖНО: Supabase типизирует contracts!inner как массив, хотя по факту
+    // там один объект (foreign-key связь 1:1) — берём первый элемент
+    const authorIds = new Set<number>()
+    ;(overdueApprovals ?? []).forEach((a: { contracts?: { author_bitrix_id?: number }[] }) => {
+      const id = a.contracts?.[0]?.author_bitrix_id
+      if (id) authorIds.add(id)
+    })
+    ;(unsignedContracts ?? []).forEach((c: { author_bitrix_id?: number }) => {
+      if (c.author_bitrix_id) authorIds.add(c.author_bitrix_id)
+    })
+    ;(overdueChecklist ?? []).forEach((item: { contracts?: { author_bitrix_id?: number }[] }) => {
+      const id = item.contracts?.[0]?.author_bitrix_id
+      if (id) authorIds.add(id)
+    })
+
+    const authorNames: Record<number, string> = {}
+    if (authorIds.size > 0) {
+      try {
+        const resp = await fetch(`${WEBHOOK}user.get.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filter: { ID: Array.from(authorIds) },
+            select: ['ID', 'NAME', 'LAST_NAME'],
+          }),
+        })
+        const userData = await resp.json()
+        ;(userData.result ?? []).forEach((u: { ID: string; NAME: string; LAST_NAME: string }) => {
+          authorNames[parseInt(u.ID)] = `${u.LAST_NAME} ${u.NAME}`.trim()
+        })
+      } catch {
+        // молча игнорируем — карточки просто останутся без имени инициатора
+      }
+    }
+
+    const enrichedApprovals = (overdueApprovals ?? []).map((a: { contracts?: { author_bitrix_id?: number }[] }) => ({
+      ...a,
+      contracts: a.contracts?.[0] ? [{ ...a.contracts[0], author_name: authorNames[a.contracts[0].author_bitrix_id ?? 0] ?? null }] : a.contracts,
+    }))
+    const enrichedUnsigned = (unsignedContracts ?? []).map((c: { author_bitrix_id?: number }) => ({
+      ...c,
+      author_name: authorNames[c.author_bitrix_id ?? 0] ?? null,
+    }))
+    const enrichedChecklist = (overdueChecklist ?? []).map((item: { contracts?: { author_bitrix_id?: number }[] }) => ({
+      ...item,
+      contracts: item.contracts?.[0] ? [{ ...item.contracts[0], author_name: authorNames[item.contracts[0].author_bitrix_id ?? 0] ?? null }] : item.contracts,
+    }))
+
+    return NextResponse.json({
+      status_stats: statusStats,
+      company_stats: companyStats,
+      overdue_approvals: enrichedApprovals,
+      unsigned_contracts: enrichedUnsigned,
+      overdue_checklist: enrichedChecklist,
+      weekly_dynamics: weeklyMap,
+      company_period_stats: companyPeriodStats,
+      total_period: recentContracts?.length ?? 0,
+      period_days: days,
+    })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
