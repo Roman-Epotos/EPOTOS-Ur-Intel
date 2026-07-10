@@ -9,7 +9,7 @@ interface Message {
   sources?: { title: string; similarity: number }[]
 }
 
-const coreUrl = 'https://epotos-core.vercel.app'
+const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? 'https://epotos-core.vercel.app'
 
 export default function FloatingAssistant() {
   const { currentDocument } = useDocumentContext()

@@ -273,7 +273,7 @@ export default function HelpPage() {
   const [activeTab, setActiveTab] = useState<'faq' | 'request' | 'my_requests' | 'admin' | 'assistant'>('assistant')
 
   // ЭПОТОС-Ассистент
-  const coreUrl = 'https://epotos-core.vercel.app'
+  const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? 'https://epotos-core.vercel.app'
   const [assistantMessages, setAssistantMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: {title: string, similarity: number}[]}[]>([])
   const [assistantInput, setAssistantInput] = useState('')
   const [assistantLoading, setAssistantLoading] = useState(false)

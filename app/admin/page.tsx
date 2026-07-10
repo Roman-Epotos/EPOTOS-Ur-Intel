@@ -158,7 +158,7 @@ export default function AdminPage() {
   const [knowledgeSuccess, setKnowledgeSuccess] = useState('')
   const [knowledgeTitle, setKnowledgeTitle] = useState('')
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null)
-  const coreUrl = 'https://epotos-core.vercel.app'
+  const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? 'https://epotos-core.vercel.app'
 
   const baseUrl = 'https://epotos-ur-intel.vercel.app'
 
