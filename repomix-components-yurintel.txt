@@ -2613,6 +2613,92 @@ export default function ApproveButton({ contractId, contractStatus, authorBitrix
 }
 
 ================
+File: app/components/PersonalStats.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import type { MyDocsData } from '@/app/components/MyDocuments'
+
+interface Stats {
+  total: number
+  on_approval: number
+  edo: number
+  signed: number
+  drafts: number
+  pending_my_action: number
+}
+
+interface PersonalStatsProps {
+  myDocsData: MyDocsData | null
+}
+
+export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const load = async () => {
+      try {
+        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
+        const contractsData = await contractsRes.json()
+        const contracts = contractsData.contracts ?? []
+        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
+          (myDocsData?.optional_approvals?.length ?? 0)
+
+        setStats({
+          total: contracts.length,
+          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
+          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
+          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
+          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
+          pending_my_action: pendingActions,
+        })
+      } catch {
+        console.error('Ошибка загрузки статистики')
+      }
+    }
+
+    load()
+  }, [user?.id, myDocsData])
+
+  if (authLoading || !stats) return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
+          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const items = [
+    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
+    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
+    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
+    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
+    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+      {items.map(stat => (
+        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+          <p className="text-sm text-gray-500">{stat.label}</p>
+          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+================
 File: app/components/FloatingAssistant.tsx
 ================
 'use client'
@@ -2626,7 +2712,7 @@ interface Message {
   sources?: { title: string; similarity: number }[]
 }
 
-const coreUrl = 'https://epotos-core.vercel.app'
+const coreUrl = process.env.NEXT_PUBLIC_CORE_URL ?? 'https://epotos-core.vercel.app'
 
 export default function FloatingAssistant() {
   const { currentDocument } = useDocumentContext()
@@ -2754,87 +2840,325 @@ export default function FloatingAssistant() {
 }
 
 ================
-File: app/components/PersonalStats.tsx
+File: app/components/MyDocuments.tsx
 ================
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import type { MyDocsData } from '@/app/components/MyDocuments'
+import { createClient } from '@supabase/supabase-js'
 
-interface Stats {
-  total: number
-  on_approval: number
-  edo: number
-  signed: number
-  drafts: number
-  pending_my_action: number
+interface Contract {
+  id: string
+  number: string
+  title: string
+  counterparty: string
+  status: string
+  amount: number | null
 }
 
-interface PersonalStatsProps {
-  myDocsData: MyDocsData | null
+interface ApprovalItem {
+  id: string
+  role: string
+  status: string
+  stage: string
+  session_id: string
+  approval_sessions: {
+    id: string
+    contract_id: string
+    deadline: string
+    initiated_by_name: string
+    contracts: Contract
+  }
 }
 
-export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
+interface SessionItem {
+  id: string
+  deadline: string
+  status: string
+  created_at: string
+  contracts: Contract
+}
+
+export interface MyDocsData {
+  required_approvals: ApprovalItem[]
+  optional_approvals: ApprovalItem[]
+  my_drafts: Contract[]
+  my_initiated: SessionItem[]
+  my_edo: Contract[]
+}
+
+interface MyDocumentsProps {
+  data: MyDocsData | null
+  loading: boolean
+  onReload: () => void
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  legal: 'Юридический',
+  finance: 'Финансовый',
+  accounting: 'Бухгалтерия',
+  director: 'Директор',
+  custom: 'Доп.',
+}
+
+export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
-  const [stats, setStats] = useState<Stats | null>(null)
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+  const [activeTab, setActiveTab] = useState('approvals')
 
   useEffect(() => {
     if (!user?.id) return
 
-    const load = async () => {
-      try {
-        const contractsRes = await fetch(`${baseUrl}/api/contracts-list?bitrix_user_id=${user.id}&role=user`)
-        const contractsData = await contractsRes.json()
-        const contracts = contractsData.contracts ?? []
-        const pendingActions = (myDocsData?.required_approvals?.length ?? 0) +
-          (myDocsData?.optional_approvals?.length ?? 0)
+    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
 
-        setStats({
-          total: contracts.length,
-          on_approval: contracts.filter((c: { status: string }) => c.status === 'на_согласовании').length,
-          edo: contracts.filter((c: { status: string }) => c.status === 'на_подписи_в_эдо').length,
-          signed: contracts.filter((c: { status: string }) => c.status === 'подписан').length,
-          drafts: contracts.filter((c: { status: string }) => c.status === 'черновик').length,
-          pending_my_action: pendingActions,
-        })
-      } catch {
-        console.error('Ошибка загрузки статистики')
-      }
+    const channel = supabase
+      .channel('my-docs-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'approval_participants',
+      }, () => onReload())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contracts',
+      }, () => onReload())
+      .subscribe()
+
+    // Обновляем при возврате на страницу
+    window.addEventListener('focus', onReload)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) onReload()
+    })
+
+    return () => {
+      supabase.removeChannel(channel)
+      window.removeEventListener('focus', onReload)
     }
+  }, [user?.id])
 
-    load()
-  }, [user?.id, myDocsData])
+  if (authLoading || loading) return null
 
-  if (authLoading || !stats) return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
-          <div className="h-7 bg-gray-200 rounded w-1/3"></div>
-        </div>
-      ))}
-    </div>
-  )
+  if (!user) return null
 
-  const items = [
-    { label: 'Всего документов', value: stats.total, color: 'text-gray-900' },
-    { label: 'На согласовании', value: stats.on_approval, color: 'text-yellow-600' },
-    { label: 'На подписи в ЭДО', value: stats.edo, color: 'text-purple-600' },
-    { label: 'Подписаны', value: stats.signed, color: 'text-green-600' },
-    { label: 'Черновики', value: stats.drafts, color: 'text-gray-500' },
-  ]
+  const totalActions = (data?.required_approvals.length ?? 0) +
+    (data?.optional_approvals.length ?? 0)
+
+  const hasAnything = totalActions > 0 ||
+    (data?.my_drafts.length ?? 0) > 0 ||
+    (data?.my_initiated.length ?? 0) > 0 ||
+    (data?.my_edo.length ?? 0) > 0
+
+  if (!hasAnything) return null
+
+  const tabs = [
+    {
+      id: 'approvals',
+      label: 'Требуют действия',
+      count: totalActions,
+      show: totalActions > 0
+    },
+    {
+      id: 'initiated',
+      label: 'Я инициатор',
+      count: data?.my_initiated.length ?? 0,
+      show: (data?.my_initiated.length ?? 0) > 0
+    },
+    {
+      id: 'drafts',
+      label: 'Мои черновики',
+      count: data?.my_drafts.length ?? 0,
+      show: (data?.my_drafts.length ?? 0) > 0
+    },
+    {
+      id: 'edo',
+      label: 'На подписи в ЭДО',
+      count: data?.my_edo.length ?? 0,
+      show: (data?.my_edo.length ?? 0) > 0
+    },
+  ].filter(t => t.show)
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
-      {items.map(stat => (
-        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
-          <p className="text-sm text-gray-500">{stat.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+    <div className="bg-white rounded-xl border border-gray-200 mb-6">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-gray-900">
+            Мои документы
+            {totalActions > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {totalActions}
+              </span>
+            )}
+          </h2>
         </div>
-      ))}
+
+        {/* Вкладки */}
+        <div className="flex gap-2 mt-3">
+          {tabs.map(tab => (
+            <button key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}>
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                  ? 'bg-white text-gray-900'
+                  : 'bg-gray-400 text-white'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4">
+
+        {/* Требуют действия */}
+        {activeTab === 'approvals' && (
+          <div className="space-y-2">
+            {data?.required_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Согласовать
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {STAGE_LABELS[item.stage] ?? item.stage}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {data?.optional_approvals.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.approval_sessions.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      Ознакомиться
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+
+            {totalActions === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">
+                Нет документов требующих действий
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Я инициатор */}
+        {activeTab === 'initiated' && (
+          <div className="space-y-2">
+            {data?.my_initiated.map(item => (
+              <Link
+                key={item.id}
+                href={`/contracts/${item.contracts.id}`}
+                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
+                      На согласовании
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
+                    {item.contracts.number} — {item.contracts.title}
+                  </p>
+                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Мои черновики */}
+        {activeTab === 'drafts' && (
+          <div className="space-y-2">
+            {data?.my_drafts.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-gray-400 text-sm ml-2">→</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'edo' && (
+          <div className="space-y-2">
+            {data?.my_edo.map(contract => (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {contract.number} — {contract.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {contract.counterparty}
+                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
+                  </p>
+                </div>
+                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
@@ -4350,330 +4674,6 @@ export default function Header() {
             )}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-================
-File: app/components/MyDocuments.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { createClient } from '@supabase/supabase-js'
-
-interface Contract {
-  id: string
-  number: string
-  title: string
-  counterparty: string
-  status: string
-  amount: number | null
-}
-
-interface ApprovalItem {
-  id: string
-  role: string
-  status: string
-  stage: string
-  session_id: string
-  approval_sessions: {
-    id: string
-    contract_id: string
-    deadline: string
-    initiated_by_name: string
-    contracts: Contract
-  }
-}
-
-interface SessionItem {
-  id: string
-  deadline: string
-  status: string
-  created_at: string
-  contracts: Contract
-}
-
-export interface MyDocsData {
-  required_approvals: ApprovalItem[]
-  optional_approvals: ApprovalItem[]
-  my_drafts: Contract[]
-  my_initiated: SessionItem[]
-  my_edo: Contract[]
-}
-
-interface MyDocumentsProps {
-  data: MyDocsData | null
-  loading: boolean
-  onReload: () => void
-}
-
-const STAGE_LABELS: Record<string, string> = {
-  legal: 'Юридический',
-  finance: 'Финансовый',
-  accounting: 'Бухгалтерия',
-  director: 'Директор',
-  custom: 'Доп.',
-}
-
-export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [activeTab, setActiveTab] = useState('approvals')
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    // Realtime подписка (данные грузятся в page.tsx, здесь только триггерим перезагрузку)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-
-    const channel = supabase
-      .channel('my-docs-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'approval_participants',
-      }, () => onReload())
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'contracts',
-      }, () => onReload())
-      .subscribe()
-
-    // Обновляем при возврате на страницу
-    window.addEventListener('focus', onReload)
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) onReload()
-    })
-
-    return () => {
-      supabase.removeChannel(channel)
-      window.removeEventListener('focus', onReload)
-    }
-  }, [user?.id])
-
-  if (authLoading || loading) return null
-
-  if (!user) return null
-
-  const totalActions = (data?.required_approvals.length ?? 0) +
-    (data?.optional_approvals.length ?? 0)
-
-  const hasAnything = totalActions > 0 ||
-    (data?.my_drafts.length ?? 0) > 0 ||
-    (data?.my_initiated.length ?? 0) > 0 ||
-    (data?.my_edo.length ?? 0) > 0
-
-  if (!hasAnything) return null
-
-  const tabs = [
-    {
-      id: 'approvals',
-      label: 'Требуют действия',
-      count: totalActions,
-      show: totalActions > 0
-    },
-    {
-      id: 'initiated',
-      label: 'Я инициатор',
-      count: data?.my_initiated.length ?? 0,
-      show: (data?.my_initiated.length ?? 0) > 0
-    },
-    {
-      id: 'drafts',
-      label: 'Мои черновики',
-      count: data?.my_drafts.length ?? 0,
-      show: (data?.my_drafts.length ?? 0) > 0
-    },
-    {
-      id: 'edo',
-      label: 'На подписи в ЭДО',
-      count: data?.my_edo.length ?? 0,
-      show: (data?.my_edo.length ?? 0) > 0
-    },
-  ].filter(t => t.show)
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 mb-6">
-      <div className="px-6 py-4 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-900">
-            Мои документы
-            {totalActions > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {totalActions}
-              </span>
-            )}
-          </h2>
-        </div>
-
-        {/* Вкладки */}
-        <div className="flex gap-2 mt-3">
-          {tabs.map(tab => (
-            <button key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${activeTab === tab.id
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}>
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab.id
-                  ? 'bg-white text-gray-900'
-                  : 'bg-gray-400 text-white'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-4">
-
-        {/* Требуют действия */}
-        {activeTab === 'approvals' && (
-          <div className="space-y-2">
-            {data?.required_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Согласовать
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {STAGE_LABELS[item.stage] ?? item.stage}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {data?.optional_approvals.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.approval_sessions.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      Ознакомиться
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.approval_sessions.contracts.number} — {item.approval_sessions.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {item.approval_sessions.contracts.counterparty} · до {new Date(item.approval_sessions.deadline).toLocaleDateString('ru-RU')}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-
-            {totalActions === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">
-                Нет документов требующих действий
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Я инициатор */}
-        {activeTab === 'initiated' && (
-          <div className="space-y-2">
-            {data?.my_initiated.map(item => (
-              <Link
-                key={item.id}
-                href={`/contracts/${item.contracts.id}`}
-                className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg hover:bg-yellow-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
-                      На согласовании
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      до {new Date(item.deadline).toLocaleDateString('ru-RU')}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mt-1 truncate">
-                    {item.contracts.number} — {item.contracts.title}
-                  </p>
-                  <p className="text-xs text-gray-500">{item.contracts.counterparty}</p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Мои черновики */}
-        {activeTab === 'drafts' && (
-          <div className="space-y-2">
-            {data?.my_drafts.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm ml-2">→</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'edo' && (
-          <div className="space-y-2">
-            {data?.my_edo.map(contract => (
-              <Link
-                key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="flex items-center justify-between p-3 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {contract.number} — {contract.title}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {contract.counterparty}
-                    {contract.amount && ` · ${Number(contract.amount).toLocaleString('ru-RU')} ₽`}
-                  </p>
-                </div>
-                <span className="text-xs text-purple-600 font-medium ml-2">📧 ЭДО</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
       </div>
     </div>
   )

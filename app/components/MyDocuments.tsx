@@ -62,6 +62,7 @@ const STAGE_LABELS: Record<string, string> = {
 export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
   const [activeTab, setActiveTab] = useState('approvals')
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   useEffect(() => {
     if (!user?.id) return
@@ -151,10 +152,14 @@ export default function MyDocuments({ data, loading, onReload }: MyDocumentsProp
               </span>
             )}
           </h2>
+          <button onClick={() => setIsCollapsed(c => !c)}
+            className="text-gray-400 hover:text-gray-600 text-sm px-2">
+            {isCollapsed ? '▼ Показать' : '▲ Свернуть'}
+          </button>
         </div>
 
         {/* Вкладки */}
-        <div className="flex gap-2 mt-3">
+        {!isCollapsed && <div className="flex gap-2 mt-3">
           {tabs.map(tab => (
             <button key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -173,10 +178,10 @@ export default function MyDocuments({ data, loading, onReload }: MyDocumentsProp
               )}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
-      <div className="p-4">
+      {!isCollapsed && <div className="p-4 max-h-[400px] overflow-y-auto">
 
         {/* Требуют действия */}
         {activeTab === 'approvals' && (
@@ -314,7 +319,7 @@ export default function MyDocuments({ data, loading, onReload }: MyDocumentsProp
           </div>
         )}
 
-      </div>
+      </div>}
     </div>
   )
 }
