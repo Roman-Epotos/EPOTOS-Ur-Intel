@@ -19,7 +19,7 @@ interface LegalDashData {
   }[]
   overdue_checklist: {
     id: string; title: string; due_date: string; contract_id: string
-    contracts: { id: string; number: string; title: string }
+    contracts: { id: string; number: string; title: string; author_name?: string }
   }[]
   weekly_dynamics: Record<string, number>
   company_period_stats: Record<string, number>
@@ -288,6 +288,9 @@ export default function LegalDashboardPage() {
                         className="cursor-pointer hover:bg-yellow-50 rounded-lg p-3 border border-yellow-100 transition-colors">
                         <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
                         <p className="text-xs text-gray-500">{item.contracts.number}</p>
+                        {item.contracts.author_name && (
+                          <p className="text-xs text-gray-400">Инициатор: {item.contracts.author_name}</p>
+                        )}
                         <p className="text-xs text-red-500">
                           Просрочен с {new Date(item.due_date).toLocaleDateString('ru-RU')}
                         </p>
