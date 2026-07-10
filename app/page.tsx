@@ -15,6 +15,7 @@ export default function HomePage() {
   const { user } = useBitrixAuth()
   const [myDocsData, setMyDocsData] = useState<MyDocsData | null>(null)
   const [myDocsLoading, setMyDocsLoading] = useState(true)
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   const loadMyDocs = useCallback(async () => {
     if (!user?.id) return
@@ -53,8 +54,10 @@ export default function HomePage() {
           data={myDocsData}
           loading={myDocsLoading}
           onReload={loadMyDocs}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed(c => !c)}
         />
-        <PersonalStats myDocsData={myDocsData} />
+        <PersonalStats myDocsData={myDocsData} isCollapsed={isCollapsed} />
       </div>
       <div className="max-w-6xl mx-auto w-full px-4 flex-1 min-h-[400px] pb-4">
         <ContractsList />

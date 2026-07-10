@@ -15,9 +15,10 @@ interface Stats {
 
 interface PersonalStatsProps {
   myDocsData: MyDocsData | null
+  isCollapsed: boolean
 }
 
-export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
+export default function PersonalStats({ myDocsData, isCollapsed }: PersonalStatsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
   const [stats, setStats] = useState<Stats | null>(null)
 
@@ -51,9 +52,9 @@ export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
   }, [user?.id, myDocsData])
 
   if (authLoading || !stats) return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+    <div className={`grid-cols-2 md:grid-cols-5 gap-3 md:gap-3 mb-4 md:mb-6 ${isCollapsed ? 'hidden md:grid' : 'grid'}`}>
       {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
+        <div key={i} className="bg-white rounded-xl p-4 md:p-3 border border-gray-200 animate-pulse">
           <div className="h-3 bg-gray-200 rounded w-2/3 mb-3"></div>
           <div className="h-7 bg-gray-200 rounded w-1/3"></div>
         </div>
@@ -70,11 +71,11 @@ export default function PersonalStats({ myDocsData }: PersonalStatsProps) {
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4 md:mb-8">
+    <div className={`grid-cols-2 md:grid-cols-5 gap-3 md:gap-3 mb-4 md:mb-6 ${isCollapsed ? 'hidden md:grid' : 'grid'}`}>
       {items.map(stat => (
-        <div key={stat.label} className="bg-white rounded-xl p-4 border border-gray-200">
+        <div key={stat.label} className="bg-white rounded-xl p-4 md:p-3 border border-gray-200">
           <p className="text-sm text-gray-500">{stat.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
+          <p className={`text-2xl md:text-xl font-semibold mt-1 ${stat.color}`}>{stat.value}</p>
         </div>
       ))}
     </div>

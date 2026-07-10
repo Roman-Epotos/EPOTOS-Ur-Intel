@@ -49,6 +49,8 @@ interface MyDocumentsProps {
   data: MyDocsData | null
   loading: boolean
   onReload: () => void
+  isCollapsed: boolean
+  onToggleCollapse: () => void
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -59,10 +61,9 @@ const STAGE_LABELS: Record<string, string> = {
   custom: 'Доп.',
 }
 
-export default function MyDocuments({ data, loading, onReload }: MyDocumentsProps) {
+export default function MyDocuments({ data, loading, onReload, isCollapsed, onToggleCollapse }: MyDocumentsProps) {
   const { user, loading: authLoading } = useBitrixAuth()
   const [activeTab, setActiveTab] = useState('approvals')
-  const [isCollapsed, setIsCollapsed] = useState(false)
 
   useEffect(() => {
     if (!user?.id) return
@@ -152,7 +153,7 @@ export default function MyDocuments({ data, loading, onReload }: MyDocumentsProp
               </span>
             )}
           </h2>
-          <button onClick={() => setIsCollapsed(c => !c)}
+          <button onClick={onToggleCollapse}
             className="text-gray-400 hover:text-gray-600 text-sm px-2">
             {isCollapsed ? '▼ Показать' : '▲ Свернуть'}
           </button>
