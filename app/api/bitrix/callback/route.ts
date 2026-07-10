@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { fetchWithTimeout } from '@/app/lib/fetchWithTimeout'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,8 +15,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем данные пользователя из Битрикс24
-    const userResponse = await fetch(
-      `https://${domain}/rest/user.current?auth=${authId}`
+    const userResponse = await fetchWithTimeout(
+      `https://${domain}/rest/user.current?auth=${authId}`,
+      { label: 'bitrix-callback' }
     )
     const userData = await userResponse.json()
 

@@ -108,6 +108,7 @@ app/api/upload-proxy/route.ts
 app/api/user-role/route.ts
 app/api/versions/route.ts
 app/lib/documentTypes.ts
+app/lib/fetchWithTimeout.ts
 app/lib/notify.ts
 
 ================================================================
@@ -2068,46 +2069,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({ status: 'Bitrix24 install endpoint' })
-}
-
-================
-File: app/api/bitrix/verify/route.ts
-================
-import { NextRequest, NextResponse } from 'next/server'
-
-const BITRIX_PORTAL = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-
-export async function POST(request: NextRequest) {
-  try {
-    const { auth_id, member_id, user_id } = await request.json()
-
-    if (!auth_id || !member_id || !user_id) {
-      return NextResponse.json({ valid: false, error: 'Не все параметры переданы' })
-    }
-
-    // Проверяем токен через Б24 REST API
-    const res = await fetch(
-      `https://${BITRIX_PORTAL}/rest/profile.json?auth=${auth_id}`,
-      { method: 'GET' }
-    )
-
-    if (!res.ok) {
-      return NextResponse.json({ valid: false, error: 'Б24 недоступен' })
-    }
-
-    const data = await res.json()
-
-    // Проверяем что ID пользователя совпадает
-    if (data.result && String(data.result.ID) === String(user_id)) {
-      return NextResponse.json({ valid: true })
-    }
-
-    return NextResponse.json({ valid: false, error: 'Токен недействителен или ID не совпадает' })
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Ошибка'
-    return NextResponse.json({ valid: false, error: message })
-  }
 }
 
 ================
@@ -5825,6 +5786,48 @@ export async function POST(request: NextRequest) {
 }
 
 ================
+File: app/api/bitrix/verify/route.ts
+================
+import { NextRequest, NextResponse } from 'next/server'
+import { fetchWithTimeout } from '@/app/lib/fetchWithTimeout'
+
+const BITRIX_PORTAL = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
+
+export async function POST(request: NextRequest) {
+  try {
+    const { auth_id, member_id, user_id } = await request.json()
+
+    if (!auth_id || !member_id || !user_id) {
+      return NextResponse.json({ valid: false, error: 'Не все параметры переданы' })
+    }
+
+    // Проверяем токен через Б24 REST API
+    const res = await fetchWithTimeout(
+      `https://${BITRIX_PORTAL}/rest/profile.json?auth=${auth_id}`,
+      { method: 'GET', label: 'bitrix-verify' }
+    )
+
+    if (!res.ok) {
+      return NextResponse.json({ valid: false, error: 'Б24 недоступен' })
+    }
+
+    const data = await res.json()
+
+    // Проверяем что ID пользователя совпадает
+    if (data.result && String(data.result.ID) === String(user_id)) {
+      return NextResponse.json({ valid: true })
+    }
+
+    return NextResponse.json({ valid: false, error: 'Токен недействителен или ID не совпадает' })
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ошибка'
+    // Таймаут — тоже сообщаем как невалидный токен, но с понятной причиной
+    return NextResponse.json({ valid: false, error: message })
+  }
+}
+
+================
 File: app/api/contract-payments/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -7281,6 +7284,45 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+================
+File: app/lib/fetchWithTimeout.ts
+================
+interface FetchWithTimeoutOptions extends RequestInit {
+  timeoutMs?: number
+  label?: string
+}
+
+export async function fetchWithTimeout(
+  url: string,
+  options: FetchWithTimeoutOptions = {}
+): Promise<Response> {
+  const { timeoutMs = 8000, label = 'external', ...fetchOptions } = options
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const start = Date.now()
+
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+    const duration = Date.now() - start
+    console.log(`[B24_LATENCY] ${label} -> ${response.status} (${duration}ms)`)
+    return response
+  } catch (err) {
+    clearTimeout(timeoutId)
+    const duration = Date.now() - start
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.error(`[B24_LATENCY] ${label} -> TIMEOUT after ${duration}ms (limit ${timeoutMs}ms)`)
+      throw new Error(`Timeout: ${label} did not respond within ${timeoutMs}ms`)
+    }
+    console.error(`[B24_LATENCY] ${label} -> ERROR after ${duration}ms:`, err instanceof Error ? err.message : err)
+    throw err
   }
 }
 
