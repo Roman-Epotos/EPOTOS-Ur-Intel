@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { fetchWithTimeout } from '@/app/lib/fetchWithTimeout'
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +23,10 @@ export async function POST(request: NextRequest) {
       refresh_token: refresh_id,
     })
 
-    const res = await fetch(`https://oauth.bitrix24.tech/oauth/token/?${params.toString()}`)
+    const res = await fetchWithTimeout(`https://oauth.bitrix24.tech/oauth/token/?${params.toString()}`, {
+      label: 'bitrix-refresh',
+      timeoutMs: 10000,
+    })
     const data = await res.json()
 
     if (!res.ok || data.error) {
