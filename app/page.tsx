@@ -17,6 +17,14 @@ export default function HomePage() {
   const [myDocsLoading, setMyDocsLoading] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
 
+  const hasMyDocsContent = !!myDocsData && (
+    (myDocsData.required_approvals?.length ?? 0) > 0 ||
+    (myDocsData.optional_approvals?.length ?? 0) > 0 ||
+    (myDocsData.my_drafts?.length ?? 0) > 0 ||
+    (myDocsData.my_initiated?.length ?? 0) > 0 ||
+    (myDocsData.my_edo?.length ?? 0) > 0
+  )
+
   const loadMyDocs = useCallback(async () => {
     if (!user?.id) return
     try {
@@ -49,6 +57,13 @@ export default function HomePage() {
     <div className="h-screen bg-gray-50 flex flex-col overflow-y-auto">
       <div className="max-w-6xl mx-auto w-full px-4 pt-6 flex-shrink-0">
         <Header />
+        {!hasMyDocsContent && (
+          <button onClick={() => setIsCollapsed(c => !c)}
+            className="md:hidden w-full flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-2.5 mb-3 text-sm text-gray-500">
+            <span>Рабочий стол</span>
+            <span>{isCollapsed ? '▼ Показать' : '▲ Свернуть'}</span>
+          </button>
+        )}
         <MyDocuments
           key={typeof window !== 'undefined' ? window.location.pathname : 'home'}
           data={myDocsData}
