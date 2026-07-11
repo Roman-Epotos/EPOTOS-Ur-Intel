@@ -14,25 +14,13 @@ export default async function ContractPage({
     process.env.SUPABASE_SECRET_KEY!
   )
 
-  const { data: contract } = await supabase
-    .from('contracts')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const [{ data: contract }, { data: logs }, { data: versions }] = await Promise.all([
+    supabase.from('contracts').select('*').eq('id', id).single(),
+    supabase.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }),
+    supabase.from('versions').select('*').eq('contract_id', id).order('version_number', { ascending: false }),
+  ])
 
   if (!contract || contract.deleted_at) notFound()
-
-  const { data: logs } = await supabase
-    .from('contract_logs')
-    .select('*')
-    .eq('contract_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: versions } = await supabase
-    .from('versions')
-    .select('*')
-    .eq('contract_id', id)
-    .order('version_number', { ascending: false })
 
   return (
     <ContractTabs
