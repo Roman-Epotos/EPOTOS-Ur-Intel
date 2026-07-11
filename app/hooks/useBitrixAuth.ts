@@ -23,6 +23,18 @@ declare global {
   }
 }
 
+const RELOAD_GUARD_KEY = 'bitrix_reload_attempted_at'
+const RELOAD_COOLDOWN_MS = 15000
+
+function shouldAllowReload(): boolean {
+  const last = sessionStorage.getItem(RELOAD_GUARD_KEY)
+  if (last && Date.now() - parseInt(last) < RELOAD_COOLDOWN_MS) {
+    return false
+  }
+  sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()))
+  return true
+}
+
 export function useBitrixAuth() {
   const [user, setUser] = useState<BitrixUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -118,15 +130,15 @@ export function useBitrixAuth() {
                   setUser(updatedUser)
                 } else {
                   sessionStorage.removeItem('bitrix_user')
-                  window.location.reload()
+                  if (shouldAllowReload()) window.location.reload()
                 }
               } catch {
                 sessionStorage.removeItem('bitrix_user')
-                window.location.reload()
+                if (shouldAllowReload()) window.location.reload()
               }
             } else {
               sessionStorage.removeItem('bitrix_user')
-              window.location.reload()
+              if (shouldAllowReload()) window.location.reload()
             }
           } else {
             // Нет auth_id — мобильный Б24, разрешаем
