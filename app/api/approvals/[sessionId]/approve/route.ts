@@ -225,11 +225,13 @@ export async function DELETE(
   try {
     const { sessionId } = await params
     const body = await request.json()
-    const { reason, user_name, contract_id } = body
+    const { reason, user_name, contract_id, target_status } = body
 
     if (!reason?.trim()) {
       return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
     }
+
+    const targetStatus = target_status === 'черновик' ? 'черновик' : 'архив'
 
     const { error: sessionError } = await supabase
       .from('approval_sessions')
@@ -242,8 +244,15 @@ export async function DELETE(
 
     await supabase
       .from('contracts')
-      .update({ status: 'архив' })
+      .update({ status: targetStatus })
       .eq('id', contract_id)
+
+    // Сбрасываем всех ожидающих участников — документ уходит из «требуют решения»
+    await supabase
+      .from('approval_participants')
+      .update({ status: 'disabled' })
+      .eq('session_id', sessionId)
+      .eq('status', 'pending')
 
     await supabase
       .from('approval_messages')
@@ -262,6 +271,34 @@ export async function DELETE(
         details: `Причина: ${reason}`,
         user_name: user_name ?? 'Система',
       })
+
+    // Колокольчик участникам: согласование прервано, решение больше не требуется
+    const { data: cancelledParticipants } = await supabase
+      .from('approval_participants')
+      .select('bitrix_user_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'disabled')
+
+    const { data: cancelledContract } = await supabase
+      .from('contracts')
+      .select('number, title')
+      .eq('id', contract_id)
+      .single()
+
+    const notifyIds = [...new Set((cancelledParticipants ?? [])
+      .map(p => p.bitrix_user_id)
+      .filter(Boolean) as number[])]
+
+    if (notifyIds.length > 0) {
+      await sendBitrixNotify({
+        recipients: notifyIds,
+        type: 'approval_cancelled',
+        document_id: contract_id,
+        document_title: cancelledContract?.title ?? '',
+        document_number: cancelledContract?.number ?? '',
+        extra: `Согласование прервано. Причина: ${reason}`,
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

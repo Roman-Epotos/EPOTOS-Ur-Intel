@@ -3575,6 +3575,158 @@ export async function POST(request: NextRequest) {
 }
 
 ================
+File: app/api/counterparties/route.ts
+================
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!
+)
+
+// GET — список контрагентов или один по id
+export async function GET(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    const inn = request.nextUrl.searchParams.get('inn')
+    const search = request.nextUrl.searchParams.get('search')
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*, contracts(id, number, title, status, created_at)')
+        .eq('id', id)
+        .single()
+
+      // Дополнительно загружаем документы по текстовому совпадению если counterparty_id не заполнен
+      if (data && data.contracts?.length === 0) {
+        const searchName = data.short_name ?? data.full_name
+        const { data: extraContracts } = await supabase
+          .from('contracts')
+          .select('id, number, title, status, created_at')
+          .ilike('counterparty', `%${searchName}%`)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+        if (extraContracts?.length) {
+          data.contracts = extraContracts
+        }
+      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data })
+    }
+
+    if (inn) {
+      const kpp = request.nextUrl.searchParams.get('kpp')
+      let query = supabase
+        .from('counterparties')
+        .select('*')
+        .eq('inn', inn)
+      if (kpp) query = query.eq('kpp', kpp)
+      const { data, error } = await query.single()
+      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ counterparty: data ?? null })
+    }
+
+    const foreignOnly = request.nextUrl.searchParams.get('foreign_only')
+    const russianOnly = request.nextUrl.searchParams.get('russian_only')
+
+    let query = supabase
+      .from('counterparties')
+      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number, is_individual')
+      .order('full_name', { ascending: true })
+
+    const individualOnly = request.nextUrl.searchParams.get('individual_only')
+    if (individualOnly === 'true') {
+      query = query.eq('is_individual', true)
+    } else if (foreignOnly === 'true') {
+      query = query.eq('is_foreign', true)
+    } else if (russianOnly === 'true') {
+      query = query.eq('is_foreign', false).eq('is_individual', false)
+    }
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ counterparties: data ?? [] })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// POST — создать или обновить контрагента
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, contracts, check_risk, ...fields } = body
+
+    fields.updated_at = new Date().toISOString()
+
+    if (id) {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .update(fields)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ success: true, counterparty: data })
+    }
+
+    // Защита от дублей иностранных контрагентов
+    if (fields.is_foreign && fields.full_name) {
+      const { data: existing } = await supabase
+        .from('counterparties')
+        .select('id, full_name')
+        .eq('is_foreign', true)
+        .ilike('full_name', fields.full_name.trim())
+        .maybeSingle()
+      if (existing) {
+        return NextResponse.json({ error: 'Иностранный контрагент с таким названием уже существует в реестре.' }, { status: 400 })
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('counterparties')
+      .insert(fields)
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('counterparties_inn_kpp_unique')) {
+        return NextResponse.json({ error: 'Контрагент с таким ИНН уже добавлен в базу. Найдите его в реестре контрагентов.' }, { status: 409 })
+      }
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    return NextResponse.json({ success: true, counterparty: data })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+// DELETE — удалить контрагента
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('counterparties')
+      .delete()
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ success: true })
+
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
+  }
+}
+
+================
 File: app/api/cron/edo-reminder/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -6567,158 +6719,6 @@ export async function GET(request: NextRequest) {
 }
 
 ================
-File: app/api/counterparties/route.ts
-================
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
-
-// GET — список контрагентов или один по id
-export async function GET(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    const inn = request.nextUrl.searchParams.get('inn')
-    const search = request.nextUrl.searchParams.get('search')
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .select('*, contracts(id, number, title, status, created_at)')
-        .eq('id', id)
-        .single()
-
-      // Дополнительно загружаем документы по текстовому совпадению если counterparty_id не заполнен
-      if (data && data.contracts?.length === 0) {
-        const searchName = data.short_name ?? data.full_name
-        const { data: extraContracts } = await supabase
-          .from('contracts')
-          .select('id, number, title, status, created_at')
-          .ilike('counterparty', `%${searchName}%`)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-        if (extraContracts?.length) {
-          data.contracts = extraContracts
-        }
-      }
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data })
-    }
-
-    if (inn) {
-      const kpp = request.nextUrl.searchParams.get('kpp')
-      let query = supabase
-        .from('counterparties')
-        .select('*')
-        .eq('inn', inn)
-      if (kpp) query = query.eq('kpp', kpp)
-      const { data, error } = await query.single()
-      if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ counterparty: data ?? null })
-    }
-
-    const foreignOnly = request.nextUrl.searchParams.get('foreign_only')
-    const russianOnly = request.nextUrl.searchParams.get('russian_only')
-
-    let query = supabase
-      .from('counterparties')
-      .select('id, inn, kpp, ogrn, short_name, full_name, status, risk_level, director_name, director_title, phone, email, legal_address, signatory_name, poa_number, poa_date, created_at, is_foreign, country, registration_number, is_individual')
-      .order('full_name', { ascending: true })
-
-    const individualOnly = request.nextUrl.searchParams.get('individual_only')
-    if (individualOnly === 'true') {
-      query = query.eq('is_individual', true)
-    } else if (foreignOnly === 'true') {
-      query = query.eq('is_foreign', true)
-    } else if (russianOnly === 'true') {
-      query = query.eq('is_foreign', false).eq('is_individual', false)
-    }
-
-    if (search) {
-      query = query.or(`full_name.ilike.%${search}%,short_name.ilike.%${search}%,inn.ilike.%${search}%`)
-    }
-
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ counterparties: data ?? [] })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// POST — создать или обновить контрагента
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { id, contracts, check_risk, ...fields } = body
-
-    fields.updated_at = new Date().toISOString()
-
-    if (id) {
-      const { data, error } = await supabase
-        .from('counterparties')
-        .update(fields)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-      return NextResponse.json({ success: true, counterparty: data })
-    }
-
-    // Защита от дублей иностранных контрагентов
-    if (fields.is_foreign && fields.full_name) {
-      const { data: existing } = await supabase
-        .from('counterparties')
-        .select('id, full_name')
-        .eq('is_foreign', true)
-        .ilike('full_name', fields.full_name.trim())
-        .maybeSingle()
-      if (existing) {
-        return NextResponse.json({ error: 'Иностранный контрагент с таким названием уже существует в реестре.' }, { status: 400 })
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('counterparties')
-      .insert(fields)
-      .select()
-      .single()
-    if (error) {
-      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('counterparties_inn_kpp_unique')) {
-        return NextResponse.json({ error: 'Контрагент с таким ИНН уже добавлен в базу. Найдите его в реестре контрагентов.' }, { status: 409 })
-      }
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-    return NextResponse.json({ success: true, counterparty: data })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-// DELETE — удалить контрагента
-export async function DELETE(request: NextRequest) {
-  try {
-    const id = request.nextUrl.searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-
-    const { error } = await supabase
-      .from('counterparties')
-      .delete()
-      .eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ success: true })
-
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ошибка' }, { status: 500 })
-  }
-}
-
-================
 File: app/api/signed-documents/route.ts
 ================
 import { createClient } from '@supabase/supabase-js'
@@ -8336,11 +8336,13 @@ export async function DELETE(
   try {
     const { sessionId } = await params
     const body = await request.json()
-    const { reason, user_name, contract_id } = body
+    const { reason, user_name, contract_id, target_status } = body
 
     if (!reason?.trim()) {
       return NextResponse.json({ error: 'Укажите причину прерывания' }, { status: 400 })
     }
+
+    const targetStatus = target_status === 'черновик' ? 'черновик' : 'архив'
 
     const { error: sessionError } = await supabase
       .from('approval_sessions')
@@ -8353,8 +8355,15 @@ export async function DELETE(
 
     await supabase
       .from('contracts')
-      .update({ status: 'архив' })
+      .update({ status: targetStatus })
       .eq('id', contract_id)
+
+    // Сбрасываем всех ожидающих участников — документ уходит из «требуют решения»
+    await supabase
+      .from('approval_participants')
+      .update({ status: 'disabled' })
+      .eq('session_id', sessionId)
+      .eq('status', 'pending')
 
     await supabase
       .from('approval_messages')
@@ -8373,6 +8382,34 @@ export async function DELETE(
         details: `Причина: ${reason}`,
         user_name: user_name ?? 'Система',
       })
+
+    // Колокольчик участникам: согласование прервано, решение больше не требуется
+    const { data: cancelledParticipants } = await supabase
+      .from('approval_participants')
+      .select('bitrix_user_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'disabled')
+
+    const { data: cancelledContract } = await supabase
+      .from('contracts')
+      .select('number, title')
+      .eq('id', contract_id)
+      .single()
+
+    const notifyIds = [...new Set((cancelledParticipants ?? [])
+      .map(p => p.bitrix_user_id)
+      .filter(Boolean) as number[])]
+
+    if (notifyIds.length > 0) {
+      await sendBitrixNotify({
+        recipients: notifyIds,
+        type: 'approval_cancelled',
+        document_id: contract_id,
+        document_title: cancelledContract?.title ?? '',
+        document_number: cancelledContract?.number ?? '',
+        extra: `Согласование прервано. Причина: ${reason}`,
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -9316,6 +9353,7 @@ export type NotifyType =
   | 'approval_deadline_soon'
   | 'approval_deadline_reached'
   | 'approval_deadline_overdue'
+  | 'approval_cancelled'
 
 interface NotifyOptions {
   recipients: number[]
@@ -9343,6 +9381,7 @@ function buildMessage(type: NotifyType, documentTitle: string, documentNumber: s
     approval_deadline_soon:   `⚠️ Срок согласования истекает завтра!\nДокумент: ${doc}\n${extra ?? ''}`,
     approval_deadline_reached:`🔴 Срок согласования истёк сегодня!\nДокумент: ${doc}\n${extra ?? ''}`,
     approval_deadline_overdue:`🚨 Согласование просрочено на 3 дня. Рекомендуем продлить срок согласования с указанием причины.\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_cancelled:       `🚫 Согласование прервано, решение больше не требуется.\nДокумент: ${doc}\n${extra ?? ''}`,
   }
   return messages[type] ?? `Уведомление по документу: ${doc}`
 }

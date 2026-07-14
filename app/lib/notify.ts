@@ -11,6 +11,7 @@ export type NotifyType =
   | 'approval_deadline_soon'
   | 'approval_deadline_reached'
   | 'approval_deadline_overdue'
+  | 'approval_cancelled'
 
 interface NotifyOptions {
   recipients: number[]
@@ -38,6 +39,7 @@ function buildMessage(type: NotifyType, documentTitle: string, documentNumber: s
     approval_deadline_soon:   `⚠️ Срок согласования истекает завтра!\nДокумент: ${doc}\n${extra ?? ''}`,
     approval_deadline_reached:`🔴 Срок согласования истёк сегодня!\nДокумент: ${doc}\n${extra ?? ''}`,
     approval_deadline_overdue:`🚨 Согласование просрочено на 3 дня. Рекомендуем продлить срок согласования с указанием причины.\nДокумент: ${doc}\n${extra ?? ''}`,
+    approval_cancelled:       `🚫 Согласование прервано, решение больше не требуется.\nДокумент: ${doc}\n${extra ?? ''}`,
   }
   return messages[type] ?? `Уведомление по документу: ${doc}`
 }

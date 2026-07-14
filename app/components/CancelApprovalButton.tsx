@@ -30,7 +30,7 @@ export default function CancelApprovalButton({
 
   if (!isAdmin && !isInitiator) return null
 
-  const handleCancel = async () => {
+  const handleCancel = async (targetStatus: 'черновик' | 'архив') => {
     if (!reason.trim()) {
       setError('Укажите причину прерывания')
       return
@@ -48,6 +48,7 @@ export default function CancelApprovalButton({
           reason,
           user_name: user?.name ?? 'Система',
           contract_id: contractId,
+          target_status: targetStatus,
         }),
       })
 
@@ -82,7 +83,7 @@ export default function CancelApprovalButton({
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Прерывание согласования</h3>
             <p className="text-sm text-gray-600 mb-4">
               Согласование по договору <strong>{contractNumber}</strong> будет прервано.
-              Договор перейдёт в статус <strong>Архив</strong>.
+              Выберите, что сделать с документом.
             </p>
 
             {error && (
@@ -104,17 +105,25 @@ export default function CancelApprovalButton({
               />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2">
               <button
-                onClick={handleCancel}
+                onClick={() => handleCancel('черновик')}
                 disabled={cancelling}
-                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                className="w-full bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
               >
-                {cancelling ? 'Прерывание...' : 'Прервать согласование'}
+                {cancelling ? 'Прерывание...' : 'Вернуть в черновик'}
+              </button>
+              <button
+                onClick={() => handleCancel('архив')}
+                disabled={cancelling}
+                className="w-full bg-gray-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+              >
+                {cancelling ? 'Прерывание...' : 'В архив'}
               </button>
               <button
                 onClick={() => { setShowModal(false); setReason(''); setError('') }}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                disabled={cancelling}
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
                 Отмена
               </button>
