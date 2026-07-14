@@ -2104,7 +2104,7 @@ export default function ContractTabs({ contract, versions, logs, userRole, userC
                           </button>
                         </div>
                       )}
-                      {isSessionActive && myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
+                      {myParticipant?.status === 'pending' && myParticipant?.role === 'optional' && (
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                           <p className="text-sm font-medium text-gray-700 mb-3">Вы добавлены для ознакомления</p>
                           <button onClick={() => { setApprovingId(myParticipant.id); setShowAcknowledgeModal(true) }}

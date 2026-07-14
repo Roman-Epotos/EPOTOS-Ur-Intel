@@ -118,14 +118,18 @@ export async function POST(
         is_ai: false,
       })
 
-    // Проверяем все ли обязательные согласовали
+    // Проверяем все ли обязательные согласовали — ТОЛЬКО если действие
+    // было голосованием обязательного участника. Ознакомление
+    // (isAcknowledge) не может повлиять на статус обязательных, и не
+    // должно повторно закрывать уже возобновлённую сессию (см. комментарий
+    // выше про добавление участника — та же категория ошибки).
     const { data: participants } = await supabase
       .from('approval_participants')
       .select('status, role')
       .eq('session_id', sessionId)
 
     const required = participants?.filter(p => p.role === 'required') ?? []
-    const allDone = required.every(p =>
+    const allDone = !isAcknowledge && required.every(p =>
       p.status === 'approved' || p.status === 'disabled' || p.status === 'completed_by_initiator'
     )
 
