@@ -155,8 +155,17 @@ export function useBitrixAuth() {
         } else {
           // Нет ни URL параметров ни sessionStorage — редиректим в Б24
           if (window.self === window.top) {
-            // Открыт не в iframe — прямая ссылка без авторизации
-            window.location.replace('https://gkepotos.bitrix24.ru/marketplace/app/252/')
+            // Открыт не в iframe — прямая ссылка без авторизации.
+            // Если это карточка конкретного документа — берём id из адреса
+            // и передаём дальше, чтобы после входа через Битрикс вернуться
+            // на тот же документ, а не потерять контекст.
+            const pathMatch = window.location.pathname.match(/^\/contracts\/([^/]+)/)
+            const returnContractId = pathMatch ? pathMatch[1] : null
+            window.location.replace(
+              returnContractId
+                ? `https://gkepotos.bitrix24.ru/marketplace/app/252/?contract_id=${returnContractId}`
+                : 'https://gkepotos.bitrix24.ru/marketplace/app/252/'
+            )
           }
         }
       } catch (err) {
