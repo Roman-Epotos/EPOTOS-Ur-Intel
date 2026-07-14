@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export interface BitrixUser {
   id: string
@@ -36,6 +37,7 @@ function shouldAllowReload(): boolean {
 }
 
 export function useBitrixAuth() {
+  const router = useRouter()
   const [user, setUser] = useState<BitrixUser | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -79,7 +81,7 @@ export function useBitrixAuth() {
               ?? sessionStorage.getItem('pending_contract_id')
             sessionStorage.removeItem('pending_contract_id')
             if (contractId) {
-              window.location.replace(`/contracts/${contractId}`)
+              router.replace(`/contracts/${contractId}`)
             } else {
               window.history.replaceState({}, '', '/')
             }
@@ -108,7 +110,7 @@ export function useBitrixAuth() {
               // Если в URL есть contract_id — редиректим на карточку
               const contractId = params.get('contract_id')
               if (contractId && !window.location.pathname.startsWith('/contracts/')) {
-                window.location.replace(`/contracts/${contractId}`)
+                router.replace(`/contracts/${contractId}`)
                 return
               }
             } else if (storedUser.refresh_id) {
@@ -146,7 +148,7 @@ export function useBitrixAuth() {
             // Если в URL есть contract_id — редиректим на карточку
             const contractId = params.get('contract_id')
             if (contractId && !window.location.pathname.startsWith('/contracts/')) {
-              window.location.replace(`/contracts/${contractId}`)
+              router.replace(`/contracts/${contractId}`)
               return
             }
           }
