@@ -1774,310 +1774,6 @@ export default function RelatedDocuments({
 }
 
 ================
-File: app/components/AuthGuard.tsx
-================
-'use client'
-
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useBitrixAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Авторизация...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!loading && !user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">🔐</span>
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900 mb-2">ЮрИнтел-Эпотос</h1>
-          <p className="text-sm text-gray-500 mb-6">
-            Для доступа к системе необходимо открыть приложение через Битрикс24.
-          </p>
-          <div className="bg-gray-50 rounded-xl p-4 text-left space-y-2 mb-6">
-            <p className="text-xs font-medium text-gray-700">Как войти:</p>
-            <p className="text-xs text-gray-500">1. Откройте Битрикс24</p>
-            <p className="text-xs text-gray-500">2. Перейдите в раздел «ЮрИнтел-Эпотос»</p>
-            <p className="text-xs text-gray-500">3. Система авторизует вас автоматически</p>
-          </div>
-          
-            <button
-            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/252/', '_blank')}
-            className="block w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
-            Открыть в Битрикс24
-          </button>
-          <p className="text-xs text-gray-400 mt-4">
-            Если проблема повторяется — обратитесь к администратору
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  return <>{children}</>
-}
-
-================
-File: app/components/CancelApprovalButton.tsx
-================
-'use client'
-
-import { useState } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Props {
-  sessionId: string
-  contractId: string
-  contractNumber: string
-  initiatedByBitrixId: number | null
-  onCancelled: () => void
-}
-
-export default function CancelApprovalButton({
-  sessionId,
-  contractId,
-  contractNumber,
-  initiatedByBitrixId,
-  onCancelled,
-}: Props) {
-  const { user } = useBitrixAuth()
-  const [showModal, setShowModal] = useState(false)
-  const [reason, setReason] = useState('')
-  const [cancelling, setCancelling] = useState(false)
-  const [error, setError] = useState('')
-
-  const adminIds = [30, 1148]
-  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
-  const isInitiator = user ? parseInt(user.id) === initiatedByBitrixId : false
-
-  if (!isAdmin && !isInitiator) return null
-
-  const handleCancel = async (targetStatus: 'черновик' | 'архив') => {
-    if (!reason.trim()) {
-      setError('Укажите причину прерывания')
-      return
-    }
-
-    setCancelling(true)
-    setError('')
-
-    try {
-      const baseUrl = 'https://epotos-ur-intel.vercel.app'
-      const response = await fetch(`${baseUrl}/api/approvals/${sessionId}/approve`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason,
-          user_name: user?.name ?? 'Система',
-          contract_id: contractId,
-          target_status: targetStatus,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error ?? 'Ошибка прерывания')
-        setCancelling(false)
-        return
-      }
-
-      setShowModal(false)
-      onCancelled()
-    } catch {
-      setError('Ошибка соединения')
-      setCancelling(false)
-    }
-  }
-
-  return (
-    <>
-      <button
-        onClick={() => setShowModal(true)}
-        className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
-      >
-        Прервать согласование
-      </button>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Прерывание согласования</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Согласование по договору <strong>{contractNumber}</strong> будет прервано.
-              Выберите, что сделать с документом.
-            </p>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-4">
-                {error}
-              </div>
-            )}
-
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Причина прерывания <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                placeholder="Например: отказ от сделки, изменились условия..."
-                rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => handleCancel('черновик')}
-                disabled={cancelling}
-                className="w-full bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
-              >
-                {cancelling ? 'Прерывание...' : 'Вернуть в черновик'}
-              </button>
-              <button
-                onClick={() => handleCancel('архив')}
-                disabled={cancelling}
-                className="w-full bg-gray-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
-              >
-                {cancelling ? 'Прерывание...' : 'В архив'}
-              </button>
-              <button
-                onClick={() => { setShowModal(false); setReason(''); setError('') }}
-                disabled={cancelling}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-================
-File: app/components/DelegateApproveCheckbox.tsx
-================
-'use client'
-
-import { useState } from 'react'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface Props {
-  contractId: string
-  contractNumber: string
-  authorBitrixId: number | null
-  allowOthers: boolean
-}
-
-export default function DelegateApproveCheckbox({
-  contractId,
-  contractNumber,
-  authorBitrixId,
-  allowOthers,
-}: Props) {
-  const { user } = useBitrixAuth()
-  const [checked, setChecked] = useState(allowOthers)
-  const [showModal, setShowModal] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const adminIds = [30, 1148]
-  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
-  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
-
-  if (!isAdmin && !isAuthor) return null
-
-  const handleChange = () => {
-    setShowModal(true)
-  }
-
-  const handleConfirm = async () => {
-    setSaving(true)
-    const newValue = !checked
-
-    try {
-      await fetch(`https://epotos-ur-intel.vercel.app/api/contracts/${contractId}/delegate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          allow_others_to_approve: newValue,
-          user_name: user?.name ?? 'Система',
-          user_bitrix_id: user?.id ? parseInt(user.id) : null,
-        }),
-      })
-      setChecked(newValue)
-    } catch {
-      console.error('Ошибка сохранения')
-    }
-
-    setSaving(false)
-    setShowModal(false)
-  }
-
-  return (
-    <>
-      <div className="flex items-center gap-2 mt-3">
-        <input
-          type="checkbox"
-          id="delegate-approve"
-          checked={checked}
-          onChange={handleChange}
-          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
-        />
-        <label htmlFor="delegate-approve" className="text-xs text-gray-600 cursor-pointer">
-          Разрешить запуск согласования другим сотрудникам ГК
-        </label>
-      </div>
-      <p className="text-xs text-gray-400 mt-0.5 ml-6">
-        Документ и так виден коллегам в общем реестре — эта галочка разрешает им самим нажать «Запустить согласование», если вы недоступны
-      </p>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              {checked
-                ? `Вы собираетесь запретить другим сотрудникам запускать согласование по договору ${contractNumber}. Только вы и администраторы сможете отправить его на согласование.`
-                : `Вы собираетесь разрешить другим сотрудникам запускать согласование по договору ${contractNumber}. Любой сотрудник системы сможет отправить его на согласование.`
-              }
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleConfirm}
-                disabled={saving}
-                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
-              >
-                {saving ? 'Сохранение...' : 'Подтвердить'}
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-================
 File: app/components/SignedDocumentUploadModal.tsx
 ================
 'use client'
@@ -2425,6 +2121,310 @@ export default function SignedDocumentUploadModal({
         </div>
       </div>
     </div>
+  )
+}
+
+================
+File: app/components/AuthGuard.tsx
+================
+'use client'
+
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useBitrixAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Авторизация...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!loading && !user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">🔐</span>
+          </div>
+          <h1 className="text-xl font-semibold text-gray-900 mb-2">ЮрИнтел-Эпотос</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            Для доступа к системе необходимо открыть приложение через Битрикс24.
+          </p>
+          <div className="bg-gray-50 rounded-xl p-4 text-left space-y-2 mb-6">
+            <p className="text-xs font-medium text-gray-700">Как войти:</p>
+            <p className="text-xs text-gray-500">1. Откройте Битрикс24</p>
+            <p className="text-xs text-gray-500">2. Перейдите в раздел «ЮрИнтел-Эпотос»</p>
+            <p className="text-xs text-gray-500">3. Система авторизует вас автоматически</p>
+          </div>
+          
+            <button
+            onClick={() => window.open('https://gkepotos.bitrix24.ru/marketplace/app/252/', '_blank')}
+            className="block w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
+            Открыть в Битрикс24
+          </button>
+          <p className="text-xs text-gray-400 mt-4">
+            Если проблема повторяется — обратитесь к администратору
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
+
+================
+File: app/components/CancelApprovalButton.tsx
+================
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  sessionId: string
+  contractId: string
+  contractNumber: string
+  initiatedByBitrixId: number | null
+  onCancelled: () => void
+}
+
+export default function CancelApprovalButton({
+  sessionId,
+  contractId,
+  contractNumber,
+  initiatedByBitrixId,
+  onCancelled,
+}: Props) {
+  const { user } = useBitrixAuth()
+  const [showModal, setShowModal] = useState(false)
+  const [reason, setReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [error, setError] = useState('')
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isInitiator = user ? parseInt(user.id) === initiatedByBitrixId : false
+
+  if (!isAdmin && !isInitiator) return null
+
+  const handleCancel = async (targetStatus: 'черновик' | 'архив') => {
+    if (!reason.trim()) {
+      setError('Укажите причину прерывания')
+      return
+    }
+
+    setCancelling(true)
+    setError('')
+
+    try {
+      const baseUrl = 'https://epotos-ur-intel.vercel.app'
+      const response = await fetch(`${baseUrl}/api/approvals/${sessionId}/approve`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason,
+          user_name: user?.name ?? 'Система',
+          contract_id: contractId,
+          target_status: targetStatus,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error ?? 'Ошибка прерывания')
+        setCancelling(false)
+        return
+      }
+
+      setShowModal(false)
+      onCancelled()
+    } catch {
+      setError('Ошибка соединения')
+      setCancelling(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setShowModal(true)}
+        className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+      >
+        Прервать согласование
+      </button>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Прерывание согласования</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Согласование по договору <strong>{contractNumber}</strong> будет прервано.
+              Выберите, что сделать с документом.
+            </p>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Причина прерывания <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="Например: отказ от сделки, изменились условия..."
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleCancel('черновик')}
+                disabled={cancelling}
+                className="w-full bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+              >
+                {cancelling ? 'Прерывание...' : 'Вернуть в черновик'}
+              </button>
+              <button
+                onClick={() => handleCancel('архив')}
+                disabled={cancelling}
+                className="w-full bg-gray-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+              >
+                {cancelling ? 'Прерывание...' : 'В архив'}
+              </button>
+              <button
+                onClick={() => { setShowModal(false); setReason(''); setError('') }}
+                disabled={cancelling}
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+================
+File: app/components/DelegateApproveCheckbox.tsx
+================
+'use client'
+
+import { useState } from 'react'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface Props {
+  contractId: string
+  contractNumber: string
+  authorBitrixId: number | null
+  allowOthers: boolean
+}
+
+export default function DelegateApproveCheckbox({
+  contractId,
+  contractNumber,
+  authorBitrixId,
+  allowOthers,
+}: Props) {
+  const { user } = useBitrixAuth()
+  const [checked, setChecked] = useState(allowOthers)
+  const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const adminIds = [30, 1148]
+  const isAdmin = user ? adminIds.includes(parseInt(user.id)) : false
+  const isAuthor = user ? parseInt(user.id) === authorBitrixId : false
+
+  if (!isAdmin && !isAuthor) return null
+
+  const handleChange = () => {
+    setShowModal(true)
+  }
+
+  const handleConfirm = async () => {
+    setSaving(true)
+    const newValue = !checked
+
+    try {
+      await fetch(`https://epotos-ur-intel.vercel.app/api/contracts/${contractId}/delegate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allow_others_to_approve: newValue,
+          user_name: user?.name ?? 'Система',
+          user_bitrix_id: user?.id ? parseInt(user.id) : null,
+        }),
+      })
+      setChecked(newValue)
+    } catch {
+      console.error('Ошибка сохранения')
+    }
+
+    setSaving(false)
+    setShowModal(false)
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mt-3">
+        <input
+          type="checkbox"
+          id="delegate-approve"
+          checked={checked}
+          onChange={handleChange}
+          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+        />
+        <label htmlFor="delegate-approve" className="text-xs text-gray-600 cursor-pointer">
+          Разрешить запуск согласования другим сотрудникам ГК
+        </label>
+      </div>
+      <p className="text-xs text-gray-400 mt-0.5 ml-6">
+        Документ и так виден коллегам в общем реестре — эта галочка разрешает им самим нажать «Запустить согласование», если вы недоступны
+      </p>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Подтверждение</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {checked
+                ? `Вы собираетесь запретить другим сотрудникам запускать согласование по договору ${contractNumber}. Только вы и администраторы сможете отправить его на согласование.`
+                : `Вы собираетесь разрешить другим сотрудникам запускать согласование по договору ${contractNumber}. Любой сотрудник системы сможет отправить его на согласование.`
+              }
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleConfirm}
+                disabled={saving}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+              >
+                {saving ? 'Сохранение...' : 'Подтвердить'}
+              </button>
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -8288,9 +8288,26 @@ export function useBitrixAuth() {
             })
             sessionStorage.setItem('bitrix_user', freshUser)
             localStorage.setItem('bitrix_user', freshUser)
-            const contractId = params.get('contract_id')
+            let contractId = params.get('contract_id')
               ?? sessionStorage.getItem('pending_contract_id')
             sessionStorage.removeItem('pending_contract_id')
+
+            // Сценарий B: contract_id обрезан Битриксом, sessionStorage
+            // партиционирован. Спрашиваем мост: cookie-id долетит сам,
+            // member_id даём как резерв/доп.проверку.
+            if (!contractId) {
+              try {
+                const dlRes = await fetch(
+                  `/api/deep-link?member_id=${encodeURIComponent(memberId)}`,
+                  { method: 'GET', credentials: 'include' }
+                )
+                const dlData = await dlRes.json()
+                if (dlData.contract_id) contractId = dlData.contract_id
+              } catch (e) {
+                console.error('[BX24 Auth] deep-link GET failed', e)
+              }
+            }
+
             if (contractId) {
               router.replace(`/contracts/${contractId}`)
             } else if (!window.location.pathname.startsWith('/contracts/')) {
@@ -8373,11 +8390,27 @@ export function useBitrixAuth() {
             // на тот же документ, а не потерять контекст.
             const pathMatch = window.location.pathname.match(/^\/contracts\/([^/]+)/)
             const returnContractId = pathMatch ? pathMatch[1] : null
-            // Дополнительно — в sessionStorage ЭТОЙ вкладки. Проверено
-            // ранее (2 июля): именно это переживает поход в Битрикс и
-            // обратно, даже когда query-параметр по дороге теряется.
             if (returnContractId) {
+              // Оставляем как было — не мешает, вдруг та же вкладка вернётся.
               sessionStorage.setItem('pending_contract_id', returnContractId)
+
+              // Мост через Supabase: id генерим здесь, ДО ухода в Битрикс.
+              const deepLinkId = crypto.randomUUID()
+              const knownMember =
+                (JSON.parse(sessionStorage.getItem('bitrix_user') ?? 'null')?.member_id) ??
+                (JSON.parse(localStorage.getItem('bitrix_user') ?? 'null')?.member_id) ??
+                ''
+
+              try {
+                await fetch('/api/deep-link', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: deepLinkId, member_id: knownMember, contract_id: returnContractId }),
+                })
+              } catch (e) {
+                console.error('[BX24 Auth] deep-link POST failed', e)
+              }
             }
             window.location.replace(
               returnContractId

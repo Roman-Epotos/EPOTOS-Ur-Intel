@@ -101,9 +101,14 @@ export function useBitrixAuth() {
 
             if (contractId) {
               router.replace(`/contracts/${contractId}`)
-            } else if (!window.location.pathname.startsWith('/contracts/')) {
-              window.history.replaceState({}, '', '/')
             }
+            // Сброс URL на главную убран: при нескольких параллельных
+            // копиях хука (нет единого провайдера) одна копия может найти
+            // contract_id и успешно перейти на карточку, а другая, придя
+            // чуть позже с пустыми руками, перетирала бы её адрес обратно
+            // на "/". Цена — в адресной строке иногда останутся служебные
+            // auth_id/refresh_id при обычном заходе на главную; это не
+            // ломает работу, просто не самый чистый URL.
           }
           setLoading(false)
           return
