@@ -164,6 +164,12 @@ export function useBitrixAuth() {
             // на тот же документ, а не потерять контекст.
             const pathMatch = window.location.pathname.match(/^\/contracts\/([^/]+)/)
             const returnContractId = pathMatch ? pathMatch[1] : null
+            // Дополнительно — в sessionStorage ЭТОЙ вкладки. Проверено
+            // ранее (2 июля): именно это переживает поход в Битрикс и
+            // обратно, даже когда query-параметр по дороге теряется.
+            if (returnContractId) {
+              sessionStorage.setItem('pending_contract_id', returnContractId)
+            }
             window.location.replace(
               returnContractId
                 ? `https://gkepotos.bitrix24.ru/marketplace/app/252/?contract_id=${returnContractId}`

@@ -5629,7 +5629,7 @@ export function useBitrixAuth() {
             sessionStorage.removeItem('pending_contract_id')
             if (contractId) {
               router.replace(`/contracts/${contractId}`)
-            } else {
+            } else if (!window.location.pathname.startsWith('/contracts/')) {
               window.history.replaceState({}, '', '/')
             }
           }
