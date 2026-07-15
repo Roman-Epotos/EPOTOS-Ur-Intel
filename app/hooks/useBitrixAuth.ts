@@ -72,11 +72,13 @@ export function useBitrixAuth() {
 
           if (data.success) {
             setUser(data.user)
-            sessionStorage.setItem('bitrix_user', JSON.stringify({
+            const freshUser = JSON.stringify({
               ...data.user,
               auth_id: authId,
               member_id: memberId,
-            }))
+            })
+            sessionStorage.setItem('bitrix_user', freshUser)
+            localStorage.setItem('bitrix_user', freshUser)
             const contractId = params.get('contract_id')
               ?? sessionStorage.getItem('pending_contract_id')
             sessionStorage.removeItem('pending_contract_id')
@@ -91,7 +93,7 @@ export function useBitrixAuth() {
         }
 
         // 2. Проверяем sessionStorage
-        const stored = sessionStorage.getItem('bitrix_user')
+        const stored = sessionStorage.getItem('bitrix_user') ?? localStorage.getItem('bitrix_user')
         if (stored) {
           const storedUser = JSON.parse(stored)
           if (storedUser.auth_id && storedUser.member_id) {
@@ -129,17 +131,18 @@ export function useBitrixAuth() {
                     refresh_id: refreshData.refresh_id,
                   }
                   sessionStorage.setItem('bitrix_user', JSON.stringify(updatedUser))
+                  localStorage.setItem('bitrix_user', JSON.stringify(updatedUser))
                   setUser(updatedUser)
                 } else {
-                  sessionStorage.removeItem('bitrix_user')
+                  sessionStorage.removeItem('bitrix_user'); localStorage.removeItem('bitrix_user')
                   if (shouldAllowReload()) window.location.reload()
                 }
               } catch {
-                sessionStorage.removeItem('bitrix_user')
+                sessionStorage.removeItem('bitrix_user'); localStorage.removeItem('bitrix_user')
                 if (shouldAllowReload()) window.location.reload()
               }
             } else {
-              sessionStorage.removeItem('bitrix_user')
+              sessionStorage.removeItem('bitrix_user'); localStorage.removeItem('bitrix_user')
               if (shouldAllowReload()) window.location.reload()
             }
           } else {
@@ -179,7 +182,7 @@ export function useBitrixAuth() {
   }, [])
 
   const logout = () => {
-    sessionStorage.removeItem('bitrix_user')
+    sessionStorage.removeItem('bitrix_user'); localStorage.removeItem('bitrix_user')
     setUser(null)
     if (window.BX24?.setTitle) window.BX24.setTitle(0)
   }
