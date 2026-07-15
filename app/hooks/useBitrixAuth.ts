@@ -79,9 +79,26 @@ export function useBitrixAuth() {
             })
             sessionStorage.setItem('bitrix_user', freshUser)
             localStorage.setItem('bitrix_user', freshUser)
-            const contractId = params.get('contract_id')
+            let contractId = params.get('contract_id')
               ?? sessionStorage.getItem('pending_contract_id')
             sessionStorage.removeItem('pending_contract_id')
+
+            // Сценарий B: contract_id обрезан Битриксом, sessionStorage
+            // партиционирован. Спрашиваем мост: cookie-id долетит сам,
+            // member_id даём как резерв/доп.проверку.
+            if (!contractId) {
+              try {
+                const dlRes = await fetch(
+                  `/api/deep-link?member_id=${encodeURIComponent(memberId)}`,
+                  { method: 'GET', credentials: 'include' }
+                )
+                const dlData = await dlRes.json()
+                if (dlData.contract_id) contractId = dlData.contract_id
+              } catch (e) {
+                console.error('[BX24 Auth] deep-link GET failed', e)
+              }
+            }
+
             if (contractId) {
               router.replace(`/contracts/${contractId}`)
             } else if (!window.location.pathname.startsWith('/contracts/')) {
@@ -164,11 +181,27 @@ export function useBitrixAuth() {
             // на тот же документ, а не потерять контекст.
             const pathMatch = window.location.pathname.match(/^\/contracts\/([^/]+)/)
             const returnContractId = pathMatch ? pathMatch[1] : null
-            // Дополнительно — в sessionStorage ЭТОЙ вкладки. Проверено
-            // ранее (2 июля): именно это переживает поход в Битрикс и
-            // обратно, даже когда query-параметр по дороге теряется.
             if (returnContractId) {
+              // Оставляем как было — не мешает, вдруг та же вкладка вернётся.
               sessionStorage.setItem('pending_contract_id', returnContractId)
+
+              // Мост через Supabase: id генерим здесь, ДО ухода в Битрикс.
+              const deepLinkId = crypto.randomUUID()
+              const knownMember =
+                (JSON.parse(sessionStorage.getItem('bitrix_user') ?? 'null')?.member_id) ??
+                (JSON.parse(localStorage.getItem('bitrix_user') ?? 'null')?.member_id) ??
+                ''
+
+              try {
+                await fetch('/api/deep-link', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: deepLinkId, member_id: knownMember, contract_id: returnContractId }),
+                })
+              } catch (e) {
+                console.error('[BX24 Auth] deep-link POST failed', e)
+              }
             }
             window.location.replace(
               returnContractId
