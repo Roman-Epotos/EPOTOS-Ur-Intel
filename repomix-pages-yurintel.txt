@@ -1660,640 +1660,6 @@ export default function CounterpartyPage() {
 }
 
 ================
-File: app/dashboard-finance/page.tsx
-================
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-
-interface FinanceDashData {
-  stats_sums: Record<string, number>
-  stats_count: Record<string, number>
-  debt_contracts: {
-    id: string; number: string; title: string
-    counterparty: string; amount: number; end_date: string | null
-  }[]
-  total_debt: number
-  no_amount_contracts: {
-    id: string; number: string; title: string
-    counterparty: string; status: string; created_at: string
-  }[]
-  top_counterparties: { name: string; total: number }[]
-  company_amounts: Record<string, number>
-  total_period_amount: number
-  period_days: number
-}
-
-const PERIOD_OPTIONS = [
-  { value: '30', label: '30 дней' },
-  { value: '90', label: 'Квартал' },
-  { value: '180', label: 'Полгода' },
-  { value: '365', label: 'Год' },
-]
-
-const COMPANY_NAMES: Record<string, string> = {
-  'ТХ': 'ООО Техно', 'НПП': 'ООО НПП ЭПОТОС',
-  'СПТ': 'ООО СПТ', 'ОС': 'ООО ОС', 'Э-К': 'ООО Эпотос-К',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  на_согласовании: 'На согласовании',
-  согласован: 'Согласован',
-  загружен_частично: 'Загружен частично',
-  подписан: 'Подписан',
-  на_исполнении: 'На исполнении',
-}
-
-const baseUrl = 'https://epotos-ur-intel.vercel.app'
-
-const formatSum = (n: number) =>
-  new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
-
-export default function FinanceDashboardPage() {
-  const router = useRouter()
-  const { user, loading: authLoading } = useBitrixAuth()
-  const [data, setData] = useState<FinanceDashData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [period, setPeriod] = useState('30')
-  const [hasAccess, setHasAccess] = useState(false)
-  const [companyPrefix, setCompanyPrefix] = useState<string | null>(null)
-  const [selectedCompany, setSelectedCompany] = useState<string>('all')
-  const [companies, setCompanies] = useState<{ prefix: string; name: string }[]>([])
-
-  const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
-  const ALLOWED_ROLES = [...GC_ROLES, 'director', 'finance']
-
-  useEffect(() => {
-    if (authLoading || !user?.id) return
-    fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
-      .then(r => r.json())
-      .then(d => {
-        const allRoles: string[] = d.all_roles ?? [d.role]
-        const hasAllowed = allRoles.some(r => ALLOWED_ROLES.includes(r))
-        if (hasAllowed) {
-          setHasAccess(true)
-          const isGC = allRoles.some(r => GC_ROLES.includes(r))
-          setCompanyPrefix(isGC ? null : d.companies.join(','))
-        }
-      })
-  }, [authLoading, user?.id])
-
-  useEffect(() => {
-    fetch(`${baseUrl}/api/company-requisites`)
-      .then(r => r.json())
-      .then(d => {
-        const list = (d.requisites ?? []).map((r: { company_prefix: string; short_name: string }) => ({
-          prefix: r.company_prefix,
-          name: r.short_name ?? r.company_prefix,
-        }))
-        setCompanies(list)
-      })
-  }, [])
-
-  useEffect(() => {
-    if (hasAccess) loadData()
-  }, [hasAccess, period, selectedCompany])
-
-  const loadData = async () => {
-    setLoading(true)
-    try {
-      const effectivePrefix = selectedCompany !== 'all'
-        ? selectedCompany
-        : companyPrefix
-      const url = effectivePrefix
-        ? `${baseUrl}/api/dashboard-finance?period=${period}&company_prefix=${effectivePrefix}`
-        : `${baseUrl}/api/dashboard-finance?period=${period}`
-      const res = await fetch(url)
-      const json = await res.json()
-      setData(json)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (authLoading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">Загрузка...</p>
-    </div>
-  )
-
-  if (!hasAccess) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-gray-900 font-medium">Доступ запрещён</p>
-        <p className="text-gray-500 text-sm mt-1">Финансовый дашборд недоступен для вашей роли</p>
-        <Link href="/" className="mt-4 inline-block text-sm text-gray-900 underline">На главную</Link>
-      </div>
-    </div>
-  )
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-
-        {/* Шапка */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900 flex-shrink-0">← Рабочий стол</Link>
-            <span className="text-gray-300">/</span>
-            <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">💰 Финансовый дашборд</h1>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {companies.length > 1 && (
-              <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">
-                <option value="all">ГК ЭПОТОС</option>
-                {companies
-                  .filter(c => !companyPrefix || companyPrefix.split(',').includes(c.prefix))
-                  .map(c => (
-                    <option key={c.prefix} value={c.prefix}>{c.name}</option>
-                  ))}
-              </select>
-            )}
-            <div className="flex gap-2">
-              {PERIOD_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={() => setPeriod(opt.value)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${period === opt.value ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-20 text-gray-400">Загрузка данных...</div>
-        ) : !data ? null : (
-          <div className="space-y-6">
-
-            {/* Суммы по статусам */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">💰 Суммы договоров по статусам</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {Object.entries(STATUS_LABELS).map(([status, label]) => (
-                  <div key={status} className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-500 mb-1">{label}</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {formatSum(data.stats_sums[status] ?? 0)}
-                    </p>
-                    <p className="text-xs text-gray-400">{data.stats_count[status] ?? 0} дог.</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* Дебиторская задолженность */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
-                  📊 Дебиторская задолженность
-                </h2>
-                <p className="text-2xl font-bold text-red-600 mb-3">{formatSum(data.total_debt)}</p>
-                {data.debt_contracts.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">Нет договоров на исполнении</p>
-                ) : (
-                  <div className="space-y-2">
-                    {data.debt_contracts.map(c => (
-                      <div key={c.id} onClick={() => router.push(`/contracts/${c.id}`)}
-                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-3 border border-gray-100 transition-colors">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{c.number}</p>
-                            <p className="text-xs text-gray-500 truncate">{c.counterparty}</p>
-                          </div>
-                          <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">
-                            {formatSum(c.amount)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Топ контрагентов */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">🏢 Топ контрагентов по сумме</h2>
-                {data.top_counterparties.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">Нет данных</p>
-                ) : (
-                  <div className="space-y-2">
-                    {data.top_counterparties.map((c, i) => {
-                      const max = data.top_counterparties[0]?.total ?? 1
-                      const pct = Math.round((c.total / max) * 100)
-                      return (
-                        <div key={i}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-gray-600 truncate max-w-xs">{c.name}</span>
-                            <span className="text-xs font-medium text-gray-900 ml-2 whitespace-nowrap">{formatSum(c.total)}</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5">
-                            <div className="bg-gray-900 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Договоры без суммы */}
-              <div className="bg-white rounded-xl border border-orange-200 p-5">
-                <h2 className="text-sm font-semibold text-orange-700 mb-3 flex items-center gap-2">
-                  ⚠️ Договоры без суммы
-                  {data.no_amount_contracts.length > 0 && (
-                    <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full">
-                      {data.no_amount_contracts.length}
-                    </span>
-                  )}
-                </h2>
-                {data.no_amount_contracts.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">✅ Все суммы указаны</p>
-                ) : (
-                  <div className="space-y-2">
-                    {data.no_amount_contracts.map(c => (
-                      <div key={c.id} onClick={() => router.push(`/contracts/${c.id}`)}
-                        className="cursor-pointer hover:bg-orange-50 rounded-lg p-3 border border-orange-100 transition-colors">
-                        <p className="text-sm font-medium text-gray-900">{c.number}</p>
-                        <p className="text-xs text-gray-500 truncate">{c.counterparty}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Динамика по компаниям */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-sm font-semibold text-gray-900 mb-1">
-                  📈 Суммы за {PERIOD_OPTIONS.find(o => o.value === period)?.label}
-                </h2>
-                <p className="text-2xl font-bold text-gray-900 mb-3">{formatSum(data.total_period_amount)}</p>
-                {Object.keys(data.company_amounts).length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">Нет данных за период</p>
-                ) : (
-                  <div className="space-y-2">
-                    {Object.entries(data.company_amounts)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([company, amount]) => {
-                        const max = Math.max(...Object.values(data.company_amounts))
-                        const pct = Math.round((amount / max) * 100)
-                        return (
-                          <div key={company}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs text-gray-600">{COMPANY_NAMES[company] ?? company}</span>
-                              <span className="text-xs font-medium text-gray-900">{formatSum(amount)}</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-1.5">
-                              <div className="bg-gray-900 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        )
-                      })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-================
-File: app/editor/page.tsx
-================
-'use client'
-
-import { Suspense } from 'react'
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
-
-declare global {
-  interface Window {
-    DocsAPI: {
-      DocEditor: new (elementId: string, config: object) => void
-    }
-  }
-}
-
-function EditorContent() {
-  const searchParams = useSearchParams()
-  const version_id = searchParams.get('version_id')
-  const attachment_id = searchParams.get('attachment_id')
-  const mode = searchParams.get('mode') ?? 'edit'
-  const user_id = searchParams.get('user_id') ?? ''
-  const user_name = searchParams.get('user_name') ?? 'Пользователь'
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-
-  const baseUrl = 'https://epotos-ur-intel.vercel.app'
-  const onlyofficeUrl = 'https://office.epotos-port.ru'
-
-  useEffect(() => {
-    document.title = 'ЮрИнтел-Эпотос — Редактор'
-
-    if (!version_id && !attachment_id) return
-
-    const initEditor = async () => {
-      try {
-        const res = await fetch(`${baseUrl}/api/onlyoffice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            version_id: version_id || undefined,
-            attachment_id: attachment_id || undefined,
-            user_name,
-            user_id,
-            mode,
-          }),
-        })
-
-        const data = await res.json()
-        if (!res.ok) {
-          setError(data.error)
-          setLoading(false)
-          return
-        }
-
-        const script = document.createElement('script')
-        script.src = `${onlyofficeUrl}/web-apps/apps/api/documents/api.js`
-        script.onload = () => {
-          setLoading(false)
-          document.title = 'ЮрИнтел-Эпотос — Редактор'
-          new window.DocsAPI.DocEditor('onlyoffice-editor', {
-            ...data.config,
-            token: data.token,
-            height: '100%',
-            width: '100%',
-            type: 'desktop',
-          })
-        }
-        script.onerror = () => {
-          setError('Не удалось загрузить редактор OnlyOffice')
-          setLoading(false)
-        }
-        document.head.appendChild(script)
-      } catch {
-        setError('Ошибка подключения к редактору')
-        setLoading(false)
-      }
-    }
-
-    initEditor()
-  }, [version_id])
-
-  if (error) {
-    return (
-      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
-        <div style={{textAlign:'center'}}>
-          <p style={{color:'red', fontWeight:500}}>Ошибка</p>
-          <p style={{color:'gray', fontSize:14, marginTop:4}}>{error}</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{position:'fixed', top:0, left:0, width:'100vw', height:'100vh', overflow:'hidden'}}>
-      {loading && (
-        <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
-          <p style={{color:'gray', fontSize:14}}>Загрузка редактора...</p>
-        </div>
-      )}
-      <div id="onlyoffice-editor" style={{width:'100%', height:'100%'}} />
-    </div>
-  )
-}
-
-export default function EditorPage() {
-  return (
-    <Suspense fallback={
-      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
-        <p style={{color:'gray', fontSize:14}}>Загрузка...</p>
-      </div>
-    }>
-      <EditorContent />
-    </Suspense>
-  )
-}
-
-================
-File: app/contracts/[id]/upload/page.tsx
-================
-'use client'
-
-import { useState } from 'react'
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
-import { uploadFileDirect } from '@/app/utils/uploadFile'
-
-export default function UploadVersionPage() {
-  const params = useParams()
-  const contractId = params.id as string
-  const { user } = useBitrixAuth()
-
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [comment, setComment] = useState('')
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0]
-    if (!selected) return
-
-    const allowed = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ]
-
-    if (!allowed.includes(selected.type)) {
-      setError('Допустимые форматы: PDF, DOCX, XLSX')
-      return
-    }
-
-    if (selected.size > 20 * 1024 * 1024) {
-      setError('Файл не должен превышать 20 МБ')
-      return
-    }
-
-    setFile(selected)
-    setError('')
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!file) { setError('Выберите файл'); return }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      // Загружаем файл напрямую в Supabase (обходит лимит Vercel 4.5 МБ)
-      const { public_url, file_name } = await uploadFileDirect(
-        file,
-        'contracts',
-        `versions/${contractId}`
-      )
-
-      // Сохраняем запись о версии в БД
-      const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contract_id: contractId,
-          comment,
-          user_name: user?.name ?? 'Система',
-          file_url: public_url,
-          file_name,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError('Ошибка сохранения версии: ' + (data.error ?? 'Неизвестная ошибка'))
-        setLoading(false)
-        return
-      }
-
-      window.location.href = `https://epotos-ur-intel.vercel.app/contracts/${contractId}`
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
-      setError('Ошибка: ' + message)
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-
-        <div className="flex items-center gap-3 mb-8">
-          <Link href={`/contracts/${contractId}`}
-            className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-            ← Назад
-          </Link>
-          <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-semibold text-gray-900">Загрузить версию документа</h1>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <form onSubmit={handleSubmit} className="space-y-5">
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Файл договора <span className="text-red-500">*</span>
-              </label>
-              <div className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
-                {file ? (
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {(file.size / 1024 / 1024).toFixed(2)} МБ
-                    </p>
-                    <button type="button" onClick={() => setFile(null)}
-                      className="mt-2 text-xs text-red-500 hover:text-red-700 underline">
-                      Удалить
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
-                    <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 20 МБ</p>
-                  </div>
-                )}
-                {!file && (
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.xlsx"
-                    onChange={handleFileChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Комментарий к версии
-              </label>
-              <input
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Например: первичная версия, правки юриста..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={loading || !file}
-                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
-                {loading ? 'Загрузка...' : 'Загрузить документ'}
-              </button>
-              <Link href={`/contracts/${contractId}`}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Отмена
-              </Link>
-            </div>
-
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-================
-File: app/contracts/[id]/page.tsx
-================
-import { createClient } from '@supabase/supabase-js'
-import { notFound } from 'next/navigation'
-import ContractTabs from '@/app/components/ContractTabs'
-
-export default async function ContractPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  )
-
-  const [{ data: contract }, { data: logs }, { data: versions }] = await Promise.all([
-    supabase.from('contracts').select('*').eq('id', id).single(),
-    supabase.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }),
-    supabase.from('versions').select('*').eq('contract_id', id).order('version_number', { ascending: false }),
-  ])
-
-  if (!contract || contract.deleted_at) notFound()
-
-  return (
-    <ContractTabs
-      contract={contract}
-      versions={versions ?? []}
-      logs={logs ?? []}
-    />
-  )
-}
-
-================
 File: app/counterparties/page.tsx
 ================
 'use client'
@@ -2951,6 +2317,640 @@ export default function CounterpartiesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+================
+File: app/dashboard-finance/page.tsx
+================
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+
+interface FinanceDashData {
+  stats_sums: Record<string, number>
+  stats_count: Record<string, number>
+  debt_contracts: {
+    id: string; number: string; title: string
+    counterparty: string; amount: number; end_date: string | null
+  }[]
+  total_debt: number
+  no_amount_contracts: {
+    id: string; number: string; title: string
+    counterparty: string; status: string; created_at: string
+  }[]
+  top_counterparties: { name: string; total: number }[]
+  company_amounts: Record<string, number>
+  total_period_amount: number
+  period_days: number
+}
+
+const PERIOD_OPTIONS = [
+  { value: '30', label: '30 дней' },
+  { value: '90', label: 'Квартал' },
+  { value: '180', label: 'Полгода' },
+  { value: '365', label: 'Год' },
+]
+
+const COMPANY_NAMES: Record<string, string> = {
+  'ТХ': 'ООО Техно', 'НПП': 'ООО НПП ЭПОТОС',
+  'СПТ': 'ООО СПТ', 'ОС': 'ООО ОС', 'Э-К': 'ООО Эпотос-К',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  на_согласовании: 'На согласовании',
+  согласован: 'Согласован',
+  загружен_частично: 'Загружен частично',
+  подписан: 'Подписан',
+  на_исполнении: 'На исполнении',
+}
+
+const baseUrl = 'https://epotos-ur-intel.vercel.app'
+
+const formatSum = (n: number) =>
+  new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
+
+export default function FinanceDashboardPage() {
+  const router = useRouter()
+  const { user, loading: authLoading } = useBitrixAuth()
+  const [data, setData] = useState<FinanceDashData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState('30')
+  const [hasAccess, setHasAccess] = useState(false)
+  const [companyPrefix, setCompanyPrefix] = useState<string | null>(null)
+  const [selectedCompany, setSelectedCompany] = useState<string>('all')
+  const [companies, setCompanies] = useState<{ prefix: string; name: string }[]>([])
+
+  const GC_ROLES = ['developer', 'admin', 'gc_manager', 'finance_gc', 'legal_gc']
+  const ALLOWED_ROLES = [...GC_ROLES, 'director', 'finance']
+
+  useEffect(() => {
+    if (authLoading || !user?.id) return
+    fetch(`${baseUrl}/api/user-role?bitrix_user_id=${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        const allRoles: string[] = d.all_roles ?? [d.role]
+        const hasAllowed = allRoles.some(r => ALLOWED_ROLES.includes(r))
+        if (hasAllowed) {
+          setHasAccess(true)
+          const isGC = allRoles.some(r => GC_ROLES.includes(r))
+          setCompanyPrefix(isGC ? null : d.companies.join(','))
+        }
+      })
+  }, [authLoading, user?.id])
+
+  useEffect(() => {
+    fetch(`${baseUrl}/api/company-requisites`)
+      .then(r => r.json())
+      .then(d => {
+        const list = (d.requisites ?? []).map((r: { company_prefix: string; short_name: string }) => ({
+          prefix: r.company_prefix,
+          name: r.short_name ?? r.company_prefix,
+        }))
+        setCompanies(list)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (hasAccess) loadData()
+  }, [hasAccess, period, selectedCompany])
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const effectivePrefix = selectedCompany !== 'all'
+        ? selectedCompany
+        : companyPrefix
+      const url = effectivePrefix
+        ? `${baseUrl}/api/dashboard-finance?period=${period}&company_prefix=${effectivePrefix}`
+        : `${baseUrl}/api/dashboard-finance?period=${period}`
+      const res = await fetch(url)
+      const json = await res.json()
+      setData(json)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (authLoading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-400 text-sm">Загрузка...</p>
+    </div>
+  )
+
+  if (!hasAccess) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <p className="text-gray-900 font-medium">Доступ запрещён</p>
+        <p className="text-gray-500 text-sm mt-1">Финансовый дашборд недоступен для вашей роли</p>
+        <Link href="/" className="mt-4 inline-block text-sm text-gray-900 underline">На главную</Link>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+
+        {/* Шапка */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900 flex-shrink-0">← Рабочий стол</Link>
+            <span className="text-gray-300">/</span>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">💰 Финансовый дашборд</h1>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {companies.length > 1 && (
+              <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <option value="all">ГК ЭПОТОС</option>
+                {companies
+                  .filter(c => !companyPrefix || companyPrefix.split(',').includes(c.prefix))
+                  .map(c => (
+                    <option key={c.prefix} value={c.prefix}>{c.name}</option>
+                  ))}
+              </select>
+            )}
+            <div className="flex gap-2">
+              {PERIOD_OPTIONS.map(opt => (
+                <button key={opt.value} onClick={() => setPeriod(opt.value)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${period === opt.value ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-20 text-gray-400">Загрузка данных...</div>
+        ) : !data ? null : (
+          <div className="space-y-6">
+
+            {/* Суммы по статусам */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-900 mb-4">💰 Суммы договоров по статусам</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {Object.entries(STATUS_LABELS).map(([status, label]) => (
+                  <div key={status} className="bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-500 mb-1">{label}</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {formatSum(data.stats_sums[status] ?? 0)}
+                    </p>
+                    <p className="text-xs text-gray-400">{data.stats_count[status] ?? 0} дог.</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Дебиторская задолженность */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h2 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                  📊 Дебиторская задолженность
+                </h2>
+                <p className="text-2xl font-bold text-red-600 mb-3">{formatSum(data.total_debt)}</p>
+                {data.debt_contracts.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Нет договоров на исполнении</p>
+                ) : (
+                  <div className="space-y-2">
+                    {data.debt_contracts.map(c => (
+                      <div key={c.id} onClick={() => router.push(`/contracts/${c.id}`)}
+                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-3 border border-gray-100 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{c.number}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.counterparty}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                            {formatSum(c.amount)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Топ контрагентов */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">🏢 Топ контрагентов по сумме</h2>
+                {data.top_counterparties.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Нет данных</p>
+                ) : (
+                  <div className="space-y-2">
+                    {data.top_counterparties.map((c, i) => {
+                      const max = data.top_counterparties[0]?.total ?? 1
+                      const pct = Math.round((c.total / max) * 100)
+                      return (
+                        <div key={i}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-600 truncate max-w-xs">{c.name}</span>
+                            <span className="text-xs font-medium text-gray-900 ml-2 whitespace-nowrap">{formatSum(c.total)}</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="bg-gray-900 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Договоры без суммы */}
+              <div className="bg-white rounded-xl border border-orange-200 p-5">
+                <h2 className="text-sm font-semibold text-orange-700 mb-3 flex items-center gap-2">
+                  ⚠️ Договоры без суммы
+                  {data.no_amount_contracts.length > 0 && (
+                    <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full">
+                      {data.no_amount_contracts.length}
+                    </span>
+                  )}
+                </h2>
+                {data.no_amount_contracts.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">✅ Все суммы указаны</p>
+                ) : (
+                  <div className="space-y-2">
+                    {data.no_amount_contracts.map(c => (
+                      <div key={c.id} onClick={() => router.push(`/contracts/${c.id}`)}
+                        className="cursor-pointer hover:bg-orange-50 rounded-lg p-3 border border-orange-100 transition-colors">
+                        <p className="text-sm font-medium text-gray-900">{c.number}</p>
+                        <p className="text-xs text-gray-500 truncate">{c.counterparty}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Динамика по компаниям */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h2 className="text-sm font-semibold text-gray-900 mb-1">
+                  📈 Суммы за {PERIOD_OPTIONS.find(o => o.value === period)?.label}
+                </h2>
+                <p className="text-2xl font-bold text-gray-900 mb-3">{formatSum(data.total_period_amount)}</p>
+                {Object.keys(data.company_amounts).length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Нет данных за период</p>
+                ) : (
+                  <div className="space-y-2">
+                    {Object.entries(data.company_amounts)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([company, amount]) => {
+                        const max = Math.max(...Object.values(data.company_amounts))
+                        const pct = Math.round((amount / max) * 100)
+                        return (
+                          <div key={company}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-gray-600">{COMPANY_NAMES[company] ?? company}</span>
+                              <span className="text-xs font-medium text-gray-900">{formatSum(amount)}</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-gray-900 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+================
+File: app/editor/page.tsx
+================
+'use client'
+
+import { Suspense } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+
+declare global {
+  interface Window {
+    DocsAPI: {
+      DocEditor: new (elementId: string, config: object) => void
+    }
+  }
+}
+
+function EditorContent() {
+  const searchParams = useSearchParams()
+  const version_id = searchParams.get('version_id')
+  const attachment_id = searchParams.get('attachment_id')
+  const mode = searchParams.get('mode') ?? 'edit'
+  const user_id = searchParams.get('user_id') ?? ''
+  const user_name = searchParams.get('user_name') ?? 'Пользователь'
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const baseUrl = 'https://epotos-ur-intel.vercel.app'
+  const onlyofficeUrl = 'https://office.epotos-port.ru'
+
+  useEffect(() => {
+    document.title = 'ЮрИнтел-Эпотос — Редактор'
+
+    if (!version_id && !attachment_id) return
+
+    const initEditor = async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/onlyoffice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            version_id: version_id || undefined,
+            attachment_id: attachment_id || undefined,
+            user_name,
+            user_id,
+            mode,
+          }),
+        })
+
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error)
+          setLoading(false)
+          return
+        }
+
+        const script = document.createElement('script')
+        script.src = `${onlyofficeUrl}/web-apps/apps/api/documents/api.js`
+        script.onload = () => {
+          setLoading(false)
+          document.title = 'ЮрИнтел-Эпотос — Редактор'
+          new window.DocsAPI.DocEditor('onlyoffice-editor', {
+            ...data.config,
+            token: data.token,
+            height: '100%',
+            width: '100%',
+            type: 'desktop',
+          })
+        }
+        script.onerror = () => {
+          setError('Не удалось загрузить редактор OnlyOffice')
+          setLoading(false)
+        }
+        document.head.appendChild(script)
+      } catch {
+        setError('Ошибка подключения к редактору')
+        setLoading(false)
+      }
+    }
+
+    initEditor()
+  }, [version_id])
+
+  if (error) {
+    return (
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+        <div style={{textAlign:'center'}}>
+          <p style={{color:'red', fontWeight:500}}>Ошибка</p>
+          <p style={{color:'gray', fontSize:14, marginTop:4}}>{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{position:'fixed', top:0, left:0, width:'100vw', height:'100vh', overflow:'hidden'}}>
+      {loading && (
+        <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+          <p style={{color:'gray', fontSize:14}}>Загрузка редактора...</p>
+        </div>
+      )}
+      <div id="onlyoffice-editor" style={{width:'100%', height:'100%'}} />
+    </div>
+  )
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+        <p style={{color:'gray', fontSize:14}}>Загрузка...</p>
+      </div>
+    }>
+      <EditorContent />
+    </Suspense>
+  )
+}
+
+================
+File: app/contracts/[id]/upload/page.tsx
+================
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useBitrixAuth } from '@/app/hooks/useBitrixAuth'
+import { uploadFileDirect } from '@/app/utils/uploadFile'
+
+export default function UploadVersionPage() {
+  const params = useParams()
+  const contractId = params.id as string
+  const { user } = useBitrixAuth()
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [comment, setComment] = useState('')
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0]
+    if (!selected) return
+
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]
+
+    if (!allowed.includes(selected.type)) {
+      setError('Допустимые форматы: PDF, DOCX, XLSX')
+      return
+    }
+
+    if (selected.size > 20 * 1024 * 1024) {
+      setError('Файл не должен превышать 20 МБ')
+      return
+    }
+
+    setFile(selected)
+    setError('')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) { setError('Выберите файл'); return }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      // Загружаем файл напрямую в Supabase (обходит лимит Vercel 4.5 МБ)
+      const { public_url, file_name } = await uploadFileDirect(
+        file,
+        'contracts',
+        `versions/${contractId}`
+      )
+
+      // Сохраняем запись о версии в БД
+      const response = await fetch('https://epotos-ur-intel.vercel.app/api/versions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_id: contractId,
+          comment,
+          user_name: user?.name ?? 'Система',
+          file_url: public_url,
+          file_name,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError('Ошибка сохранения версии: ' + (data.error ?? 'Неизвестная ошибка'))
+        setLoading(false)
+        return
+      }
+
+      window.location.href = `https://epotos-ur-intel.vercel.app/contracts/${contractId}`
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
+      setError('Ошибка: ' + message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+
+        <div className="flex items-center gap-3 mb-8">
+          <Link href={`/contracts/${contractId}`}
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            ← Назад
+          </Link>
+          <span className="text-gray-300">/</span>
+          <h1 className="text-xl font-semibold text-gray-900">Загрузить версию документа</h1>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Файл договора <span className="text-red-500">*</span>
+              </label>
+              <div className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${file ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}>
+                {file ? (
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(file.size / 1024 / 1024).toFixed(2)} МБ
+                    </p>
+                    <button type="button" onClick={() => setFile(null)}
+                      className="mt-2 text-xs text-red-500 hover:text-red-700 underline">
+                      Удалить
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">Нажмите для выбора файла</p>
+                    <p className="text-xs text-gray-400">PDF, DOCX, XLSX — до 20 МБ</p>
+                  </div>
+                )}
+                {!file && (
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.xlsx"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Комментарий к версии
+              </label>
+              <input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Например: первичная версия, правки юриста..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={loading || !file}
+                className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-50">
+                {loading ? 'Загрузка...' : 'Загрузить документ'}
+              </button>
+              <Link href={`/contracts/${contractId}`}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                Отмена
+              </Link>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+================
+File: app/contracts/[id]/page.tsx
+================
+import { createClient } from '@supabase/supabase-js'
+import { notFound } from 'next/navigation'
+import ContractTabs from '@/app/components/ContractTabs'
+
+export default async function ContractPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
+  const [{ data: contract }, { data: logs }, { data: versions }] = await Promise.all([
+    supabase.from('contracts').select('*').eq('id', id).single(),
+    supabase.from('contract_logs').select('*').eq('contract_id', id).order('created_at', { ascending: false }),
+    supabase.from('versions').select('*').eq('contract_id', id).order('version_number', { ascending: false }),
+  ])
+
+  if (!contract || contract.deleted_at) notFound()
+
+  return (
+    <ContractTabs
+      contract={contract}
+      versions={versions ?? []}
+      logs={logs ?? []}
+    />
   )
 }
 
