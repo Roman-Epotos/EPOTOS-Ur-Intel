@@ -67,7 +67,13 @@ export function useBitrixAuth() {
           formData.append('DOMAIN', domain)
           formData.append('member_id', memberId)
 
-          const response = await fetch('/api/bitrix/callback', { method: 'POST', body: formData })
+          // callback и запрос моста идут параллельно, не по очереди —
+          // мосту для поиска нужен только member_id, а он уже известен
+          // из URL и не зависит от результата callback.
+          const [response, dlRes] = await Promise.all([
+            fetch('/api/bitrix/callback', { method: 'POST', body: formData }),
+            fetch(`/api/deep-link?member_id=${encodeURIComponent(memberId)}`, { method: 'GET', credentials: 'include' }),
+          ])
           const data = await response.json()
 
           if (data.success) {
@@ -88,10 +94,8 @@ export function useBitrixAuth() {
             // member_id даём как резерв/доп.проверку.
             if (!contractId) {
               try {
-                const dlRes = await fetch(
-                  `/api/deep-link?member_id=${encodeURIComponent(memberId)}`,
-                  { method: 'GET', credentials: 'include' }
-                )
+                // Уже спросили мост параллельно с callback выше —
+                // новый запрос не нужен, просто читаем готовый ответ.
                 const dlData = await dlRes.json()
                 if (dlData.contract_id) contractId = dlData.contract_id
               } catch (e) {
