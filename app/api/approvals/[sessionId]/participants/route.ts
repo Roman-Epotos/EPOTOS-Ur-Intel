@@ -252,14 +252,23 @@ export async function DELETE(
 
     // Проверяем — если все ОСТАВШИЕСЯ обязательные уже согласовали,
     // завершаем согласование (актуально именно здесь: убрали участника —
-    // могло оказаться, что все, кто остался, уже проголосовали)
+    // могло оказаться, что все, кто остался, уже проголосовали).
+    // Только если сессия ещё реально активна — иначе отменённая или уже
+    // завершённая сессия могла бы получить статус "согласован" задним
+    // числом просто от удаления в ней участника.
+    const { data: sessionCheck } = await supabase
+      .from('approval_sessions')
+      .select('status')
+      .eq('id', sessionId)
+      .single()
+
     const { data: remainingParticipants } = await supabase
       .from('approval_participants')
       .select('role, status')
       .eq('session_id', sessionId)
 
     const required = (remainingParticipants ?? []).filter(p => p.role === 'required')
-    const allDone = required.length > 0 && required.every(p =>
+    const allDone = sessionCheck?.status === 'active' && required.length > 0 && required.every(p =>
       ['approved', 'disabled', 'completed_by_initiator'].includes(p.status)
     )
 

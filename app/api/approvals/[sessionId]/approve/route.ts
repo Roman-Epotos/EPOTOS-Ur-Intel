@@ -246,10 +246,14 @@ export async function DELETE(
       return NextResponse.json({ error: sessionError.message }, { status: 400 })
     }
 
-    await supabase
+    const { error: contractError } = await supabase
       .from('contracts')
       .update({ status: targetStatus })
       .eq('id', contract_id)
+
+    if (contractError) {
+      return NextResponse.json({ error: contractError.message }, { status: 400 })
+    }
 
     // Сбрасываем всех ожидающих участников — документ уходит из «требуют решения»
     await supabase
