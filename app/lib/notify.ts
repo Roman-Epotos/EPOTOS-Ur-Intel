@@ -23,9 +23,11 @@ interface NotifyOptions {
 }
 
 function buildMessage(type: NotifyType, documentTitle: string, documentNumber: string, documentId: string, extra?: string): string {
-  const bitrixPortal = process.env.BITRIX_PORTAL ?? 'gkepotos.bitrix24.ru'
-  const link = `https://${bitrixPortal}/marketplace/app/252/?contract_id=${documentId}`
-  const doc = `${documentNumber} — ${documentTitle} [${link}]`
+  // Ссылку сюда больше не добавляем — Битрикс всё равно режет её при
+  // построении iframe (подтверждено 16.07 и повторно тестом Qwen).
+  // Единственная рабочая ссылка на документ — первое сообщение чата,
+  // которое создаёт createBitrixChat() отдельно, эту функцию не трогаем.
+  const doc = `${documentNumber} — ${documentTitle}`
   const messages: Record<NotifyType, string> = {
     document_created:    `📄 Создан новый документ: ${doc}`,
     sent_for_approval:   `📨 Документ отправлен на согласование: ${doc}`,
